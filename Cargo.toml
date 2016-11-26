@@ -1,0 +1,7 @@
+[package]
+name = "rah"
+version = "0.1.0"
+authors = ["jacko"]
+
+[dependencies]
+ring = ">=0.5.3"
