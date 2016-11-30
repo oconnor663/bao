@@ -1,3 +1,5 @@
+#[macro_use]
+extern crate arrayref;
 extern crate ring;
 
 use ring::{constant_time, digest, error};
@@ -15,7 +17,7 @@ fn hash(input: &[u8]) -> Digest {
     ret
 }
 
-fn verify(input: &[u8], digest: Digest) -> Result<(), error::Unspecified> {
+fn verify(input: &[u8], digest: &Digest) -> Result<(), error::Unspecified> {
     let computed = hash(input);
     constant_time::verify_slices_are_equal(&digest[..], &computed[..])
 }
@@ -62,17 +64,13 @@ fn left_side_decoding_len(input_len: usize) -> usize {
     }
 }
 
-pub fn decode(encoded: &[u8], digest: Digest) -> Result<Vec<u8>, error::Unspecified> {
+pub fn decode(encoded: &[u8], digest: &Digest) -> Result<Vec<u8>, error::Unspecified> {
     if encoded.len() <= CHUNK_SIZE {
         return verify(encoded, digest).map(|_| encoded.to_vec());
     }
-    let mut node = [0; 2 * DIGEST_SIZE];
-    (&mut node).copy_from_slice(&encoded[..2 * DIGEST_SIZE]);
-    verify(&node, digest)?;
-    let mut left_digest = [0; DIGEST_SIZE];
-    let mut right_digest = [0; DIGEST_SIZE];
-    (&mut left_digest).copy_from_slice(&node[..DIGEST_SIZE]);
-    (&mut right_digest).copy_from_slice(&node[DIGEST_SIZE..]);
+    verify(&encoded[..2 * DIGEST_SIZE], digest)?;
+    let left_digest = array_ref![encoded, 0, DIGEST_SIZE];
+    let right_digest = array_ref![encoded, DIGEST_SIZE, DIGEST_SIZE];
     let left_start = 2 * DIGEST_SIZE;
     let left_end = left_start + left_side_decoding_len(encoded.len());
     let mut left_plaintext = decode(&encoded[left_start..left_end], left_digest)?;
@@ -100,7 +98,7 @@ mod test {
     fn test_hash() {
         let inputs: &[&[u8]] = &[b"", b"f", b"foo"];
         for input in inputs {
-            verify(input, hash(input)).unwrap();
+            verify(input, &hash(input)).unwrap();
         }
     }
 
@@ -136,7 +134,7 @@ mod test {
         fn one(input: &[u8]) {
             println!("input: {:?}", debug_sample(input));
             let (digest, encoded) = encode(input);
-            let output = decode(&encoded, digest).expect("decode failed");
+            let output = decode(&encoded, &digest).expect("decode failed");
             assert_eq!(input.len(),
                        output.len(),
                        "input and output lengths don't match");

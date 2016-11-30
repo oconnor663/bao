@@ -5,3 +5,4 @@ authors = ["jacko"]
 
 [dependencies]
 ring = ">=0.5.3"
+arrayref = ">=0.3.2"
