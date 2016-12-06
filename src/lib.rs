@@ -135,7 +135,7 @@ impl<T> RahReader<T> {
 
 impl<T: Read> Read for RahReader<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // If there's no data in the chunk buffer, and we haven't reached the end of the tree yet,
+        // If there's no data in the output buffer, and we haven't reached the end of the tree yet,
         // try to traverse the tree down to a chunk and read it.
         if self.output_buffer.len() == 0 && self.traversal_stack.len() > 0 {
             // Keep traversing nodes until we get down to the size of a single chunk.
@@ -167,8 +167,8 @@ impl<T: Read> Read for RahReader<T> {
             std::mem::swap(&mut self.read_buffer, &mut self.output_buffer);
         }
 
-        // Finally, return as much as we can from the chunk buffer. That might be zero bytes, which
-        // would mean EOF.
+        // Finally, return as much as we can from the output buffer. That might be zero bytes,
+        // which would mean EOF.
         let write_len = min(self.output_buffer.len(), buf.len());
         (&mut buf[0..write_len]).copy_from_slice(&mut self.output_buffer[0..write_len]);
         self.output_buffer.drain(0..write_len);
@@ -204,6 +204,8 @@ fn as_io_error<T>(result: Result<T, Unspecified>) -> io::Result<T> {
 #[cfg(test)]
 mod test {
     use std::cmp::min;
+    use std::io;
+    use std::io::prelude::*;
     use super::*;
     use super::{hash, verify, left_plaintext_len, left_subtree_len_and_chunk_count};
 
@@ -300,8 +302,8 @@ mod test {
 
         // Twiddle the last byte. The first two chunks now succeed, but the last fails.
         *encoded.last_mut().unwrap() ^= 1;
-        assert!(decode_chunk(&encoded, &digest, 0).is_ok());
-        assert!(decode_chunk(&encoded, &digest, 1).is_ok());
+        decode_chunk(&encoded, &digest, 0).unwrap();
+        decode_chunk(&encoded, &digest, 1).unwrap();
         assert!(decode_chunk(&encoded, &digest, 2).is_err());
 
         // Twiddle the first byte. Now all of them fail.
@@ -309,5 +311,60 @@ mod test {
         assert!(decode_chunk(&encoded, &digest, 0).is_err());
         assert!(decode_chunk(&encoded, &digest, 1).is_err());
         assert!(decode_chunk(&encoded, &digest, 2).is_err());
+    }
+
+    #[test]
+    fn test_read() {
+        let chunks: &[&[u8]] = &[&[0; CHUNK_SIZE], &[1; CHUNK_SIZE], &[2, 2, 2]];
+        let mut input = Vec::new();
+        for chunk in chunks {
+            input.extend_from_slice(chunk);
+        }
+        let (mut encoded, digest) = encode(&input);
+
+        // Test that we can successfully read the input back out.
+        {
+            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len());
+            let mut output = Vec::new();
+            reader.read_to_end(&mut output).unwrap();
+            assert_eq!(&output, &input);
+        }
+
+        // Do the same test, but reading one byte at a time.
+        {
+            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len());
+            let mut output = Vec::new();
+            loop {
+                let mut one_byte_buffer = [0; 1];
+                let bytes_read = reader.read(&mut one_byte_buffer[..]).unwrap();
+                if bytes_read == 0 {
+                    break;  // EOF
+                }
+                output.push(one_byte_buffer[0]);
+            }
+            assert_eq!(&output, &input);
+        }
+
+        // Twiddle one bit at the end and confirm that it breaks only the last chunk.
+        {
+            *encoded.last_mut().unwrap() ^= 1;
+            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len());
+            let mut chunk_buf = [0; CHUNK_SIZE];
+            let first_read = reader.read(&mut chunk_buf[..]).unwrap();
+            assert_eq!(first_read, CHUNK_SIZE);
+            let second_read = reader.read(&mut chunk_buf[..]).unwrap();
+            assert_eq!(second_read, CHUNK_SIZE);
+            let third_error = reader.read(&mut chunk_buf[..]).unwrap_err();
+            assert_eq!(third_error.kind(), io::ErrorKind::InvalidData);
+        }
+
+        // Twiddle one bit at the beginning and confirm that it breaks the first read.
+        {
+            *encoded.first_mut().unwrap() ^= 1;
+            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len());
+            let mut one_byte_buffer = [0; 1];
+            let error = reader.read(&mut one_byte_buffer[..]).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        }
     }
 }
