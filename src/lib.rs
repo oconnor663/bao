@@ -187,7 +187,17 @@ fn fill_vec<R: Read>(reader: &mut R, vec: &mut Vec<u8>, target_len: usize) -> io
     let mut total_read = 0;
     while vec.len() < target_len {
         let bytes_wanted = min(target_len - vec.len(), read_buf.len());
-        let bytes_got = reader.read(&mut read_buf[0..bytes_wanted])?;
+        let read_result = reader.read(&mut read_buf[0..bytes_wanted]);
+        let bytes_got = match read_result {
+            Ok(n) => n,
+            Err(e) => {
+                if e.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                } else {
+                    return Err(e);
+                }
+            }
+        };
         if bytes_got == 0 {
             return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "EOF during fill_vec"));
         }
