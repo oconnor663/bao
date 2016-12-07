@@ -70,20 +70,14 @@ fn left_subtree_len_and_chunk_count(encoded_len: u64) -> (u64, u64) {
     }
 }
 
-pub fn decode(encoded: &[u8], digest: &Digest) -> Result<Vec<u8>, Unspecified> {
-    if encoded.len() <= CHUNK_SIZE {
-        return verify(encoded, digest).map(|_| encoded.to_vec());
-    }
-    verify(&encoded[..2 * DIGEST_SIZE], digest)?;
-    let (left_len, _) = left_subtree_len_and_chunk_count(encoded.len() as u64);
-    let left_digest = array_ref![encoded, 0, DIGEST_SIZE];
-    let right_digest = array_ref![encoded, DIGEST_SIZE, DIGEST_SIZE];
-    let left_start = 2 * DIGEST_SIZE;
-    let left_end = left_start + left_len as usize;
-    let mut left_plaintext = decode(&encoded[left_start..left_end], left_digest)?;
-    let right_plaintext = decode(&encoded[left_end..], right_digest)?;
-    left_plaintext.extend_from_slice(&right_plaintext);
-    Ok(left_plaintext)
+pub fn decode(encoded: &[u8],
+              digest: &Digest,
+              plaintext_len: usize)
+              -> Result<Vec<u8>, Unspecified> {
+    let mut reader = RahReader::new(io::Cursor::new(encoded), digest, plaintext_len as u64);
+    let mut output = Vec::new();
+    reader.read_to_end(&mut output).or(Err(Unspecified))?;
+    Ok(output)
 }
 
 pub fn decode_chunk<'a>(encoded: &'a [u8],
@@ -144,6 +138,7 @@ impl<T: Read> Read for RahReader<T> {
                 if plaintext_len <= CHUNK_SIZE as u64 {
                     break;
                 }
+                // This should be able to recover from transient IO errors by retrying.
                 fill_vec(&mut self.inner_reader,
                          &mut self.read_buffer,
                          2 * DIGEST_SIZE)?;
@@ -160,6 +155,7 @@ impl<T: Read> Read for RahReader<T> {
             // Then read that chunk.
             let (digest, plaintext_len) = *self.traversal_stack.last().unwrap();
             debug_assert!(plaintext_len <= CHUNK_SIZE as u64);
+            // This should be able to recover from transient IO errors by retrying.
             fill_vec(&mut self.inner_reader,
                      &mut self.read_buffer,
                      plaintext_len as usize)?;
@@ -278,7 +274,7 @@ mod test {
         fn one(input: &[u8]) {
             println!("input: {:?}", debug_sample(input));
             let (encoded, digest) = encode(input);
-            let output = decode(&encoded, &digest).expect("decode failed");
+            let output = decode(&encoded, &digest, input.len()).expect("decode failed");
             assert_eq!(input.len(),
                        output.len(),
                        "input and output lengths don't match");
