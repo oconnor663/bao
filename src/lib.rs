@@ -26,12 +26,12 @@ fn verify(input: &[u8], digest: &Digest) -> Result<(), Unspecified> {
     constant_time::verify_slices_are_equal(&digest[..], &computed[..])
 }
 
-fn left_plaintext_len(input_len: usize) -> usize {
+fn left_plaintext_len(input_len: u64) -> u64 {
     // Find the first power of 2 times the chunk size that is *strictly* less than the input
     // length. So if the input is exactly 4 chunks long, for example, the answer here will be 2
     // chunks.
-    assert!(input_len > CHUNK_SIZE);
-    let mut size = CHUNK_SIZE;
+    assert!(input_len > CHUNK_SIZE as u64);
+    let mut size = CHUNK_SIZE as u64;
     while (size * 2) < input_len {
         size *= 2;
     }
@@ -42,7 +42,7 @@ pub fn encode(input: &[u8]) -> (Vec<u8>, Digest) {
     if input.len() <= CHUNK_SIZE {
         return (input.to_vec(), hash(input));
     }
-    let left_len = left_plaintext_len(input.len());
+    let left_len = left_plaintext_len(input.len() as u64) as usize;
     let (left_encoded, left_hash) = encode(&input[..left_len]);
     let (right_encoded, right_hash) = encode(&input[left_len..]);
     let mut node = [0; 2 * DIGEST_SIZE];
@@ -56,12 +56,12 @@ pub fn encode(input: &[u8]) -> (Vec<u8>, Digest) {
     (encoded, node_hash)
 }
 
-fn left_subtree_len_and_chunk_count(encoded_len: usize) -> (usize, usize) {
-    assert!(encoded_len > CHUNK_SIZE);
-    let mut encoded_size = CHUNK_SIZE;
+fn left_subtree_len_and_chunk_count(encoded_len: u64) -> (u64, u64) {
+    assert!(encoded_len > CHUNK_SIZE as u64);
+    let mut encoded_size = CHUNK_SIZE as u64;
     let mut chunk_count = 1;
     loop {
-        let next_size = 2 * encoded_size + 2 * DIGEST_SIZE;
+        let next_size = 2 * encoded_size + 2 * DIGEST_SIZE as u64;
         if next_size >= encoded_len {
             return (encoded_size, chunk_count);
         }
@@ -75,11 +75,11 @@ pub fn decode(encoded: &[u8], digest: &Digest) -> Result<Vec<u8>, Unspecified> {
         return verify(encoded, digest).map(|_| encoded.to_vec());
     }
     verify(&encoded[..2 * DIGEST_SIZE], digest)?;
-    let (left_len, _) = left_subtree_len_and_chunk_count(encoded.len());
+    let (left_len, _) = left_subtree_len_and_chunk_count(encoded.len() as u64);
     let left_digest = array_ref![encoded, 0, DIGEST_SIZE];
     let right_digest = array_ref![encoded, DIGEST_SIZE, DIGEST_SIZE];
     let left_start = 2 * DIGEST_SIZE;
-    let left_end = left_start + left_len;
+    let left_end = left_start + left_len as usize;
     let mut left_plaintext = decode(&encoded[left_start..left_end], left_digest)?;
     let right_plaintext = decode(&encoded[left_end..], right_digest)?;
     left_plaintext.extend_from_slice(&right_plaintext);
@@ -88,7 +88,7 @@ pub fn decode(encoded: &[u8], digest: &Digest) -> Result<Vec<u8>, Unspecified> {
 
 pub fn decode_chunk<'a>(encoded: &'a [u8],
                         digest: &Digest,
-                        chunk_num: usize)
+                        chunk_num: u64)
                         -> Result<&'a [u8], Unspecified> {
     if encoded.len() <= CHUNK_SIZE {
         if chunk_num == 0 {
@@ -100,11 +100,11 @@ pub fn decode_chunk<'a>(encoded: &'a [u8],
         }
     } else {
         verify(&encoded[..2 * DIGEST_SIZE], digest)?;
-        let (left_len, left_chunk_count) = left_subtree_len_and_chunk_count(encoded.len());
+        let (left_len, left_chunk_count) = left_subtree_len_and_chunk_count(encoded.len() as u64);
         let left_digest = array_ref![encoded, 0, DIGEST_SIZE];
         let right_digest = array_ref![encoded, DIGEST_SIZE, DIGEST_SIZE];
         let left_start = 2 * DIGEST_SIZE;
-        let left_end = left_start + left_len;
+        let left_end = left_start + left_len as usize;
         if chunk_num < left_chunk_count {
             decode_chunk(&encoded[left_start..left_end], left_digest, chunk_num)
         } else {
@@ -117,13 +117,13 @@ pub fn decode_chunk<'a>(encoded: &'a [u8],
 
 pub struct RahReader<T> {
     inner_reader: T,
-    traversal_stack: Vec<(Digest, usize)>,
+    traversal_stack: Vec<(Digest, u64)>,
     read_buffer: Vec<u8>,
     output_buffer: Vec<u8>,
 }
 
 impl<T> RahReader<T> {
-    pub fn new(inner_reader: T, digest: &Digest, plaintext_len: usize) -> Self {
+    pub fn new(inner_reader: T, digest: &Digest, plaintext_len: u64) -> Self {
         RahReader {
             inner_reader: inner_reader,
             traversal_stack: vec![(*digest, plaintext_len)],
@@ -141,7 +141,7 @@ impl<T: Read> Read for RahReader<T> {
             // Keep traversing nodes until we get down to the size of a single chunk.
             loop {
                 let (digest, plaintext_len) = *self.traversal_stack.last().unwrap();
-                if plaintext_len <= CHUNK_SIZE {
+                if plaintext_len <= CHUNK_SIZE as u64 {
                     break;
                 }
                 fill_vec(&mut self.inner_reader,
@@ -159,8 +159,10 @@ impl<T: Read> Read for RahReader<T> {
             }
             // Then read that chunk.
             let (digest, plaintext_len) = *self.traversal_stack.last().unwrap();
-            debug_assert!(plaintext_len <= CHUNK_SIZE);
-            fill_vec(&mut self.inner_reader, &mut self.read_buffer, plaintext_len)?;
+            debug_assert!(plaintext_len <= CHUNK_SIZE as u64);
+            fill_vec(&mut self.inner_reader,
+                     &mut self.read_buffer,
+                     plaintext_len as usize)?;
             as_io_error(verify(&self.read_buffer[..], &digest))?;
             self.traversal_stack.pop();
             debug_assert!(self.output_buffer.len() == 0);
@@ -244,7 +246,7 @@ mod test {
                       (2 * CHUNK_SIZE + 2, 2 * CHUNK_SIZE)];
         for &case in cases {
             println!("testing {} and {}", case.0, case.1);
-            assert_eq!(left_plaintext_len(case.0), case.1);
+            assert_eq!(left_plaintext_len(case.0 as u64), case.1 as u64);
         }
     }
 
@@ -259,9 +261,15 @@ mod test {
               (4 * CHUNK_SIZE + 6 * DIGEST_SIZE - 1, (2 * CHUNK_SIZE + 2 * DIGEST_SIZE, 2)),
               (4 * CHUNK_SIZE + 6 * DIGEST_SIZE, (2 * CHUNK_SIZE + 2 * DIGEST_SIZE, 2)),
               (4 * CHUNK_SIZE + 6 * DIGEST_SIZE + 1, (4 * CHUNK_SIZE + 6 * DIGEST_SIZE, 4))];
-        for &case in cases {
-            println!("testing {:?} and {:?}", case.0, case.1);
-            assert_eq!(left_subtree_len_and_chunk_count(case.0), case.1);
+        for &(input_len, (expected_left_len, expected_left_chunk_count)) in cases {
+            println!("testing {:?}", input_len);
+            let (left_len, left_chunk_count) = left_subtree_len_and_chunk_count(input_len as u64);
+            assert_eq!(left_len as usize,
+                       expected_left_len,
+                       "unexpected value for left subtree len");
+            assert_eq!(left_chunk_count as usize,
+                       expected_left_chunk_count,
+                       "unexpected value for left subtree chunk count");
         }
     }
 
@@ -306,7 +314,8 @@ mod test {
         }
         let (mut encoded, digest) = encode(&input);
         for i in 0..chunks.len() {
-            let decoded_chunk = decode_chunk(&encoded, &digest, i).expect("decode_chunk failed!");
+            let decoded_chunk = decode_chunk(&encoded, &digest, i as u64)
+                .expect("decode_chunk failed!");
             assert_eq!(chunks[i], decoded_chunk);
         }
 
@@ -334,7 +343,7 @@ mod test {
 
         // Test that we can successfully read the input back out.
         {
-            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len());
+            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len() as u64);
             let mut output = Vec::new();
             reader.read_to_end(&mut output).unwrap();
             assert_eq!(&output, &input);
@@ -342,7 +351,7 @@ mod test {
 
         // Do the same test, but reading one byte at a time.
         {
-            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len());
+            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len() as u64);
             let mut output = Vec::new();
             loop {
                 let mut one_byte_buffer = [0; 1];
@@ -358,7 +367,7 @@ mod test {
         // Twiddle one bit at the end and confirm that it breaks only the last chunk.
         {
             *encoded.last_mut().unwrap() ^= 1;
-            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len());
+            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len() as u64);
             let mut chunk_buf = [0; CHUNK_SIZE];
             let first_read = reader.read(&mut chunk_buf[..]).unwrap();
             assert_eq!(first_read, CHUNK_SIZE);
@@ -371,7 +380,7 @@ mod test {
         // Twiddle one bit at the beginning and confirm that it breaks the first read.
         {
             *encoded.first_mut().unwrap() ^= 1;
-            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len());
+            let mut reader = RahReader::new(io::Cursor::new(&encoded), &digest, input.len() as u64);
             let mut one_byte_buffer = [0; 1];
             let error = reader.read(&mut one_byte_buffer[..]).unwrap_err();
             assert_eq!(error.kind(), io::ErrorKind::InvalidData);
