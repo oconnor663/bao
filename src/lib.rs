@@ -111,6 +111,9 @@ pub fn decode_chunk<'a>(encoded: &'a [u8],
 
 pub struct RahReader<T> {
     inner_reader: T,
+    starting_digest: Digest,
+    plaintext_len: u64,
+    current_offset: u64,
     traversal_stack: Vec<(Digest, u64)>,
     read_buffer: Vec<u8>,
     output_buffer: Vec<u8>,
@@ -120,6 +123,9 @@ impl<T> RahReader<T> {
     pub fn new(inner_reader: T, digest: &Digest, plaintext_len: u64) -> Self {
         RahReader {
             inner_reader: inner_reader,
+            starting_digest: *digest,
+            plaintext_len: plaintext_len,
+            current_offset: 0,
             traversal_stack: vec![(*digest, plaintext_len)],
             read_buffer: Vec::new(),
             output_buffer: Vec::new(),
@@ -170,12 +176,40 @@ impl<T: Read> Read for RahReader<T> {
         let write_len = min(self.output_buffer.len(), buf.len());
         (&mut buf[0..write_len]).copy_from_slice(&mut self.output_buffer[0..write_len]);
         self.output_buffer.drain(0..write_len);
+        self.current_offset += write_len as u64;
         Ok(write_len)
     }
 }
 
 impl<T: Seek + Read> Seek for RahReader<T> {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        let new_offset = match pos {
+            io::SeekFrom::Start(n) => n,
+            io::SeekFrom::End(n) => {
+                if -n > self.plaintext_len as i64 {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                              "can't seek before byte 0"));
+                }
+                (self.plaintext_len as i64 + n) as u64
+            }
+            io::SeekFrom::Current(n) => {
+                if -n > self.current_offset as i64 {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                              "can't seek before byte 0"));
+                }
+                (self.current_offset as i64 + n) as u64
+            }
+        };
+
+        // Seek to the beginning of the inner reader, and then reset all of our traversal state.
+        // TODO: Something more efficient with local seeks?
+        self.inner_reader.seek(io::SeekFrom::Start(0))?;
+        self.traversal_stack = vec![(self.starting_digest, self.plaintext_len)];
+        self.current_offset = 0;
+        self.read_buffer.clear();
+        self.output_buffer.clear();
+
+        // Now do a traversal to the new offset, similar to read() above, but using seeks instead.
         unimplemented!();
     }
 }
