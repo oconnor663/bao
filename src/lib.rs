@@ -243,6 +243,57 @@ fn as_io_error<T>(result: Result<T, Unspecified>) -> io::Result<T> {
     result.or(Err(io::Error::new(io::ErrorKind::InvalidData, "hash mismatch")))
 }
 
+pub struct HashReader<R> {
+    inner: R,
+    buffer: Vec<u8>,
+}
+
+impl<R: Read> HashReader<R> {
+    pub fn new(inner: R) -> HashReader<R> {
+        HashReader {
+            inner: inner,
+            buffer: Vec::new(),
+        }
+    }
+
+    pub fn read_verified(&mut self, hash: Digest, buf: &mut [u8]) -> io::Result<()> {
+        self.fill_to_target_len(buf.len())?;
+        if verify(&self.buffer, &hash).is_err() {
+            Err(io::Error::new(io::ErrorKind::InvalidData, "hash mismatch in verified read"))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn fill_to_target_len(&mut self, target_len: usize) -> io::Result<()> {
+        if self.buffer.len() >= target_len {
+            return Ok(());
+        }
+        let mut needed = target_len - self.buffer.len();
+        self.buffer.resize(target_len, 0);
+        while needed > 0 {
+            let zeros_start = self.buffer.len() - needed;
+            let error = match self.inner.read(&mut self.buffer[zeros_start..]) {
+                Ok(0) => {
+                    io::Error::new(io::ErrorKind::UnexpectedEof,
+                                   "EOF in the middle of a verified read")
+                }
+                Ok(n) => {
+                    needed -= n;
+                    continue;
+                }
+                Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Err(e) => e,
+            };
+            // The error case:
+            let final_len = self.buffer.len() - needed;
+            self.buffer.truncate(final_len);
+            return Err(error);
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::cmp::min;
@@ -344,8 +395,8 @@ mod test {
         }
         let (mut encoded, digest) = encode(&input);
         for i in 0..chunks.len() {
-            let decoded_chunk = decode_chunk(&encoded, &digest, i as u64)
-                .expect("decode_chunk failed!");
+            let decoded_chunk =
+                decode_chunk(&encoded, &digest, i as u64).expect("decode_chunk failed!");
             assert_eq!(chunks[i], decoded_chunk);
         }
 
@@ -387,7 +438,7 @@ mod test {
                 let mut one_byte_buffer = [0; 1];
                 let bytes_read = reader.read(&mut one_byte_buffer[..]).unwrap();
                 if bytes_read == 0 {
-                    break;  // EOF
+                    break; // EOF
                 }
                 output.push(one_byte_buffer[0]);
             }
