@@ -257,12 +257,16 @@ impl<R: Read> HashReader<R> {
     }
 
     pub fn read_verified(&mut self, hash: Digest, buf: &mut [u8]) -> io::Result<()> {
-        self.fill_to_target_len(buf.len())?;
+        let buf_len = buf.len();
+        self.fill_to_target_len(buf_len)?;
+        // Check the hash!
         if verify(&self.buffer, &hash).is_err() {
-            Err(io::Error::new(io::ErrorKind::InvalidData, "hash mismatch in verified read"))
-        } else {
-            Ok(())
+            return Err(io::Error::new(io::ErrorKind::InvalidData,
+                                      "hash mismatch in verified read"));
         }
+        buf.copy_from_slice(&self.buffer[..buf_len]);
+        self.buffer.drain(..buf_len);
+        Ok(())
     }
 
     fn fill_to_target_len(&mut self, target_len: usize) -> io::Result<()> {
@@ -465,6 +469,86 @@ mod test {
             let mut one_byte_buffer = [0; 1];
             let error = reader.read(&mut one_byte_buffer[..]).unwrap_err();
             assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        }
+    }
+
+    #[test]
+    fn test_hash_reader() {
+        let input = b"hello world";
+        let mut reader = HashReader::new(&input[..]);
+
+        // See if we can read the first two bytes.
+        let first_two_hash = hash(&input[0..2]);
+        let mut first_two_buf = [0, 0];
+        reader.read_verified(first_two_hash, &mut first_two_buf[..]).unwrap();
+        assert_eq!(b"he", &first_two_buf);
+
+        // Now try an invalid read.
+        let rest_hash = hash(&input[2..]);
+        let mut bad_hash = rest_hash;
+        bad_hash[0] ^= 1;
+        let mut rest_buf = [0; 9];
+        let error = reader.read_verified(bad_hash, &mut rest_buf[..]);
+        assert_eq!(error.unwrap_err().kind(), io::ErrorKind::InvalidData);
+        // Twice for good measure.
+        let error_again = reader.read_verified(bad_hash, &mut rest_buf[..]);
+        assert_eq!(error_again.unwrap_err().kind(), io::ErrorKind::InvalidData);
+
+        // Now finish the read, despite the errors above.
+        reader.read_verified(rest_hash, &mut rest_buf[..]).unwrap();
+        assert_eq!(b"llo world", &rest_buf);
+
+        // At this point, an empty read should work.
+        let empty_hash = hash(&b""[..]);
+        let mut empty_buf = [];
+        reader.read_verified(empty_hash, &mut empty_buf).unwrap();
+
+        // But a non-empty read (regardles of the hash) should return UnexpectedEOF.
+        let error = reader.read_verified(empty_hash, &mut rest_buf);
+        assert_eq!(error.unwrap_err().kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    // A reader that alternates between reading a single character and returning
+    // a transient error.
+    struct StupidReader<R> {
+        inner: R,
+        error_next: bool,
+    }
+
+    impl<R: Read> Read for StupidReader<R> {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.error_next {
+                self.error_next = false;
+                Err(io::Error::new(io::ErrorKind::Other, "stupid error"))
+            } else {
+                self.error_next = true;
+                self.inner.read(&mut buf[0..1]) // assumes non-empty buf
+            }
+        }
+    }
+
+    #[test]
+    fn test_hash_reader_transient_errors() {
+        let stupid = StupidReader {
+            inner: &b"hello world"[..],
+            error_next: true,
+        };
+        let mut reader = HashReader::new(stupid);
+        let mut buf = [0; 11];
+        let mut errors = 0;
+        let good_hash = hash(b"hello world");
+        // We expect 11 errors, followed by a successful read.
+        loop {
+            match reader.read_verified(good_hash, &mut buf) {
+                Err(e) => {
+                    errors += 1;
+                    assert_eq!("stupid error", e.to_string());
+                }
+                Ok(()) => {
+                    assert_eq!(11, errors);
+                    break;
+                }
+            }
         }
     }
 }
