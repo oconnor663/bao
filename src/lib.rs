@@ -3,7 +3,7 @@ extern crate arrayref;
 extern crate byteorder;
 extern crate ring;
 
-use byteorder::{BigEndian, WriteBytesExt};
+use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 use ring::{constant_time, digest};
 use ring::error::Unspecified;
 use std::cmp::min;
@@ -118,6 +118,62 @@ impl<R: Read> HashReader<R> {
             return Err(error);
         }
         Ok(())
+    }
+}
+
+pub struct RadReader<R: Read> {
+    inner: HashReader<R>,
+    header_hash: Digest,
+    node_stack: Vec<(Digest, u64, u64)>,
+    header_state: Option<(u64, Digest)>,
+}
+
+impl<R: Read> RadReader<R> {
+    fn new(hash: Digest, inner: R) -> RadReader<R> {
+        RadReader {
+            inner: HashReader::new(inner),
+            header_hash: hash,
+            node_stack: Vec::new(),
+            header_state: None,
+        }
+    }
+
+    fn read_header(&mut self) -> io::Result<(u64, Digest)> {
+        let mut buf = [0; 8 + DIGEST_SIZE];
+        self.inner.read_verified(self.header_hash, &mut buf)?;
+        let plaintext_len = <BigEndian>::read_u64(&buf[..8]);
+        let root_hash = *array_ref!(&buf, 8, DIGEST_SIZE);
+        let tuple = (plaintext_len, root_hash);
+        self.header_state = Some(tuple);
+        Ok(tuple)
+    }
+
+    fn plaintext_len(&mut self) -> io::Result<u64> {
+        if let Some((plaintext_len, root_hash)) = self.header_state {
+            Ok(plaintext_len)
+        } else {
+            Ok(self.read_header()?.0)
+        }
+    }
+
+    fn root_hash(&mut self) -> io::Result<Digest> {
+        if let Some((plaintext_len, root_hash)) = self.header_state {
+            Ok(root_hash)
+        } else {
+            Ok(self.read_header()?.1)
+        }
+    }
+}
+
+impl<R: Read> Read for RadReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        unimplemented!();
+    }
+}
+
+impl<R: Read + Seek> Seek for RadReader<R> {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        unimplemented!();
     }
 }
 
