@@ -83,7 +83,7 @@ impl<R: Read> HashReader<R> {
         let buf_len = buf.len();
         self.fill_to_target_len(buf_len)?;
         // Check the hash!
-        if verify(&self.buffer, &hash).is_err() {
+        if verify(&self.buffer[..buf_len], &hash).is_err() {
             return Err(io::Error::new(io::ErrorKind::InvalidData,
                                       "hash mismatch in verified read"));
         }
@@ -250,6 +250,29 @@ mod test {
         // But a non-empty read (regardles of the hash) should return UnexpectedEOF.
         let error = reader.read_verified(empty_hash, &mut rest_buf);
         assert_eq!(error.unwrap_err().kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[test]
+    fn test_hash_reader_long_then_short() {
+        let input = b"hello world";
+        let mut reader = HashReader::new(&input[..]);
+
+        // Do a bogus read of the whole input. This fills the buffer, though the
+        // hash won't match.
+        let mut dummy_buf = [0; 11];
+        let mut dummy_hash = [0; DIGEST_SIZE];
+        let err = reader.read_verified(dummy_hash, &mut dummy_buf);
+        assert_eq!(err.unwrap_err().kind(), io::ErrorKind::InvalidData);
+
+        // Now do a couple small reads from the buffer. This tests whether the
+        // used part of the buffer gets drained properly.
+        let mut small_buf = [0];
+        reader
+            .read_verified(hash(&b"h"[..]), &mut small_buf)
+            .unwrap();
+        reader
+            .read_verified(hash(&b"e"[..]), &mut small_buf)
+            .unwrap();
     }
 
     // A reader that alternates between reading a single character and returning
