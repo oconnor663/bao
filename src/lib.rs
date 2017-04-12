@@ -6,7 +6,6 @@ extern crate ring;
 use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 use ring::{constant_time, digest};
 use ring::error::Unspecified;
-use std::cmp::min;
 use std::io;
 use std::io::prelude::*;
 
@@ -121,6 +120,31 @@ impl<R: Read> HashReader<R> {
     }
 }
 
+impl<R: Read + Seek> Seek for HashReader<R> {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        let ret = if let io::SeekFrom::Current(n) = pos {
+            // When seeking from "current", we need to account for data in our
+            // internal buffer. Like BufReader in the stdlib, assume that the
+            // length of our buffer fits within an i64, but handle underflow
+            // from crazy negative positions.
+            let buf_len = self.buffer.len() as i64;
+            if let Some(adjusted_n) = n.checked_sub(buf_len) {
+                self.inner.seek(io::SeekFrom::Current(adjusted_n))?
+            } else {
+                // In the underflow case, seek twice.
+                self.inner.seek(io::SeekFrom::Current(-buf_len))?;
+                // In the last seek succeeded, clear the buffer now, in case the next seek fails.
+                self.buffer.clear();
+                self.inner.seek(io::SeekFrom::Current(n))?
+            }
+        } else {
+            self.inner.seek(pos)?
+        };
+        self.buffer.clear();
+        Ok(ret)
+    }
+}
+
 pub struct RadReader<R: Read> {
     inner: HashReader<R>,
     header_hash: Digest,
@@ -149,7 +173,7 @@ impl<R: Read> RadReader<R> {
     }
 
     fn plaintext_len(&mut self) -> io::Result<u64> {
-        if let Some((plaintext_len, root_hash)) = self.header_state {
+        if let Some((plaintext_len, _)) = self.header_state {
             Ok(plaintext_len)
         } else {
             Ok(self.read_header()?.0)
@@ -157,7 +181,7 @@ impl<R: Read> RadReader<R> {
     }
 
     fn root_hash(&mut self) -> io::Result<Digest> {
-        if let Some((plaintext_len, root_hash)) = self.header_state {
+        if let Some((_, root_hash)) = self.header_state {
             Ok(root_hash)
         } else {
             Ok(self.read_header()?.1)
@@ -166,50 +190,57 @@ impl<R: Read> RadReader<R> {
 }
 
 impl<R: Read> Read for RadReader<R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
         unimplemented!();
     }
 }
 
 impl<R: Read + Seek> Seek for RadReader<R> {
-    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+    fn seek(&mut self, _: io::SeekFrom) -> io::Result<u64> {
         unimplemented!();
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::io;
-    use std::io::prelude::*;
     use super::*;
 
-    fn debug_sample(input: &[u8]) -> String {
-        let sample_len = min(60, input.len());
-        let mut ret = String::from_utf8_lossy(&input[..sample_len]).into_owned();
-        if sample_len < input.len() {
-            ret += &*format!("... (len {})", input.len());
-        }
-        ret
-    }
+    const ZERO_HASH: [u8; DIGEST_SIZE] = [0; DIGEST_SIZE];
 
     #[test]
     fn test_hash() {
         let inputs: &[&[u8]] = &[b"", b"f", b"foo"];
         for input in inputs {
-            verify(input, &hash(input)).unwrap();
+            verify(input, &::hash(input)).unwrap();
         }
     }
 
     #[test]
     fn test_left_plaintext_len() {
-        let cases = &[(CHUNK_SIZE + 1, CHUNK_SIZE),
+        let cases = &[(::CHUNK_SIZE + 1, CHUNK_SIZE),
                       (2 * CHUNK_SIZE - 1, CHUNK_SIZE),
                       (2 * CHUNK_SIZE, CHUNK_SIZE),
                       (2 * CHUNK_SIZE + 2, 2 * CHUNK_SIZE)];
         for &case in cases {
             println!("testing {} and {}", case.0, case.1);
-            assert_eq!(left_plaintext_len(case.0 as u64), case.1 as u64);
+            assert_eq!(::left_plaintext_len(case.0 as u64), case.1 as u64);
         }
+    }
+
+    fn read_verified_expecting<R: Read>(reader: &mut HashReader<R>, slice: &[u8]) {
+        let mut buf = vec![0; slice.len()];
+        reader
+            .read_verified(::hash(slice), &mut buf[..])
+            .expect("read_verified failed");
+        assert_eq!(slice, &buf[..]);
+    }
+
+    fn read_verified_invalid<R: Read>(reader: &mut HashReader<R>, n: usize) {
+        let mut buf = vec![0; n];
+        let err = reader
+            .read_verified(ZERO_HASH, &mut buf[..])
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]
@@ -218,37 +249,22 @@ mod test {
         let mut reader = HashReader::new(&input[..]);
 
         // See if we can read the first two bytes.
-        let first_two_hash = hash(&input[0..2]);
-        let mut first_two_buf = [0, 0];
-        reader
-            .read_verified(first_two_hash, &mut first_two_buf[..])
-            .unwrap();
-        assert_eq!(b"he", &first_two_buf);
+        read_verified_expecting(&mut reader, b"he");
 
         // Now try an invalid read.
-        let rest_hash = hash(&input[2..]);
-        let mut bad_hash = rest_hash;
-        bad_hash[0] ^= 1;
-        let mut rest_buf = [0; 9];
-        let error = reader.read_verified(bad_hash, &mut rest_buf[..]);
-        assert_eq!(error.unwrap_err().kind(), io::ErrorKind::InvalidData);
+        read_verified_invalid(&mut reader, 5);
         // Twice for good measure.
-        let error_again = reader.read_verified(bad_hash, &mut rest_buf[..]);
-        assert_eq!(error_again.unwrap_err().kind(), io::ErrorKind::InvalidData);
+        read_verified_invalid(&mut reader, 6);
 
         // Now finish the read, despite the errors above.
-        reader
-            .read_verified(rest_hash, &mut rest_buf[..])
-            .unwrap();
-        assert_eq!(b"llo world", &rest_buf);
+        read_verified_expecting(&mut reader, b"llo world");
 
         // At this point, an empty read should work.
-        let empty_hash = hash(&b""[..]);
-        let mut empty_buf = [];
-        reader.read_verified(empty_hash, &mut empty_buf).unwrap();
+        read_verified_expecting(&mut reader, b"");
 
         // But a non-empty read (regardles of the hash) should return UnexpectedEOF.
-        let error = reader.read_verified(empty_hash, &mut rest_buf);
+        let mut buf = [0];
+        let error = reader.read_verified(ZERO_HASH, &mut buf);
         assert_eq!(error.unwrap_err().kind(), io::ErrorKind::UnexpectedEof);
     }
 
@@ -259,20 +275,12 @@ mod test {
 
         // Do a bogus read of the whole input. This fills the buffer, though the
         // hash won't match.
-        let mut dummy_buf = [0; 11];
-        let mut dummy_hash = [0; DIGEST_SIZE];
-        let err = reader.read_verified(dummy_hash, &mut dummy_buf);
-        assert_eq!(err.unwrap_err().kind(), io::ErrorKind::InvalidData);
+        read_verified_invalid(&mut reader, 11);
 
         // Now do a couple small reads from the buffer. This tests whether the
         // used part of the buffer gets drained properly.
-        let mut small_buf = [0];
-        reader
-            .read_verified(hash(&b"h"[..]), &mut small_buf)
-            .unwrap();
-        reader
-            .read_verified(hash(&b"e"[..]), &mut small_buf)
-            .unwrap();
+        read_verified_expecting(&mut reader, b"h");
+        read_verified_expecting(&mut reader, b"e");
     }
 
     // A reader that alternates between reading a single character and returning
@@ -317,5 +325,20 @@ mod test {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_hash_reader_seek() {
+        let mut reader = HashReader::new(io::Cursor::new(b"hello world".to_vec()));
+        reader.seek(io::SeekFrom::End(-1)).unwrap();
+        read_verified_expecting(&mut reader, b"d");
+        reader.seek(io::SeekFrom::Current(-2)).unwrap();
+        read_verified_expecting(&mut reader, b"ld");
+        reader.seek(io::SeekFrom::Start(1)).unwrap();
+        read_verified_expecting(&mut reader, b"ello");
+        // Now fill the buffer with a bad read, and confirm relative seeks still work.
+        read_verified_invalid(&mut reader, 3);
+        reader.seek(io::SeekFrom::Current(-2)).unwrap();
+        read_verified_expecting(&mut reader, b"lo world");
     }
 }
