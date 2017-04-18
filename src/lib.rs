@@ -78,6 +78,10 @@ impl<R: Read> HashReader<R> {
         }
     }
 
+    // This is the only way HashReader ever returns data to a caller. Even if
+    // there are bugs in the fill or seek functions, which could cause extra
+    // errors where there shouldn't be, it should still be impossible for the
+    // caller to read any bytes that don't exactly match the hash they provided.
     pub fn read_verified(&mut self, hash: Digest, buf: &mut [u8]) -> io::Result<()> {
         let buf_len = buf.len();
         self.fill_to_target_len(buf_len)?;
@@ -87,6 +91,9 @@ impl<R: Read> HashReader<R> {
                                       "hash mismatch in verified read"));
         }
         buf.copy_from_slice(&self.buffer[..buf_len]);
+        // TODO: Only drain when we need the space. We don't want a pathological
+        // situation where we're reading since bytes out of a huge buffer and
+        // draining it over every time.
         self.buffer.drain(..buf_len);
         Ok(())
     }
@@ -133,7 +140,7 @@ impl<R: Read + Seek> Seek for HashReader<R> {
             } else {
                 // In the underflow case, seek twice.
                 self.inner.seek(io::SeekFrom::Current(-buf_len))?;
-                // In the last seek succeeded, clear the buffer now, in case the next seek fails.
+                // If the last seek succeeded, clear the buffer now, in case the next seek fails.
                 self.buffer.clear();
                 self.inner.seek(io::SeekFrom::Current(n))?
             }
