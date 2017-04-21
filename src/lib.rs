@@ -170,6 +170,11 @@ impl<R: Read> RadReader<R> {
     }
 
     fn read_header(&mut self) -> io::Result<(u64, Digest)> {
+        if let Some(state) = self.header_state {
+            return Ok(state);
+        }
+        // Parsing the header state is the very first thing the reader does. If
+        // we don't have it yet, we can assume we're at the front of the stream.
         let mut buf = [0; 8 + DIGEST_SIZE];
         self.inner.read_verified(self.header_hash, &mut buf)?;
         let plaintext_len = <BigEndian>::read_u64(&buf[..8]);
@@ -180,19 +185,11 @@ impl<R: Read> RadReader<R> {
     }
 
     fn plaintext_len(&mut self) -> io::Result<u64> {
-        if let Some((plaintext_len, _)) = self.header_state {
-            Ok(plaintext_len)
-        } else {
-            Ok(self.read_header()?.0)
-        }
+        Ok(self.read_header()?.0)
     }
 
     fn root_hash(&mut self) -> io::Result<Digest> {
-        if let Some((_, root_hash)) = self.header_state {
-            Ok(root_hash)
-        } else {
-            Ok(self.read_header()?.1)
-        }
+        Ok(self.read_header()?.1)
     }
 }
 
