@@ -6,7 +6,7 @@ extern crate ring;
 use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
 use ring::{constant_time, digest};
 use ring::error::Unspecified;
-use std::io;
+use std::io::{self, Cursor};
 use std::io::prelude::*;
 
 pub const CHUNK_SIZE: usize = 4096;
@@ -42,7 +42,7 @@ fn left_plaintext_len(input_len: u64) -> u64 {
 pub fn encode(input: &[u8]) -> (Vec<u8>, Digest) {
     let (inner_encoded, inner_hash) = encode_inner(input);
     let mut encoded = Vec::with_capacity(8 + DIGEST_SIZE + inner_encoded.len());
-    encoded.write_u64::<BigEndian>(input.len() as u64);
+    encoded.write_u64::<BigEndian>(input.len() as u64).unwrap();
     encoded.extend_from_slice(&inner_hash);
     let final_hash = hash(&encoded);
     encoded.extend_from_slice(&inner_encoded);
@@ -54,8 +54,8 @@ pub fn encode_inner(input: &[u8]) -> (Vec<u8>, Digest) {
         return (input.to_vec(), hash(input));
     }
     let left_len = left_plaintext_len(input.len() as u64) as usize;
-    let (left_encoded, left_hash) = encode(&input[..left_len]);
-    let (right_encoded, right_hash) = encode(&input[left_len..]);
+    let (left_encoded, left_hash) = encode_inner(&input[..left_len]);
+    let (right_encoded, right_hash) = encode_inner(&input[left_len..]);
     let mut encoded = Vec::new();
     encoded.extend_from_slice(&left_hash);
     encoded.extend_from_slice(&right_hash);
@@ -87,8 +87,10 @@ impl<R: Read> HashReader<R> {
         self.fill_to_target_len(buf_len)?;
         // Check the hash!
         if verify(&self.buffer[..buf_len], &hash).is_err() {
-            return Err(io::Error::new(io::ErrorKind::InvalidData,
-                                      "hash mismatch in verified read"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "hash mismatch in verified read",
+            ));
         }
         buf.copy_from_slice(&self.buffer[..buf_len]);
         // TODO: Only drain when we need the space. We don't want a pathological
@@ -108,8 +110,10 @@ impl<R: Read> HashReader<R> {
             let zeros_start = self.buffer.len() - needed;
             let error = match self.inner.read(&mut self.buffer[zeros_start..]) {
                 Ok(0) => {
-                    io::Error::new(io::ErrorKind::UnexpectedEof,
-                                   "EOF in the middle of a verified read")
+                    io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "EOF in the middle of a verified read",
+                    )
                 }
                 Ok(n) => {
                     needed -= n;
@@ -152,50 +156,160 @@ impl<R: Read + Seek> Seek for HashReader<R> {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct Region {
+    start: u64,
+    len: u64,
+    hash: Digest,
+}
+
+impl Region {
+    fn end(&self) -> u64 {
+        self.start + self.len
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Node {
+    left: Region,
+    right: Region,
+}
+
 pub struct RadReader<R: Read> {
     inner: HashReader<R>,
     header_hash: Digest,
-    node_stack: Vec<(Digest, u64, u64)>,
-    header_state: Option<(u64, Digest)>,
+    header: Option<Region>,
+    node_stack: Vec<Node>,
+    chunk: Cursor<Vec<u8>>,
+    chunk_start: u64,
 }
 
 impl<R: Read> RadReader<R> {
-    fn new(hash: Digest, inner: R) -> RadReader<R> {
+    pub fn new(hash: Digest, inner: R) -> RadReader<R> {
         RadReader {
             inner: HashReader::new(inner),
             header_hash: hash,
+            header: None,
             node_stack: Vec::new(),
-            header_state: None,
+            chunk: Cursor::new(Vec::new()),
+            chunk_start: 0,
         }
     }
 
-    fn read_header(&mut self) -> io::Result<(u64, Digest)> {
-        if let Some(state) = self.header_state {
-            return Ok(state);
-        }
+    fn get_header(&mut self) -> io::Result<Region> {
         // Parsing the header state is the very first thing the reader does. If
         // we don't have it yet, we can assume we're at the front of the stream.
+        if let Some(header) = self.header {
+            return Ok(header);
+        }
         let mut buf = [0; 8 + DIGEST_SIZE];
         self.inner.read_verified(self.header_hash, &mut buf)?;
-        let plaintext_len = <BigEndian>::read_u64(&buf[..8]);
-        let root_hash = *array_ref!(&buf, 8, DIGEST_SIZE);
-        let tuple = (plaintext_len, root_hash);
-        self.header_state = Some(tuple);
-        Ok(tuple)
+        let len = <BigEndian>::read_u64(&buf[..8]);
+        let hash = *array_ref!(&buf, 8, DIGEST_SIZE);
+        let header = Region {
+            start: 0,
+            len,
+            hash,
+        };
+        self.header = Some(header);
+        Ok(header)
     }
 
-    fn plaintext_len(&mut self) -> io::Result<u64> {
-        Ok(self.read_header()?.0)
-    }
+    fn read_next_chunk(&mut self) -> io::Result<()> {
+        debug_assert_eq!(
+            self.chunk.position(),
+            self.chunk.get_ref().len() as u64,
+            "read_next_chunk called with data in the read buffer"
+        );
 
-    fn root_hash(&mut self) -> io::Result<Digest> {
-        Ok(self.read_header()?.1)
+        // If this is the very first time we've tried to read a chunk, read the header from the
+        // input to get the output length. (Subsequent accesses are cached.) Doing this here helps
+        // us avoid needing `&mut self` in some blocks below.
+        let header = self.get_header()?;
+
+        // If we're at the end of the output, short-circuit. Note that we leave the chunk buffer
+        // and node stack in place in this case, to avoid wasting seek state.
+        let output_position = self.chunk_start + self.chunk.get_ref().len() as u64;
+        if output_position >= header.len {
+            debug_assert_eq!(output_position, header.len, "seek past end of output");
+            return Ok(());
+        }
+
+        // Clear the current chunk and bump the chunk start. Using the chunk len (which we're about
+        // to clear) for the bump is important for keeping this idempotent, in case we encounter IO
+        // errors and need to retry.
+        self.chunk_start += self.chunk.get_ref().len() as u64;
+        self.chunk.get_mut().clear();
+        self.chunk.set_position(0);
+
+        // If we're not at the very beginning of the input, there will be nodes on the stack that
+        // we're finished with. Pop them off. As above, we're doing this as late as possible, to
+        // avoid wasting seek state.
+        while let Some(current_node) = self.node_stack.last().map(|n| *n) {
+            if self.chunk_start == current_node.right.end() {
+                self.node_stack.pop();
+                debug_assert!(self.node_stack.len() > 0, "never pop the last node");
+            } else {
+                break;
+            }
+        }
+
+        // Figure out the next region we're going to be reading. At this point we're still agnostic
+        // about whether it's a node or a chunk.
+        let mut next_region = if let Some(current_node) = self.node_stack.last() {
+            // Normally the next region should be the right side of the current node, because
+            // we gobble up left branches below, but it can be the left side if an IO error has
+            // caused us to repeat a read.
+            if self.chunk_start == current_node.left.start {
+                current_node.left
+            } else if self.chunk_start == current_node.right.start {
+                current_node.right
+            } else {
+                panic!("next chunk start must match the current node")
+            }
+        } else {
+            header
+        };
+
+        // Parse nodes and follow left branches all the way until we're about to read the next
+        // chunk.
+        while next_region.len > CHUNK_SIZE as u64 {
+            let mut node_buf = [0; 2 * DIGEST_SIZE];
+            self.inner.read_verified(next_region.hash, &mut node_buf)?;
+            let left_len = left_plaintext_len(next_region.len);
+            let node = Node {
+                left: Region {
+                    start: next_region.start,
+                    len: left_len,
+                    hash: *array_ref!(&node_buf, 0, DIGEST_SIZE),
+                },
+                right: Region {
+                    start: next_region.start + left_len,
+                    len: next_region.len - left_len,
+                    hash: *array_ref!(&node_buf, DIGEST_SIZE, DIGEST_SIZE),
+                },
+            };
+            self.node_stack.push(node);
+            next_region = node.left;
+        }
+
+        // Read the next chunk! Note that the final chunk might be shorter than CHUNK_SIZE.
+        let mut chunk_buf = [0; CHUNK_SIZE];
+        let chunk_slice = &mut chunk_buf[0..next_region.len as usize];
+        self.inner.read_verified(next_region.hash, chunk_slice)?;
+        self.chunk.get_mut().extend_from_slice(chunk_slice);
+        Ok(())
     }
 }
 
 impl<R: Read> Read for RadReader<R> {
-    fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
-        unimplemented!();
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // Try to read another chunk if we're out of bytes. Note that this is a no-op at EOF,
+        // however.
+        if self.chunk.position() == self.chunk.get_ref().len() as u64 {
+            self.read_next_chunk()?;
+        }
+        self.chunk.read(buf)
     }
 }
 
@@ -221,10 +335,12 @@ mod test {
 
     #[test]
     fn test_left_plaintext_len() {
-        let cases = &[(::CHUNK_SIZE + 1, CHUNK_SIZE),
-                      (2 * CHUNK_SIZE - 1, CHUNK_SIZE),
-                      (2 * CHUNK_SIZE, CHUNK_SIZE),
-                      (2 * CHUNK_SIZE + 2, 2 * CHUNK_SIZE)];
+        let cases = &[
+            (CHUNK_SIZE + 1, CHUNK_SIZE),
+            (2 * CHUNK_SIZE - 1, CHUNK_SIZE),
+            (2 * CHUNK_SIZE, CHUNK_SIZE),
+            (2 * CHUNK_SIZE + 2, 2 * CHUNK_SIZE),
+        ];
         for &case in cases {
             println!("testing {} and {}", case.0, case.1);
             assert_eq!(::left_plaintext_len(case.0 as u64), case.1 as u64);
@@ -233,17 +349,15 @@ mod test {
 
     fn read_verified_expecting<R: Read>(reader: &mut HashReader<R>, slice: &[u8]) {
         let mut buf = vec![0; slice.len()];
-        reader
-            .read_verified(::hash(slice), &mut buf[..])
-            .expect("read_verified failed");
+        reader.read_verified(::hash(slice), &mut buf[..]).expect(
+            "read_verified failed",
+        );
         assert_eq!(slice, &buf[..]);
     }
 
     fn read_verified_invalid<R: Read>(reader: &mut HashReader<R>, n: usize) {
         let mut buf = vec![0; n];
-        let err = reader
-            .read_verified(ZERO_HASH, &mut buf[..])
-            .unwrap_err();
+        let err = reader.read_verified(ZERO_HASH, &mut buf[..]).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 
@@ -344,5 +458,34 @@ mod test {
         read_verified_invalid(&mut reader, 3);
         reader.seek(io::SeekFrom::Current(-2)).unwrap();
         read_verified_expecting(&mut reader, b"lo world");
+    }
+
+    #[test]
+    fn test_rad_reader_basic() {
+        let mut cases: Vec<Vec<u8>> = Vec::new();
+        cases.push(b"".to_vec());
+        cases.push(b"a".to_vec());
+        cases.push([b'a'; CHUNK_SIZE - 1].to_vec());
+        cases.push([b'a'; CHUNK_SIZE].to_vec());
+        cases.push([b'a'; CHUNK_SIZE + 1].to_vec());
+        cases.push([b'a'; 2 * CHUNK_SIZE - 1].to_vec());
+        cases.push([b'a'; 2 * CHUNK_SIZE].to_vec());
+        cases.push([b'a'; 2 * CHUNK_SIZE + 1].to_vec());
+        cases.push([b'a'; 4 * CHUNK_SIZE - 1].to_vec());
+        cases.push([b'a'; 4 * CHUNK_SIZE].to_vec());
+        cases.push([b'a'; 4 * CHUNK_SIZE + 1].to_vec());
+        cases.push([b'a'; 1_000_000].to_vec());
+
+        for (i, case) in cases.iter().enumerate() {
+            println!("case {} ({} bytes)", i, case.len());
+            let (encoded, hash) = encode(case);
+            println!("output len {} bytes", encoded.len());
+            let mut rad_reader = RadReader::new(hash, Cursor::new(&encoded));
+            let mut output = Vec::new();
+            rad_reader.read_to_end(&mut output).expect(
+                "RadReader error",
+            );
+            assert_eq!(case, &output, "RadReader different from encoding input");
+        }
     }
 }
