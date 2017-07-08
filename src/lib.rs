@@ -11,6 +11,7 @@ use std::io::prelude::*;
 
 pub const CHUNK_SIZE: usize = 4096;
 pub const DIGEST_SIZE: usize = 32;
+pub const HEADER_SIZE: usize = 8 + DIGEST_SIZE;
 
 pub type Digest = [u8; DIGEST_SIZE];
 
@@ -40,8 +41,8 @@ fn left_plaintext_len(input_len: u64) -> u64 {
 }
 
 pub fn encode(input: &[u8]) -> (Vec<u8>, Digest) {
-    let (inner_encoded, inner_hash) = encode_inner(input);
-    let mut encoded = Vec::with_capacity(8 + DIGEST_SIZE + inner_encoded.len());
+    let (inner_encoded, inner_hash) = encode_tree(input);
+    let mut encoded = Vec::with_capacity(HEADER_SIZE + inner_encoded.len());
     encoded.write_u64::<BigEndian>(input.len() as u64).unwrap();
     encoded.extend_from_slice(&inner_hash);
     let final_hash = hash(&encoded);
@@ -49,13 +50,13 @@ pub fn encode(input: &[u8]) -> (Vec<u8>, Digest) {
     (encoded, final_hash)
 }
 
-pub fn encode_inner(input: &[u8]) -> (Vec<u8>, Digest) {
+fn encode_tree(input: &[u8]) -> (Vec<u8>, Digest) {
     if input.len() <= CHUNK_SIZE {
         return (input.to_vec(), hash(input));
     }
     let left_len = left_plaintext_len(input.len() as u64) as usize;
-    let (left_encoded, left_hash) = encode_inner(&input[..left_len]);
-    let (right_encoded, right_hash) = encode_inner(&input[left_len..]);
+    let (left_encoded, left_hash) = encode_tree(&input[..left_len]);
+    let (right_encoded, right_hash) = encode_tree(&input[left_len..]);
     let mut encoded = Vec::new();
     encoded.extend_from_slice(&left_hash);
     encoded.extend_from_slice(&right_hash);
@@ -202,7 +203,7 @@ impl<R: Read> RadReader<R> {
         if let Some(header) = self.header {
             return Ok(header);
         }
-        let mut buf = [0; 8 + DIGEST_SIZE];
+        let mut buf = [0; HEADER_SIZE];
         self.inner.read_verified(self.header_hash, &mut buf)?;
         let len = <BigEndian>::read_u64(&buf[..8]);
         let hash = *array_ref!(&buf, 8, DIGEST_SIZE);
@@ -460,6 +461,50 @@ mod test {
         read_verified_expecting(&mut reader, b"lo world");
     }
 
+    fn decode_for_testing(encoded: &[u8]) -> Vec<u8> {
+        let plaintext_len = <BigEndian>::read_u64(&encoded[..8]) as usize;
+        let hash = *array_ref!(&encoded, 8, DIGEST_SIZE);
+        let tree = &encoded[HEADER_SIZE..];
+        decode_tree_for_testing(tree, plaintext_len, hash)
+    }
+
+    // Note that this does not include a header (40 additional bytes).
+    fn tree_len_for_testing(plaintext_len: usize) -> usize {
+        if plaintext_len <= CHUNK_SIZE {
+            return plaintext_len;
+        }
+        let left = left_plaintext_len(plaintext_len as u64) as usize;
+        let right = plaintext_len - left;
+        tree_len_for_testing(left) + tree_len_for_testing(right) + 2 * DIGEST_SIZE
+    }
+
+    fn decode_tree_for_testing(tree: &[u8], plaintext_len: usize, hash: Digest) -> Vec<u8> {
+        if plaintext_len <= CHUNK_SIZE {
+            let chunk = &tree[..plaintext_len];
+            verify(chunk, &hash).expect("bad hash");
+            return chunk.to_vec();
+        }
+        assert_eq!(
+            tree_len_for_testing(plaintext_len),
+            tree.len(),
+            "tree size doesn't match plaintext len ({})",
+            plaintext_len,
+        );
+        verify(&tree[..2 * DIGEST_SIZE], &hash).expect("bad hash");
+        let left_digest = *array_ref!(tree, 0, DIGEST_SIZE);
+        let right_digest = *array_ref!(tree, DIGEST_SIZE, DIGEST_SIZE);
+        let left_pl = left_plaintext_len(plaintext_len as u64) as usize;
+        let right_pl = plaintext_len - left_pl;
+        let left_tree_start = 2 * DIGEST_SIZE;
+        let right_tree_start = left_tree_start + tree_len_for_testing(left_pl);
+        let left_tree = &tree[left_tree_start..right_tree_start];
+        let right_tree = &tree[right_tree_start..];
+        let mut left_decoded = decode_tree_for_testing(left_tree, left_pl, left_digest);
+        let right_decoded = decode_tree_for_testing(right_tree, right_pl, right_digest);
+        left_decoded.extend_from_slice(&right_decoded);
+        left_decoded
+    }
+
     #[test]
     fn test_rad_reader_basic() {
         let mut cases: Vec<Vec<u8>> = Vec::new();
@@ -486,6 +531,10 @@ mod test {
                 "RadReader error",
             );
             assert_eq!(case, &output, "RadReader different from encoding input");
+
+            // Confirm that the simpler all-at-once decoder gets the same answer.
+            let decoded_simple = decode_for_testing(&encoded);
+            assert_eq!(case, &decoded_simple, "simple decoder got the wrong answer");
         }
     }
 }
