@@ -246,7 +246,7 @@ impl<R: Read> RadReader<R> {
         // If we're not at the very beginning of the input, there will be nodes on the stack that
         // we're finished with. Pop them off. As above, we're doing this as late as possible, to
         // avoid wasting seek state.
-        while let Some(current_node) = self.node_stack.last().map(|n| *n) {
+        while let Some(&current_node) = self.node_stack.last() {
             if self.chunk_start == current_node.right.end() {
                 self.node_stack.pop();
                 debug_assert!(self.node_stack.len() > 0, "never pop the last node");
@@ -507,34 +507,47 @@ mod test {
 
     #[test]
     fn test_rad_reader_basic() {
-        let mut cases: Vec<Vec<u8>> = Vec::new();
-        cases.push(b"".to_vec());
-        cases.push(b"a".to_vec());
-        cases.push([b'a'; CHUNK_SIZE - 1].to_vec());
-        cases.push([b'a'; CHUNK_SIZE].to_vec());
-        cases.push([b'a'; CHUNK_SIZE + 1].to_vec());
-        cases.push([b'a'; 2 * CHUNK_SIZE - 1].to_vec());
-        cases.push([b'a'; 2 * CHUNK_SIZE].to_vec());
-        cases.push([b'a'; 2 * CHUNK_SIZE + 1].to_vec());
-        cases.push([b'a'; 4 * CHUNK_SIZE - 1].to_vec());
-        cases.push([b'a'; 4 * CHUNK_SIZE].to_vec());
-        cases.push([b'a'; 4 * CHUNK_SIZE + 1].to_vec());
-        cases.push([b'a'; 1_000_000].to_vec());
+        // Check encoding and reading back out input of all of these lengths.
+        let cases = &[
+            0,
+            1,
+            CHUNK_SIZE - 1,
+            CHUNK_SIZE,
+            CHUNK_SIZE + 1,
+            2 * CHUNK_SIZE - 1,
+            2 * CHUNK_SIZE,
+            2 * CHUNK_SIZE + 1,
+            3 * CHUNK_SIZE - 1,
+            3 * CHUNK_SIZE,
+            3 * CHUNK_SIZE + 1,
+            4 * CHUNK_SIZE - 1,
+            4 * CHUNK_SIZE,
+            4 * CHUNK_SIZE + 1,
+            1_000_000,
+        ];
 
-        for (i, case) in cases.iter().enumerate() {
-            println!("case {} ({} bytes)", i, case.len());
-            let (encoded, hash) = encode(case);
-            println!("output len {} bytes", encoded.len());
-            let mut rad_reader = RadReader::new(hash, Cursor::new(&encoded));
-            let mut output = Vec::new();
-            rad_reader.read_to_end(&mut output).expect(
-                "RadReader error",
+        for (i, &plaintext_len) in cases.iter().enumerate() {
+            println!("case {} ({} bytes)", i, plaintext_len);
+            let input = vec![b'a'; plaintext_len];
+            let (encoded, hash) = encode(&input);
+            println!("encoded len {} bytes", encoded.len());
+            // Check that the encoded output is the size we expected.
+            assert_eq!(
+                encoded.len(),
+                HEADER_SIZE + tree_len_for_testing(plaintext_len)
             );
-            assert_eq!(case, &output, "RadReader different from encoding input");
+            let mut rad_reader = RadReader::new(hash, Cursor::new(&encoded));
+            let mut decoded = Vec::new();
+            rad_reader.read_to_end(&mut decoded).unwrap();
+            assert_eq!(&input, &decoded, "RadReader different from encoding input");
 
             // Confirm that the simpler all-at-once decoder gets the same answer.
             let decoded_simple = decode_for_testing(&encoded);
-            assert_eq!(case, &decoded_simple, "simple decoder got the wrong answer");
+            assert_eq!(
+                &input,
+                &decoded_simple,
+                "simple decoder got the wrong answer"
+            );
         }
     }
 }
