@@ -3,7 +3,7 @@ extern crate arrayref;
 extern crate byteorder;
 extern crate ring;
 
-use byteorder::{ByteOrder, BigEndian, WriteBytesExt};
+use byteorder::{ByteOrder, BigEndian};
 use ring::{constant_time, digest};
 use ring::error::Unspecified;
 use std::io::{self, Cursor};
@@ -40,30 +40,46 @@ fn left_plaintext_len(input_len: u64) -> u64 {
     size
 }
 
-pub fn encode(input: &[u8]) -> (Vec<u8>, Digest) {
-    let (inner_encoded, inner_hash) = encode_tree(input);
-    let mut encoded = Vec::with_capacity(HEADER_SIZE + inner_encoded.len());
-    encoded.write_u64::<BigEndian>(input.len() as u64).unwrap();
-    encoded.extend_from_slice(&inner_hash);
-    let final_hash = hash(&encoded);
-    encoded.extend_from_slice(&inner_encoded);
-    (encoded, final_hash)
+pub fn encode_simple(input: &[u8]) -> (Vec<u8>, Digest) {
+    let mut output = vec![0; HEADER_SIZE];
+    // Write the length of the input to the first 8 bytes of the header. The
+    // remaining 32 bytes in the header are reserved for the root hash.
+    BigEndian::write_u64(&mut output[..8], input.len() as u64);
+    // Recursively encode all the input, appending to the output vector.
+    let root_hash = encode_simple_inner(input, &mut output);
+    // Write the root hash to the reserved space in the header.
+    output[8..HEADER_SIZE].copy_from_slice(&root_hash);
+    // Hash the header and return the results.
+    let header_hash = hash(&output[..HEADER_SIZE]);
+    (output, header_hash)
 }
 
-fn encode_tree(input: &[u8]) -> (Vec<u8>, Digest) {
+fn encode_simple_inner(input: &[u8], output: &mut Vec<u8>) -> Digest {
+    // If we're down to an individual chunk, write it directly to the ouput, and
+    // return its hash.
     if input.len() <= CHUNK_SIZE {
-        return (input.to_vec(), hash(input));
+        output.extend_from_slice(input);
+        return hash(input);
     }
+    // Otherwise we have more than a chunk, and we need to encode a left
+    // subtree and a right subtree. The nodes of these trees are the hashes of
+    // their left and right children, and the leaves are chunks. Reserve space
+    // for the current node.
+    let node_start = output.len();
+    let node_half = node_start + DIGEST_SIZE;
+    let node_end = node_half + DIGEST_SIZE;
+    output.resize(node_end, 0);
+    // Recursively encode the left and right subtrees, appending them to the
+    // output. The left subtree is the largest full tree of full chunks that we
+    // can make without leaving the right tree empty.
     let left_len = left_plaintext_len(input.len() as u64) as usize;
-    let (left_encoded, left_hash) = encode_tree(&input[..left_len]);
-    let (right_encoded, right_hash) = encode_tree(&input[left_len..]);
-    let mut encoded = Vec::new();
-    encoded.extend_from_slice(&left_hash);
-    encoded.extend_from_slice(&right_hash);
-    let node_hash = hash(&encoded);
-    encoded.extend_from_slice(&left_encoded);
-    encoded.extend_from_slice(&right_encoded);
-    (encoded, node_hash)
+    let left_hash = encode_simple_inner(&input[..left_len], output);
+    let right_hash = encode_simple_inner(&input[left_len..], output);
+    // Write the left and right hashes into the space of the current node.
+    output[node_start..node_half].copy_from_slice(&left_hash);
+    output[node_half..node_end].copy_from_slice(&right_hash);
+    // Return the hash of the current node.
+    hash(&output[node_start..node_end])
 }
 
 pub struct HashReader<R> {
@@ -529,7 +545,7 @@ mod test {
         for (i, &plaintext_len) in cases.iter().enumerate() {
             println!("case {} ({} bytes)", i, plaintext_len);
             let input = vec![b'a'; plaintext_len];
-            let (encoded, hash) = encode(&input);
+            let (encoded, hash) = encode_simple(&input);
             println!("encoded len {} bytes", encoded.len());
             // Check that the encoded output is the size we expected.
             assert_eq!(
