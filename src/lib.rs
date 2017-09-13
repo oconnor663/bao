@@ -5,12 +5,12 @@ extern crate ring;
 
 use byteorder::{ByteOrder, BigEndian};
 use ring::{constant_time, digest};
-use ring::error::Unspecified;
 use std::io::{self, Cursor};
 use std::io::prelude::*;
 
-pub const CHUNK_SIZE: usize = 4096;
+pub const CHUNK_SIZE: usize = 4096; // must be greater than NODE_SIZE
 pub const DIGEST_SIZE: usize = 32;
+pub const NODE_SIZE: usize = 2 * DIGEST_SIZE;
 pub const HEADER_SIZE: usize = 8 + DIGEST_SIZE;
 
 pub type Digest = [u8; DIGEST_SIZE];
@@ -19,20 +19,20 @@ fn hash(input: &[u8]) -> Digest {
     // First 32 bytes of SHA512. (The same as NaCl's crypto_hash.)
     let digest = digest::digest(&digest::SHA512, input);
     let mut ret = [0; DIGEST_SIZE];
-    (&mut ret[..DIGEST_SIZE]).copy_from_slice(&digest.as_ref()[..DIGEST_SIZE]);
+    ret.copy_from_slice(&digest.as_ref()[..DIGEST_SIZE]);
     ret
 }
 
-fn verify(input: &[u8], digest: &Digest) -> Result<(), Unspecified> {
+fn verify(input: &[u8], digest: &Digest) -> Result<(), ()> {
     let computed = hash(input);
-    constant_time::verify_slices_are_equal(&digest[..], &computed[..])
+    constant_time::verify_slices_are_equal(&digest[..], &computed[..]).map_err(|_| ())
 }
 
 fn left_plaintext_len(input_len: u64) -> u64 {
     // Find the first power of 2 times the chunk size that is *strictly* less
     // than the input length. So if the input is exactly 4 chunks long, for
     // example, the answer here will be 2 chunks.
-    assert!(input_len > CHUNK_SIZE as u64);
+    debug_assert!(input_len > CHUNK_SIZE as u64);
     let mut size = CHUNK_SIZE as u64;
     while (size * 2) < input_len {
         size *= 2;
@@ -61,7 +61,7 @@ fn encode_simple_inner(input: &[u8], output: &mut Vec<u8>) -> Digest {
         output.extend_from_slice(input);
         return hash(input);
     }
-    // Otherwise we have more than a chunk, and we need to encode a left
+    // Otherwise we have more than one chunk, and we need to encode a left
     // subtree and a right subtree. The nodes of these trees are the hashes of
     // their left and right children, and the leaves are chunks. Reserve space
     // for the current node.
@@ -80,6 +80,71 @@ fn encode_simple_inner(input: &[u8], output: &mut Vec<u8>) -> Digest {
     output[node_half..node_end].copy_from_slice(&right_hash);
     // Return the hash of the current node.
     hash(&output[node_start..node_end])
+}
+
+pub fn decode_simple(mut encoded_input: &[u8], hash: &Digest) -> Result<Vec<u8>, ()> {
+    // Verify the header, and split out the input length and the root hash.
+    // We bump `encoded_input` forward as we read, both here and in the
+    // recursive helper.
+    let header = verify_read_bump(&mut encoded_input, HEADER_SIZE, hash)?;
+    let decoded_len = BigEndian::read_u64(&header[..8]);
+    let root_hash = array_ref!(header, 8, DIGEST_SIZE);
+    // Recursively verify and decode the tree, appending decoded bytes to the
+    // output.
+    //
+    // NOTE: We're passing in `decoded_len` as a streaming reader would, rather
+    // than inferring anything from the encoded_input bytes. That means that like a
+    // streaming reader, this decoding will ignore any extra trailing bytes. As
+    // a result, ENCODED OUTPUT IS NOT NECESSARILY UNIQUE FOR A GIVEN INPUT.
+    // Hashes are unique, however, as a basic design requirement.
+    let mut output = Vec::with_capacity(decoded_len as usize);
+    decode_simple_inner(&mut encoded_input, decoded_len, &root_hash, &mut output)?;
+    Ok(output)
+}
+
+fn decode_simple_inner(
+    encoded_input: &mut &[u8],
+    decoded_len: u64,
+    hash: &Digest,
+    output: &mut Vec<u8>,
+) -> Result<(), ()> {
+    // If we're down to an individual chunk, verify its hash and append it to
+    // the output. We bump the input as we go, to keep track of what's been
+    // read.
+    if decoded_len <= CHUNK_SIZE as u64 {
+        let chunk = verify_read_bump(encoded_input, decoded_len as usize, hash)?;
+        output.extend_from_slice(chunk);
+        return Ok(());
+    }
+    // Otherwise we have a node, and we need to decode its left and right
+    // subtrees. Verify the node bytes and read the subtree hashes.
+    let node = verify_read_bump(encoded_input, NODE_SIZE, hash)?;
+    let left_hash = array_ref!(node, 0, DIGEST_SIZE);
+    let right_hash = array_ref!(node, DIGEST_SIZE, DIGEST_SIZE);
+    // Recursively verify and decode the left and right subtrees.
+    let left_len = left_plaintext_len(decoded_len);
+    let right_len = decoded_len - left_len;
+    decode_simple_inner(encoded_input, left_len, left_hash, output)?;
+    decode_simple_inner(encoded_input, right_len, right_hash, output)?;
+    Ok(())
+}
+
+// Take a slice from an &mut &[u8], verify its hash, and bump the start of the
+// source forward by the same amount. (Fun fact: &[u8] actually implements
+// Reader, so we could almost make this generic, but using slices directly lets
+// us avoid thinking about buffering.)
+fn verify_read_bump<'a>(
+    input: &mut &'a [u8],
+    read_len: usize,
+    hash: &Digest,
+) -> Result<&'a [u8], ()> {
+    if input.len() < read_len {
+        return Err(());
+    }
+    let out = &input[..read_len];
+    verify(out, hash)?;
+    *input = &input[read_len..];
+    Ok(out)
 }
 
 pub struct HashReader<R> {
@@ -291,7 +356,7 @@ impl<R: Read> RadReader<R> {
         // Parse nodes and follow left branches all the way until we're about to read the next
         // chunk.
         while next_region.len > CHUNK_SIZE as u64 {
-            let mut node_buf = [0; 2 * DIGEST_SIZE];
+            let mut node_buf = [0; NODE_SIZE];
             self.inner.read_verified(next_region.hash, &mut node_buf)?;
             let left_len = left_plaintext_len(next_region.len);
             let node = Node {
@@ -342,6 +407,25 @@ mod test {
 
     const ZERO_HASH: [u8; DIGEST_SIZE] = [0; DIGEST_SIZE];
 
+    // Interesting input lengths to run tests on.
+    const CASES: &[usize] = &[
+        0,
+        1,
+        CHUNK_SIZE - 1,
+        CHUNK_SIZE,
+        CHUNK_SIZE + 1,
+        2 * CHUNK_SIZE - 1,
+        2 * CHUNK_SIZE,
+        2 * CHUNK_SIZE + 1,
+        3 * CHUNK_SIZE - 1,
+        3 * CHUNK_SIZE,
+        3 * CHUNK_SIZE + 1,
+        4 * CHUNK_SIZE - 1,
+        4 * CHUNK_SIZE,
+        4 * CHUNK_SIZE + 1,
+        1_000_000,
+    ];
+
     #[test]
     fn test_hash() {
         let inputs: &[&[u8]] = &[b"", b"f", b"foo"];
@@ -361,6 +445,17 @@ mod test {
         for &case in cases {
             println!("testing {} and {}", case.0, case.1);
             assert_eq!(::left_plaintext_len(case.0 as u64), case.1 as u64);
+        }
+    }
+
+    #[test]
+    fn test_simple_encode_decode() {
+        for &case in CASES {
+            println!("starting case {}", case);
+            let input = vec![0xab; case];
+            let (encoded, hash) = encode_simple(&input);
+            let decoded = decode_simple(&encoded, &hash).unwrap();
+            assert_eq!(input, decoded);
         }
     }
 
@@ -491,7 +586,7 @@ mod test {
         }
         let left = left_plaintext_len(plaintext_len as u64) as usize;
         let right = plaintext_len - left;
-        tree_len_for_testing(left) + tree_len_for_testing(right) + 2 * DIGEST_SIZE
+        tree_len_for_testing(left) + tree_len_for_testing(right) + NODE_SIZE
     }
 
     fn decode_tree_for_testing(tree: &[u8], plaintext_len: usize, hash: Digest) -> Vec<u8> {
@@ -506,12 +601,12 @@ mod test {
             "tree size doesn't match plaintext len ({})",
             plaintext_len,
         );
-        verify(&tree[..2 * DIGEST_SIZE], &hash).expect("bad hash");
+        verify(&tree[..NODE_SIZE], &hash).expect("bad hash");
         let left_digest = *array_ref!(tree, 0, DIGEST_SIZE);
         let right_digest = *array_ref!(tree, DIGEST_SIZE, DIGEST_SIZE);
         let left_pl = left_plaintext_len(plaintext_len as u64) as usize;
         let right_pl = plaintext_len - left_pl;
-        let left_tree_start = 2 * DIGEST_SIZE;
+        let left_tree_start = NODE_SIZE;
         let right_tree_start = left_tree_start + tree_len_for_testing(left_pl);
         let left_tree = &tree[left_tree_start..right_tree_start];
         let right_tree = &tree[right_tree_start..];
@@ -523,26 +618,7 @@ mod test {
 
     #[test]
     fn test_rad_reader_basic() {
-        // Check encoding and reading back out input of all of these lengths.
-        let cases = &[
-            0,
-            1,
-            CHUNK_SIZE - 1,
-            CHUNK_SIZE,
-            CHUNK_SIZE + 1,
-            2 * CHUNK_SIZE - 1,
-            2 * CHUNK_SIZE,
-            2 * CHUNK_SIZE + 1,
-            3 * CHUNK_SIZE - 1,
-            3 * CHUNK_SIZE,
-            3 * CHUNK_SIZE + 1,
-            4 * CHUNK_SIZE - 1,
-            4 * CHUNK_SIZE,
-            4 * CHUNK_SIZE + 1,
-            1_000_000,
-        ];
-
-        for (i, &plaintext_len) in cases.iter().enumerate() {
+        for (i, &plaintext_len) in CASES.iter().enumerate() {
             println!("case {} ({} bytes)", i, plaintext_len);
             let input = vec![b'a'; plaintext_len];
             let (encoded, hash) = encode_simple(&input);
