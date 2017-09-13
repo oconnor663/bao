@@ -31,11 +31,7 @@ fn left_plaintext_len(input_len: u64) -> u64 {
     // than the input length. So if the input is exactly 4 chunks long, for
     // example, the answer here will be 2 chunks.
     debug_assert!(input_len > CHUNK_SIZE as u64);
-    let mut size = CHUNK_SIZE as u64;
-    while (size * 2) < input_len {
-        size *= 2;
-    }
-    size
+    1 << (63 - (input_len - 1).leading_zeros())
 }
 
 pub fn encode_simple(input: &[u8]) -> (Vec<u8>, Digest) {
