@@ -90,11 +90,12 @@ pub fn decode_simple(mut encoded_input: &[u8], hash: &Digest) -> Result<Vec<u8>,
     // Recursively verify and decode the tree, appending decoded bytes to the
     // output.
     //
-    // NOTE: We're passing in `decoded_len` as a streaming reader would, rather
-    // than inferring anything from the encoded_input bytes. That means that like a
-    // streaming reader, this decoding will ignore any extra trailing bytes. As
-    // a result, ENCODED OUTPUT IS NOT NECESSARILY UNIQUE FOR A GIVEN INPUT.
-    // Hashes are unique, however, as a basic design requirement.
+    // NOTE: We're respecting `decoded_len` and bumping the input forward as we
+    // read it, rather than inspecting `encoded_input.len()`. That means that
+    // like a streaming reader, this decoding will ignore any extra trailing
+    // bytes appended to a valid encoding. As a result, ENCODED OUTPUT IS NOT
+    // NECESSARILY UNIQUE FOR A GIVEN INPUT. Hashes are unique, however, as a
+    // basic design requirement.
     let mut output = Vec::with_capacity(decoded_len as usize);
     decode_simple_inner(&mut encoded_input, decoded_len, &root_hash, &mut output)?;
     Ok(output)
@@ -130,7 +131,7 @@ fn decode_simple_inner(
 // Take a slice from an &mut &[u8], verify its hash, and bump the start of the
 // source forward by the same amount. (Fun fact: &[u8] actually implements
 // Reader, so we could almost make this generic, but using slices directly lets
-// us avoid thinking about buffering.)
+// us avoid dealing with IO errors and buffering.)
 fn verify_read_bump<'a>(
     input: &mut &'a [u8],
     read_len: usize,
