@@ -154,6 +154,7 @@ mod test {
     const CASES: &[usize] = &[
         0,
         1,
+        10,
         CHUNK_SIZE - 1,
         CHUNK_SIZE,
         CHUNK_SIZE + 1,
@@ -199,6 +200,24 @@ mod test {
             let (encoded, hash) = encode_simple(&input);
             let decoded = decode_simple(&encoded, &hash).unwrap();
             assert_eq!(input, decoded);
+        }
+    }
+
+    #[test]
+    fn test_simple_corrupted() {
+        for &case in CASES {
+            let input = vec![0xbc; case];
+            let (mut encoded, hash) = encode_simple(&input[..]);
+            // Tweak different bytes of the encoding, and confirm that all
+            // tweaks break the result.
+            for &tweak_case in CASES {
+                if tweak_case < encoded.len() {
+                    encoded[tweak_case] ^= 1;
+                    println!("testing input len {} tweak {}", case, tweak_case);
+                    assert!(decode_simple(&encoded, &hash).is_err());
+                    encoded[tweak_case] ^= 1;
+                }
+            }
         }
     }
 }
