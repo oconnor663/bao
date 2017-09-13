@@ -26,6 +26,16 @@ fn verify(input: &[u8], digest: &Digest) -> Result<(), ()> {
     constant_time::verify_slices_are_equal(&digest[..], &computed[..]).map_err(|_| ())
 }
 
+// The left length is the largest power of 2 count of full chunks that's less
+// than the input length, and the right length is the rest. So if the input is
+// exactly 4 chunks long, for example, then both subtrees get 2 chunks. But if
+// the input is 4 chunks plus 1 byte, then the left side is 4 chunks and the
+// right side is 1 byte.
+//
+// Using this "left subtree is always full" strategy makes it easier to build a
+// tree incrementally, as a Writer interface might, because appending only
+// touches nodes along the right edge. With a "divide by two" strategy, on the
+// other hand, appending would mean rebalancing the entire tree.
 fn left_plaintext_len(input_len: u64) -> u64 {
     // Find the first power of 2 times the chunk size that is *strictly* less
     // than the input length. So if the input is exactly 4 chunks long, for
@@ -39,7 +49,8 @@ pub fn encode_simple(input: &[u8]) -> (Vec<u8>, Digest) {
     // Write the length of the input to the first 8 bytes of the header. The
     // remaining 32 bytes in the header are reserved for the root hash.
     BigEndian::write_u64(&mut output[..8], input.len() as u64);
-    // Recursively encode all the input, appending to the output vector.
+    // Recursively encode all the input, appending to the output vector after
+    // the header.
     let root_hash = encode_simple_inner(input, &mut output);
     // Write the root hash to the reserved space in the header.
     output[8..HEADER_SIZE].copy_from_slice(&root_hash);
