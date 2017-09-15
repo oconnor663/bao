@@ -5,6 +5,7 @@ extern crate ring;
 
 use byteorder::{ByteOrder, BigEndian};
 use ring::{constant_time, digest};
+use std::mem::size_of;
 
 pub const CHUNK_SIZE: usize = 4096; // must be greater than NODE_SIZE
 pub const DIGEST_SIZE: usize = 32;
@@ -35,13 +36,21 @@ fn verify(input: &[u8], digest: &Digest) -> Result<(), ()> {
 // Using this "left subtree is always full" strategy makes it easier to build a
 // tree incrementally, as a Writer interface might, because appending only
 // touches nodes along the right edge. With a "divide by two" strategy, on the
-// other hand, appending would mean rebalancing the entire tree.
-fn left_plaintext_len(input_len: u64) -> u64 {
-    // Find the first power of 2 times the chunk size that is *strictly* less
-    // than the input length. So if the input is exactly 4 chunks long, for
-    // example, the answer here will be 2 chunks.
-    debug_assert!(input_len > CHUNK_SIZE as u64);
-    1 << (63 - (input_len - 1).leading_zeros())
+// other hand, appending might need to rebalance the entire tree.
+fn left_len(input_len: usize) -> usize {
+    debug_assert!(input_len > CHUNK_SIZE);
+    // Reserve at least one byte for the right side.
+    let full_chunks = (input_len - 1) / CHUNK_SIZE;
+    largest_power_of_two(full_chunks) * CHUNK_SIZE
+}
+
+fn largest_power_of_two(n: usize) -> usize {
+    // n=0 is nonsensical, so we set the first bit of n. This doesn't change
+    // the result for any other input, but it ensures that leading_zeros will
+    // be at most 63, so the subtraction doesn't underflow.
+    let masked_n = n | 1;
+    let max_shift = 8 * size_of::<usize>() - 1;
+    1 << (max_shift - masked_n.leading_zeros() as usize)
 }
 
 pub fn encode_simple(input: &[u8]) -> (Vec<u8>, Digest) {
@@ -77,7 +86,7 @@ fn encode_simple_inner(input: &[u8], output: &mut Vec<u8>) -> Digest {
     // Recursively encode the left and right subtrees, appending them to the
     // output. The left subtree is the largest full tree of full chunks that we
     // can make without leaving the right tree empty.
-    let left_len = left_plaintext_len(input.len() as u64) as usize;
+    let left_len = left_len(input.len());
     let left_hash = encode_simple_inner(&input[..left_len], output);
     let right_hash = encode_simple_inner(&input[left_len..], output);
     // Write the left and right hashes into the space of the current node.
@@ -93,6 +102,9 @@ pub fn decode_simple(mut encoded_input: &[u8], hash: &Digest) -> Result<Vec<u8>,
     // recursive helper.
     let header = verify_read_bump(&mut encoded_input, HEADER_SIZE, hash)?;
     let decoded_len = BigEndian::read_u64(&header[..8]);
+    if decoded_len > usize::max_value() as u64 {
+        panic!("input length is too big to fit in memory");
+    }
     let root_hash = array_ref!(header, 8, DIGEST_SIZE);
     // Recursively verify and decode the tree, appending decoded bytes to the
     // output.
@@ -104,20 +116,25 @@ pub fn decode_simple(mut encoded_input: &[u8], hash: &Digest) -> Result<Vec<u8>,
     // NECESSARILY UNIQUE FOR A GIVEN INPUT. Hashes are unique, however, as a
     // basic design requirement.
     let mut output = Vec::with_capacity(decoded_len as usize);
-    decode_simple_inner(&mut encoded_input, decoded_len, &root_hash, &mut output)?;
+    decode_simple_inner(
+        &mut encoded_input,
+        decoded_len as usize,
+        &root_hash,
+        &mut output,
+    )?;
     Ok(output)
 }
 
 fn decode_simple_inner(
     encoded_input: &mut &[u8],
-    decoded_len: u64,
+    decoded_len: usize,
     hash: &Digest,
     output: &mut Vec<u8>,
 ) -> Result<(), ()> {
     // If we're down to an individual chunk, verify its hash and append it to
     // the output. We bump the input as we go, to keep track of what's been
     // read.
-    if decoded_len <= CHUNK_SIZE as u64 {
+    if decoded_len <= CHUNK_SIZE {
         let chunk = verify_read_bump(encoded_input, decoded_len as usize, hash)?;
         output.extend_from_slice(chunk);
         return Ok(());
@@ -128,7 +145,7 @@ fn decode_simple_inner(
     let left_hash = array_ref!(node, 0, DIGEST_SIZE);
     let right_hash = array_ref!(node, DIGEST_SIZE, DIGEST_SIZE);
     // Recursively verify and decode the left and right subtrees.
-    let left_len = left_plaintext_len(decoded_len);
+    let left_len = left_len(decoded_len);
     let right_len = decoded_len - left_len;
     decode_simple_inner(encoded_input, left_len, left_hash, output)?;
     decode_simple_inner(encoded_input, right_len, right_hash, output)?;
@@ -181,21 +198,46 @@ mod test {
     fn test_hash() {
         let inputs: &[&[u8]] = &[b"", b"f", b"foo"];
         for input in inputs {
-            verify(input, &::hash(input)).unwrap();
+            let mut digest = hash(input);
+            verify(input, &digest).unwrap();
+            digest[0] ^= 1;
+            verify(input, &digest).unwrap_err();
         }
     }
 
     #[test]
-    fn test_left_plaintext_len() {
-        let cases = &[
+    fn test_power_of_two() {
+        let input_output: &[(usize, usize)] =
+            &[
+                (0, 1),
+                (1, 1),
+                (2, 2),
+                (3, 2),
+                (4, 4),
+                // Make sure to test the largest possible value.
+                (usize::max_value(), 1 << (8 * size_of::<usize>() - 1)),
+            ];
+        for &(input, output) in input_output {
+            assert_eq!(
+                output,
+                largest_power_of_two(input),
+                "wrong output for n={}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_left_len() {
+        let input_output: &[(usize, usize)] = &[
             (CHUNK_SIZE + 1, CHUNK_SIZE),
             (2 * CHUNK_SIZE - 1, CHUNK_SIZE),
             (2 * CHUNK_SIZE, CHUNK_SIZE),
             (2 * CHUNK_SIZE + 2, 2 * CHUNK_SIZE),
         ];
-        for &case in cases {
-            println!("testing {} and {}", case.0, case.1);
-            assert_eq!(::left_plaintext_len(case.0 as u64), case.1 as u64);
+        for &(input, output) in input_output {
+            println!("testing {} and {}", input, output);
+            assert_eq!(left_len(input), output);
         }
     }
 
