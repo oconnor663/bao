@@ -207,16 +207,18 @@ mod test {
 
     #[test]
     fn test_power_of_two() {
-        let input_output: &[(usize, usize)] =
-            &[
-                (0, 1),
-                (1, 1),
-                (2, 2),
-                (3, 2),
-                (4, 4),
-                // Make sure to test the largest possible value.
-                (usize::max_value(), 1 << (8 * size_of::<usize>() - 1)),
-            ];
+        let input_output: &[(usize, usize)] = &[
+            (0, 1),
+            (1, 1),
+            (2, 2),
+            (3, 2),
+            (4, 4),
+            // Make sure to test the largest possible value.
+            (
+                usize::max_value(),
+                usize::max_value() ^ (usize::max_value() >> 1),
+            ),
+        ];
         for &(input, output) in input_output {
             assert_eq!(
                 output,
