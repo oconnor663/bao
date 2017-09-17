@@ -208,7 +208,7 @@ impl Region {
         // Divide rounding up.
         let num_chunks = (self.len + CHUNK_SIZE64 - 1) / CHUNK_SIZE64;
         // Note that the empty input results in zero nodes, not "-1" nodes.
-        HEADER_SIZE64 + (num_chunks.saturating_sub(1)) * NODE_SIZE64 + self.len
+        (num_chunks.saturating_sub(1)) * NODE_SIZE64 + self.len
     }
 }
 
@@ -243,9 +243,9 @@ pub struct Decoder {
 }
 
 impl Decoder {
-    pub fn new(header_hash: Digest) -> Self {
+    pub fn new(header_hash: &Digest) -> Self {
         Self {
-            header_hash,
+            header_hash: *header_hash,
             header: None,
             offset: 0,
             stack: Vec::new(),
@@ -455,7 +455,7 @@ mod test {
     }
 
     #[test]
-    fn test_computed_full_tree_len() {
+    fn test_encoded_len() {
         for &case in CASES {
             // All dummy values except for len.
             let region = Region {
@@ -465,8 +465,39 @@ mod test {
                 encoded_offset: 0,
             };
             let found_len = encode_simple(&vec![0; case]).0.len() as u64;
-            let computed_len = region.encoded_len();
+            let computed_len = region.encoded_len() + HEADER_SIZE64;
             assert_eq!(found_len, computed_len, "wrong length in case {}", case);
+        }
+    }
+
+    #[test]
+    fn test_codec() {
+        for &case in CASES {
+            println!("\n>>>>> starting case {}", case);
+            let input = vec![0x72; case];
+            let (encoded, hash) = encode_simple(&input);
+            println!("encoded.len() {}", encoded.len());
+            let mut decoder = Decoder::new(&hash);
+            let mut output = Vec::new();
+            loop {
+                let (offset, len) = decoder.needed();
+                println!("needed: {}, {}", offset, len);
+                if len == 0 {
+                    break;
+                }
+                let encoded_input = &encoded[offset as usize..offset as usize + len];
+                let (consumed, maybe_output) = decoder.feed(encoded_input).unwrap();
+                println!(
+                    "consumed: {} (gave output: {})",
+                    consumed,
+                    maybe_output.is_some()
+                );
+                assert_eq!(consumed, len);
+                if let Some(slice) = maybe_output {
+                    output.extend_from_slice(slice);
+                }
+            }
+            assert_eq!(input, output);
         }
     }
 }
