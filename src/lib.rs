@@ -500,4 +500,29 @@ mod test {
             assert_eq!(input, output);
         }
     }
+
+    #[test]
+    fn test_codec_overfeed() {
+        // This simulates a writer who doesn't even call needed(), and instead
+        // just feeds everything into every call to seek(), bumping the start
+        // forward as bytes are consumed.
+        for &case in CASES {
+            let input = vec![0x72; case];
+            let (encoded, hash) = encode_simple(&input);
+            let mut decoder = Decoder::new(&hash);
+            let mut output = Vec::new();
+            let mut encoded_input = &encoded[..];
+            loop {
+                let (consumed, maybe_output) = decoder.feed(encoded_input).unwrap();
+                if consumed == 0 {
+                    break;
+                }
+                if let Some(slice) = maybe_output {
+                    output.extend_from_slice(slice);
+                }
+                encoded_input = &encoded_input[consumed..]
+            }
+            assert_eq!(input, output);
+        }
+    }
 }
