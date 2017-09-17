@@ -7,7 +7,7 @@ use byteorder::{ByteOrder, BigEndian};
 use ring::{constant_time, digest};
 use std::mem::size_of;
 
-pub const CHUNK_SIZE: usize = 4096; // must be greater than NODE_SIZE
+pub const CHUNK_SIZE: usize = 4096;
 pub const DIGEST_SIZE: usize = 32;
 pub const NODE_SIZE: usize = 2 * DIGEST_SIZE;
 pub const HEADER_SIZE: usize = 8 + DIGEST_SIZE;
@@ -35,13 +35,20 @@ fn verify(input: &[u8], digest: &Digest) -> Result<(), ()> {
 //
 // Using this "left subtree is always full" strategy makes it easier to build a
 // tree incrementally, as a Writer interface might, because appending only
-// touches nodes along the right edge. With a "divide by two" strategy, on the
-// other hand, appending might need to rebalance the entire tree.
+// touches nodes along the right edge. It also makes it very easy to compute
+// the encoded size of a left subtree, for seek offsets.
 fn left_len(input_len: usize) -> usize {
     debug_assert!(input_len > CHUNK_SIZE);
     // Reserve at least one byte for the right side.
     let full_chunks = (input_len - 1) / CHUNK_SIZE;
     largest_power_of_two(full_chunks) * CHUNK_SIZE
+}
+
+fn left_len64(input_len: u64) -> u64 {
+    debug_assert!(input_len > CHUNK_SIZE64);
+    // Reserve at least one byte for the right side.
+    let full_chunks = (input_len - 1) / CHUNK_SIZE64;
+    largest_power_of_two64(full_chunks) * CHUNK_SIZE64
 }
 
 fn largest_power_of_two(n: usize) -> usize {
@@ -50,6 +57,12 @@ fn largest_power_of_two(n: usize) -> usize {
     // be at most 63, so the subtraction doesn't underflow.
     let masked_n = n | 1;
     let max_shift = 8 * size_of::<usize>() - 1;
+    1 << (max_shift - masked_n.leading_zeros() as usize)
+}
+
+fn largest_power_of_two64(n: u64) -> u64 {
+    let masked_n = n | 1;
+    let max_shift = 8 * size_of::<u64>() - 1;
     1 << (max_shift - masked_n.leading_zeros() as usize)
 }
 
@@ -170,6 +183,175 @@ fn verify_read_bump<'a>(
     Ok(out)
 }
 
+pub const CHUNK_SIZE64: u64 = 4096;
+pub const DIGEST_SIZE64: u64 = 32;
+pub const NODE_SIZE64: u64 = 2 * DIGEST_SIZE64;
+pub const HEADER_SIZE64: u64 = 8 + DIGEST_SIZE64;
+
+#[derive(Debug, Clone, Copy)]
+struct Region {
+    hash: Digest,
+    start: u64,
+    len: u64,
+    encoded_offset: u64,
+}
+
+impl Region {
+    fn contains(&self, offset: u64) -> bool {
+        // Note that start+len cannot overflow, because the start+len of the
+        // rightmost region(s) is equal to the overall len.
+        self.start <= offset && offset < (self.start + self.len)
+    }
+
+    // TODO: This panics on overflow. Not clear what we should do about that.
+    fn encoded_len(&self) -> u64 {
+        // Divide rounding up.
+        let num_chunks = (self.len + CHUNK_SIZE64 - 1) / CHUNK_SIZE64;
+        // Note that the empty input results in zero nodes, not "-1" nodes.
+        HEADER_SIZE64 + (num_chunks.saturating_sub(1)) * NODE_SIZE64 + self.len
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Node {
+    left: Region,
+    right: Region,
+}
+
+impl Node {
+    fn contains(&self, offset: u64) -> bool {
+        self.left.contains(offset) || self.right.contains(offset)
+    }
+
+    fn region_for(&self, offset: u64) -> Region {
+        if self.left.contains(offset) {
+            self.left
+        } else if self.right.contains(offset) {
+            self.right
+        } else {
+            panic!("offset outside of the current node")
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Decoder {
+    header_hash: Digest,
+    header: Option<Region>,
+    offset: u64,
+    stack: Vec<Node>,
+}
+
+impl Decoder {
+    pub fn new(header_hash: Digest) -> Self {
+        Self {
+            header_hash,
+            header: None,
+            offset: 0,
+            stack: Vec::new(),
+        }
+    }
+
+    pub fn len(&self) -> Option<u64> {
+        self.header.map(|h| h.len)
+    }
+
+    pub fn seek(&mut self, offset: u64) {
+        self.offset = offset;
+        while let Some(&node) = self.stack.last() {
+            if node.contains(offset) {
+                break;
+            }
+            self.stack.pop();
+        }
+    }
+
+    // Give the (offset, size) needed in the next call to feed(). A size of
+    // zero means EOF.
+    pub fn needed(&self) -> (u64, usize) {
+        // Have we even read the header yet?
+        let header_region = if let Some(region) = self.header {
+            region
+        } else {
+            return (0, HEADER_SIZE);
+        };
+        // Are we at EOF?
+        if self.offset >= header_region.len {
+            return (0, 0);
+        }
+        // How far down the tree are we right now?
+        let current_region = if let Some(node) = self.stack.last() {
+            node.region_for(self.offset)
+        } else {
+            header_region
+        };
+        // If we're down to chunk size, ask for a chunk. Otherwise more nodes.
+        if current_region.len <= CHUNK_SIZE64 {
+            (current_region.encoded_offset, current_region.len as usize)
+        } else {
+            (current_region.encoded_offset, NODE_SIZE)
+        }
+    }
+
+    // Returns (consumed, output), where output is Some() when a chunk was
+    // consumed.
+    pub fn feed<'a>(&mut self, input: &'a [u8]) -> Result<(usize, Option<&'a [u8]>), ()> {
+        let header_region = if let Some(region) = self.header {
+            region
+        } else {
+            verify(&input[..HEADER_SIZE], &self.header_hash)?;
+            let decoded_len = BigEndian::read_u64(&input[..8]);
+            let root_hash = array_ref!(input, 8, DIGEST_SIZE);
+            self.header = Some(Region {
+                hash: *root_hash,
+                start: 0,
+                len: decoded_len,
+                encoded_offset: HEADER_SIZE64,
+            });
+            return Ok((HEADER_SIZE, None));
+        };
+        // Are we at EOF?
+        if self.offset >= header_region.len {
+            return Ok((0, None));
+        }
+        // How far down the tree are we right now?
+        let current_region = if let Some(node) = self.stack.last() {
+            node.region_for(self.offset)
+        } else {
+            header_region
+        };
+        // If we're down to chunk size, ask for a chunk. Otherwise more nodes.
+        if current_region.len <= CHUNK_SIZE64 {
+            verify(&input[..current_region.len as usize], &current_region.hash)?;
+            let chunk_offset = (self.offset - current_region.start) as usize;
+            let ret = &input[chunk_offset..current_region.len as usize];
+            self.seek(current_region.start + current_region.len);
+            Ok((ret.len(), Some(ret)))
+        } else {
+            verify(&input[..NODE_SIZE], &current_region.hash)?;
+            let left_hash = array_ref!(input, 0, DIGEST_SIZE);
+            let right_hash = array_ref!(input, DIGEST_SIZE, DIGEST_SIZE);
+            let left_region = Region {
+                hash: *left_hash,
+                start: current_region.start,
+                len: left_len64(current_region.len),
+                encoded_offset: current_region.encoded_offset + NODE_SIZE64,
+            };
+            let right_region = Region {
+                hash: *right_hash,
+                start: left_region.start + left_region.len,
+                len: current_region.len - left_region.len,
+                encoded_offset: left_region.encoded_offset + left_region.encoded_len(),
+            };
+            self.stack.push(Node {
+                left: left_region,
+                right: right_region,
+            });
+            Ok((NODE_SIZE, None))
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -269,6 +451,22 @@ mod test {
                     encoded[tweak_case] ^= 1;
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_computed_full_tree_len() {
+        for &case in CASES {
+            // All dummy values except for len.
+            let region = Region {
+                hash: [0; DIGEST_SIZE],
+                start: 0,
+                len: case as u64,
+                encoded_offset: 0,
+            };
+            let found_len = encode_simple(&vec![0; case]).0.len() as u64;
+            let computed_len = region.encoded_len();
+            assert_eq!(found_len, computed_len, "wrong length in case {}", case);
         }
     }
 }
