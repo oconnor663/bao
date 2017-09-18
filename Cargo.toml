@@ -4,6 +4,9 @@ name = "rad"
 version = "0.1.0"
 
 [dependencies]
-arrayref = "^0.3.3"
-byteorder = "1.0.0"
-ring = "^0.7.4"
+arrayref = "^0.3"
+byteorder = "^1.1"
+ring = "^0.12"
+
+[dev-dependencies]
+rand = "^0.3"

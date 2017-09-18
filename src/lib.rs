@@ -354,6 +354,9 @@ impl Decoder {
 
 #[cfg(test)]
 mod test {
+    extern crate rand;
+    use self::rand::Rng;
+
     use super::*;
 
     // Interesting input lengths to run tests on.
@@ -373,7 +376,9 @@ mod test {
         4 * CHUNK_SIZE - 1,
         4 * CHUNK_SIZE,
         4 * CHUNK_SIZE + 1,
-        1_000_000,
+        16 * CHUNK_SIZE - 1,
+        16 * CHUNK_SIZE,
+        16 * CHUNK_SIZE + 1,
     ];
 
     #[test]
@@ -472,6 +477,8 @@ mod test {
 
     #[test]
     fn test_codec() {
+        // This simulates a writer who supplies exactly what's asked for by
+        // needed(), until EOF.
         for &case in CASES {
             println!("\n>>>>> starting case {}", case);
             let input = vec![0x72; case];
@@ -523,6 +530,44 @@ mod test {
                 encoded_input = &encoded_input[consumed..]
             }
             assert_eq!(input, output);
+        }
+    }
+
+    #[test]
+    fn test_codec_seek() {
+        for &case in CASES {
+            println!("\n>>>>> case {}", case);
+            // Use pseudorandom input, so that slices from different places are
+            // very likely not to match.
+            let input: Vec<u8> = rand::ChaChaRng::new_unseeded()
+                .gen_iter()
+                .take(case)
+                .collect();
+            let (encoded, hash) = encode_simple(&input);
+            for &seek_case in CASES {
+                if seek_case > case {
+                    continue;
+                }
+                println!(">>> seek case {}", seek_case);
+                let mut decoder = Decoder::new(&hash);
+                decoder.seek(seek_case as u64);
+                // Read the rest of the output and confirm it matches the input
+                // slice at the same offset.
+                let mut output = Vec::new();
+                loop {
+                    let (offset, len) = decoder.needed();
+                    if len == 0 {
+                        break;
+                    }
+                    let encoded_input = &encoded[offset as usize..offset as usize + len];
+                    let (_, maybe_output) = decoder.feed(encoded_input).unwrap();
+                    if let Some(bytes) = maybe_output {
+                        output.extend_from_slice(bytes);
+                    }
+                }
+                let expected = &input[seek_case..];
+                assert_eq!(expected, &output[..]);
+            }
         }
     }
 }
