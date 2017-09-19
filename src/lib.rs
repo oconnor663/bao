@@ -320,7 +320,7 @@ impl Decoder {
         } else {
             header_region
         };
-        // If we're down to chunk size, ask for a chunk. Otherwise more nodes.
+        // If we're down to chunk size, parse a chunk. Otherwise parse a node.
         if current_region.len <= CHUNK_SIZE64 {
             verify(&input[..current_region.len as usize], &current_region.hash)?;
             let chunk_offset = (self.offset - current_region.start) as usize;
