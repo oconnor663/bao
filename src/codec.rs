@@ -110,15 +110,15 @@ impl Decoder {
     // Returns (consumed, output), where output is Some() when a chunk was
     // consumed.
     pub fn feed<'a>(&mut self, input: &'a [u8]) -> ::Result<(usize, Option<&'a [u8]>)> {
+        // Immediately shadow input with a wrapper type that only gives us
+        // bytes when the hash is correct.
+        let input = ::evil::EvilBytes::wrap(input);
         let header_region = if let Some(region) = self.header {
             region
         } else {
-            if input.len() < ::HEADER_SIZE {
-                return Err(::Error::ShortInput);
-            }
-            ::verify(&input[..::HEADER_SIZE], &self.header_hash)?;
-            let decoded_len = BigEndian::read_u64(&input[..8]);
-            let root_hash = array_ref!(input, 8, ::DIGEST_SIZE);
+            let header_bytes = input.verify(0..::HEADER_SIZE, &self.header_hash)?;
+            let decoded_len = BigEndian::read_u64(&header_bytes[..8]);
+            let root_hash = array_ref!(header_bytes, 8, ::DIGEST_SIZE);
             self.header = Some(Region {
                 hash: *root_hash,
                 start: 0,
@@ -139,21 +139,18 @@ impl Decoder {
         };
         // If we're down to chunk size, parse a chunk. Otherwise parse a node.
         if current_region.len <= ::CHUNK_SIZE as u64 {
-            if input.len() < current_region.len as usize {
-                return Err(::Error::ShortInput);
-            }
-            ::verify(&input[..current_region.len as usize], &current_region.hash)?;
+            let chunk_bytes = input.verify(
+                0..current_region.len as usize,
+                &current_region.hash,
+            )?;
             let chunk_offset = (self.offset - current_region.start) as usize;
-            let ret = &input[chunk_offset..current_region.len as usize];
+            let ret = &chunk_bytes[chunk_offset..current_region.len as usize];
             self.seek(current_region.start + current_region.len);
             Ok((ret.len(), Some(ret)))
         } else {
-            if input.len() < ::NODE_SIZE {
-                return Err(::Error::ShortInput);
-            }
-            ::verify(&input[..::NODE_SIZE], &current_region.hash)?;
-            let left_hash = array_ref!(input, 0, ::DIGEST_SIZE);
-            let right_hash = array_ref!(input, ::DIGEST_SIZE, ::DIGEST_SIZE);
+            let node_bytes = input.verify(0..::NODE_SIZE, &current_region.hash)?;
+            let left_hash = array_ref!(node_bytes, 0, ::DIGEST_SIZE);
+            let right_hash = array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE);
             let left_region = Region {
                 hash: *left_hash,
                 start: current_region.start,
