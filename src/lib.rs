@@ -22,9 +22,10 @@ fn hash(input: &[u8]) -> Digest {
     ret
 }
 
-fn verify(input: &[u8], digest: &Digest) -> Result<(), ()> {
+fn verify(input: &[u8], digest: &Digest) -> Result<()> {
     let computed = hash(input);
-    constant_time::verify_slices_are_equal(&digest[..], &computed[..]).map_err(|_| ())
+    constant_time::verify_slices_are_equal(&digest[..], &computed[..])
+        .map_err(|_| Error::HashMismatch)
 }
 
 // The left length is the largest power of 2 count of full chunks that's less
@@ -109,7 +110,7 @@ fn encode_simple_inner(input: &[u8], output: &mut Vec<u8>) -> Digest {
     hash(&output[node_start..node_end])
 }
 
-pub fn decode_simple(mut encoded_input: &[u8], hash: &Digest) -> Result<Vec<u8>, ()> {
+pub fn decode_simple(mut encoded_input: &[u8], hash: &Digest) -> Result<Vec<u8>> {
     // Verify the header, and split out the input length and the root hash.
     // We bump `encoded_input` forward as we read, both here and in the
     // recursive helper.
@@ -143,7 +144,7 @@ fn decode_simple_inner(
     decoded_len: usize,
     hash: &Digest,
     output: &mut Vec<u8>,
-) -> Result<(), ()> {
+) -> Result<()> {
     // If we're down to an individual chunk, verify its hash and append it to
     // the output. We bump the input as we go, to keep track of what's been
     // read.
@@ -169,13 +170,9 @@ fn decode_simple_inner(
 // source forward by the same amount. (Fun fact: &[u8] actually implements
 // Reader, so we could almost make this generic, but using slices directly lets
 // us avoid dealing with IO errors and buffering.)
-fn verify_read_bump<'a>(
-    input: &mut &'a [u8],
-    read_len: usize,
-    hash: &Digest,
-) -> Result<&'a [u8], ()> {
+fn verify_read_bump<'a>(input: &mut &'a [u8], read_len: usize, hash: &Digest) -> Result<&'a [u8]> {
     if input.len() < read_len {
-        return Err(());
+        return Err(Error::HashMismatch);
     }
     let out = &input[..read_len];
     verify(out, hash)?;
@@ -203,12 +200,14 @@ impl Region {
         self.start <= offset && offset < (self.start + self.len)
     }
 
-    // TODO: This panics on overflow. Not clear what we should do about that.
-    fn encoded_len(&self) -> u64 {
+    fn encoded_len(&self) -> Result<u64> {
         // Divide rounding up.
-        let num_chunks = (self.len + CHUNK_SIZE64 - 1) / CHUNK_SIZE64;
+        let num_chunks = checked_add(self.len, CHUNK_SIZE64 - 1)? / CHUNK_SIZE64;
         // Note that the empty input results in zero nodes, not "-1" nodes.
-        (num_chunks.saturating_sub(1)) * NODE_SIZE64 + self.len
+        checked_add(
+            self.len,
+            checked_mul(num_chunks.saturating_sub(1), NODE_SIZE64)?,
+        )
     }
 }
 
@@ -295,10 +294,13 @@ impl Decoder {
 
     // Returns (consumed, output), where output is Some() when a chunk was
     // consumed.
-    pub fn feed<'a>(&mut self, input: &'a [u8]) -> Result<(usize, Option<&'a [u8]>), ()> {
+    pub fn feed<'a>(&mut self, input: &'a [u8]) -> Result<(usize, Option<&'a [u8]>)> {
         let header_region = if let Some(region) = self.header {
             region
         } else {
+            if input.len() < HEADER_SIZE {
+                return Err(Error::ShortInput);
+            }
             verify(&input[..HEADER_SIZE], &self.header_hash)?;
             let decoded_len = BigEndian::read_u64(&input[..8]);
             let root_hash = array_ref!(input, 8, DIGEST_SIZE);
@@ -322,12 +324,18 @@ impl Decoder {
         };
         // If we're down to chunk size, parse a chunk. Otherwise parse a node.
         if current_region.len <= CHUNK_SIZE64 {
+            if input.len() < current_region.len as usize {
+                return Err(Error::ShortInput);
+            }
             verify(&input[..current_region.len as usize], &current_region.hash)?;
             let chunk_offset = (self.offset - current_region.start) as usize;
             let ret = &input[chunk_offset..current_region.len as usize];
             self.seek(current_region.start + current_region.len);
             Ok((ret.len(), Some(ret)))
         } else {
+            if input.len() < NODE_SIZE {
+                return Err(Error::ShortInput);
+            }
             verify(&input[..NODE_SIZE], &current_region.hash)?;
             let left_hash = array_ref!(input, 0, DIGEST_SIZE);
             let right_hash = array_ref!(input, DIGEST_SIZE, DIGEST_SIZE);
@@ -335,13 +343,16 @@ impl Decoder {
                 hash: *left_hash,
                 start: current_region.start,
                 len: left_len64(current_region.len),
-                encoded_offset: current_region.encoded_offset + NODE_SIZE64,
+                encoded_offset: checked_add(current_region.encoded_offset, NODE_SIZE64)?,
             };
             let right_region = Region {
                 hash: *right_hash,
                 start: left_region.start + left_region.len,
                 len: current_region.len - left_region.len,
-                encoded_offset: left_region.encoded_offset + left_region.encoded_len(),
+                encoded_offset: checked_add(
+                    left_region.encoded_offset,
+                    left_region.encoded_len()?,
+                )?,
             };
             self.stack.push(Node {
                 left: left_region,
@@ -350,6 +361,23 @@ impl Decoder {
             Ok((NODE_SIZE, None))
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Error {
+    HashMismatch,
+    ShortInput,
+    Overflow,
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+fn checked_add(a: u64, b: u64) -> Result<u64> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+fn checked_mul(a: u64, b: u64) -> Result<u64> {
+    a.checked_mul(b).ok_or(Error::Overflow)
 }
 
 #[cfg(test)]
@@ -470,7 +498,7 @@ mod test {
                 encoded_offset: 0,
             };
             let found_len = encode_simple(&vec![0; case]).0.len() as u64;
-            let computed_len = region.encoded_len() + HEADER_SIZE64;
+            let computed_len = region.encoded_len().unwrap() + HEADER_SIZE64;
             assert_eq!(found_len, computed_len, "wrong length in case {}", case);
         }
     }
@@ -530,6 +558,41 @@ mod test {
                 encoded_input = &encoded_input[consumed..]
             }
             assert_eq!(input, output);
+        }
+    }
+
+    #[test]
+    fn test_codec_feed_by_ones() {
+        // This simulates a writer who tries to feed small amounts, making the
+        // amount larger with each failure until things succeed.
+        let input = vec![0; 4 * CHUNK_SIZE + 1];
+        let (encoded, hash) = encode_simple(&input);
+        let mut decoder = Decoder::new(&hash);
+        let mut encoded_slice = &encoded[..];
+        let mut output = Vec::new();
+        let mut feed_len = 0;
+        loop {
+            match decoder.feed(&encoded_slice[..feed_len]) {
+                Ok((consumed, maybe_output)) => {
+                    if consumed == 0 {
+                        // Note that this EOF will happen after the last
+                        // successful feed, when we attempt to feed 0 bytes
+                        // again. If we reset feed_len to anything other than
+                        // zero, we'd end up slicing out of bounds.
+                        break;
+                    }
+                    if let Some(bytes) = maybe_output {
+                        output.extend_from_slice(bytes);
+                    }
+                    encoded_slice = &encoded_slice[consumed..];
+                    feed_len = 0;
+                }
+                Err(Error::ShortInput) => {
+                    // Keep bumping the feed length until we succeed.
+                    feed_len += 1;
+                }
+                e => panic!("unexpected error: {:?}", e),
+            }
         }
     }
 
