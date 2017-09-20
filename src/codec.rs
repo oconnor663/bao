@@ -4,23 +4,26 @@ use byteorder::{ByteOrder, BigEndian};
 struct Region {
     hash: ::Digest,
     start: u64,
-    len: u64,
+    end: u64,
     encoded_offset: u64,
 }
 
 impl Region {
     fn contains(&self, offset: u64) -> bool {
-        // Note that start+len cannot overflow, because the start+len of the
-        // rightmost region(s) is equal to the overall len.
-        self.start <= offset && offset < (self.start + self.len)
+        self.start <= offset && offset < self.end
+    }
+
+    fn len(&self) -> u64 {
+        self.end - self.start
     }
 
     fn encoded_len(&self) -> ::Result<u64> {
         // Divide rounding up.
-        let num_chunks = checked_add(self.len, (::CHUNK_SIZE - 1) as u64)? / (::CHUNK_SIZE as u64);
+        let num_chunks = checked_add(self.len(), (::CHUNK_SIZE - 1) as u64)? /
+            (::CHUNK_SIZE as u64);
         // Note that the empty input results in zero nodes, not "-1" nodes.
         checked_add(
-            self.len,
+            self.len(),
             checked_mul(num_chunks.saturating_sub(1), ::NODE_SIZE as u64)?,
         )
     }
@@ -43,7 +46,7 @@ impl Node {
         } else if self.right.contains(offset) {
             self.right
         } else {
-            panic!("offset outside of the current node")
+            unreachable!("offset outside of the current node")
         }
     }
 }
@@ -67,7 +70,7 @@ impl Decoder {
     }
 
     pub fn len(&self) -> Option<u64> {
-        self.header.map(|h| h.len)
+        self.header.map(|h| h.len())
     }
 
     pub fn seek(&mut self, offset: u64) {
@@ -90,7 +93,7 @@ impl Decoder {
             return (0, ::HEADER_SIZE);
         };
         // Are we at EOF?
-        if self.offset >= header_region.len {
+        if self.offset >= header_region.len() {
             return (0, 0);
         }
         // How far down the tree are we right now?
@@ -100,8 +103,8 @@ impl Decoder {
             header_region
         };
         // If we're down to chunk size, ask for a chunk. Otherwise more nodes.
-        if current_region.len <= ::CHUNK_SIZE as u64 {
-            (current_region.encoded_offset, current_region.len as usize)
+        if current_region.len() <= ::CHUNK_SIZE as u64 {
+            (current_region.encoded_offset, current_region.len() as usize)
         } else {
             (current_region.encoded_offset, ::NODE_SIZE)
         }
@@ -122,13 +125,13 @@ impl Decoder {
             self.header = Some(Region {
                 hash: *root_hash,
                 start: 0,
-                len: decoded_len,
+                end: decoded_len,
                 encoded_offset: ::HEADER_SIZE as u64,
             });
             return Ok((::HEADER_SIZE, None));
         };
         // Are we at EOF?
-        if self.offset >= header_region.len {
+        if self.offset >= header_region.len() {
             return Ok((0, None));
         }
         // How far down the tree are we right now?
@@ -138,14 +141,14 @@ impl Decoder {
             header_region
         };
         // If we're down to chunk size, parse a chunk. Otherwise parse a node.
-        if current_region.len <= ::CHUNK_SIZE as u64 {
+        if current_region.len() <= ::CHUNK_SIZE as u64 {
             let chunk_bytes = input.verify(
-                current_region.len as usize,
+                current_region.len() as usize,
                 &current_region.hash,
             )?;
             let chunk_offset = (self.offset - current_region.start) as usize;
-            let ret = &chunk_bytes[chunk_offset..current_region.len as usize];
-            self.seek(current_region.start + current_region.len);
+            let ret = &chunk_bytes[chunk_offset..current_region.len() as usize];
+            self.seek(current_region.end);
             Ok((ret.len(), Some(ret)))
         } else {
             let node_bytes = input.verify(::NODE_SIZE, &current_region.hash)?;
@@ -154,13 +157,13 @@ impl Decoder {
             let left_region = Region {
                 hash: *left_hash,
                 start: current_region.start,
-                len: ::left_len(current_region.len),
+                end: current_region.start + ::left_len(current_region.len()),
                 encoded_offset: checked_add(current_region.encoded_offset, ::NODE_SIZE as u64)?,
             };
             let right_region = Region {
                 hash: *right_hash,
-                start: left_region.start + left_region.len,
-                len: current_region.len - left_region.len,
+                start: left_region.end,
+                end: current_region.end,
                 encoded_offset: checked_add(
                     left_region.encoded_offset,
                     left_region.encoded_len()?,
@@ -193,11 +196,11 @@ mod test {
     #[test]
     fn test_encoded_len() {
         for &case in ::TEST_CASES {
-            // All dummy values except for len.
+            // All dummy values except for end.
             let region = Region {
                 hash: [0; ::DIGEST_SIZE],
                 start: 0,
-                len: case as u64,
+                end: case as u64,
                 encoded_offset: 0,
             };
             let found_len = ::simple::encode(&vec![0; case]).0.len() as u64;
