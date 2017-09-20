@@ -43,11 +43,13 @@ fn encode_simple_inner(input: &[u8], output: &mut Vec<u8>) -> ::Digest {
     ::hash(&output[node_start..node_end])
 }
 
-pub fn decode(mut encoded_input: &[u8], hash: &::Digest) -> ::Result<Vec<u8>> {
-    // Verify the header, and split out the input length and the root hash.
-    // We bump `encoded_input` forward as we read, both here and in the
-    // recursive helper.
-    let header = verify_read_bump(&mut encoded_input, ::HEADER_SIZE, hash)?;
+pub fn decode(input: &[u8], hash: &::Digest) -> ::Result<Vec<u8>> {
+    // Immediately shadow input with a wrapper type that only gives us
+    // bytes when the hash is correct.
+    let mut input = ::evil::EvilBytes::wrap(input);
+    // Verify the header, and split out the input length and the root hash. We
+    // bump `input` forward as we read, both here and in the recursive helper.
+    let header = input.verify_bump(::HEADER_SIZE, hash)?;
     let decoded_len = BigEndian::read_u64(&header[..8]);
     if decoded_len > usize::max_value() as u64 {
         panic!("input length is too big to fit in memory");
@@ -57,23 +59,18 @@ pub fn decode(mut encoded_input: &[u8], hash: &::Digest) -> ::Result<Vec<u8>> {
     // output.
     //
     // NOTE: We're respecting `decoded_len` and bumping the input forward as we
-    // read it, rather than inspecting `encoded_input.len()`. That means that
-    // like a streaming reader, this decoding will ignore any extra trailing
-    // bytes appended to a valid encoding. As a result, ENCODED OUTPUT IS NOT
+    // read it, rather than inspecting `input.len()`. That means that like a
+    // streaming reader, this decoding will ignore any extra trailing bytes
+    // appended to a valid encoding. As a result, ENCODED OUTPUT IS NOT
     // NECESSARILY UNIQUE FOR A GIVEN INPUT. Hashes are unique, however, as a
     // basic design requirement.
     let mut output = Vec::with_capacity(decoded_len as usize);
-    decode_simple_inner(
-        &mut encoded_input,
-        decoded_len as usize,
-        &root_hash,
-        &mut output,
-    )?;
+    decode_simple_inner(&mut input, decoded_len as usize, &root_hash, &mut output)?;
     Ok(output)
 }
 
 fn decode_simple_inner(
-    encoded_input: &mut &[u8],
+    input: &mut ::evil::EvilBytes,
     decoded_len: usize,
     hash: &::Digest,
     output: &mut Vec<u8>,
@@ -82,39 +79,21 @@ fn decode_simple_inner(
     // the output. We bump the input as we go, to keep track of what's been
     // read.
     if decoded_len <= ::CHUNK_SIZE {
-        let chunk = verify_read_bump(encoded_input, decoded_len as usize, hash)?;
+        let chunk = input.verify_bump(decoded_len as usize, hash)?;
         output.extend_from_slice(chunk);
         return Ok(());
     }
     // Otherwise we have a node, and we need to decode its left and right
     // subtrees. Verify the node bytes and read the subtree hashes.
-    let node = verify_read_bump(encoded_input, ::NODE_SIZE, hash)?;
+    let node = input.verify_bump(::NODE_SIZE, hash)?;
     let left_hash = array_ref!(node, 0, ::DIGEST_SIZE);
     let right_hash = array_ref!(node, ::DIGEST_SIZE, ::DIGEST_SIZE);
     // Recursively verify and decode the left and right subtrees.
     let left_len = ::left_len(decoded_len as u64) as usize;
     let right_len = decoded_len - left_len;
-    decode_simple_inner(encoded_input, left_len, left_hash, output)?;
-    decode_simple_inner(encoded_input, right_len, right_hash, output)?;
+    decode_simple_inner(input, left_len, left_hash, output)?;
+    decode_simple_inner(input, right_len, right_hash, output)?;
     Ok(())
-}
-
-// Take a slice from an &mut &[u8], verify its hash, and bump the start of the
-// source forward by the same amount. (Fun fact: &[u8] actually implements
-// Reader, so we could almost make this generic, but using slices directly lets
-// us avoid dealing with IO errors and buffering.)
-fn verify_read_bump<'a>(
-    input: &mut &'a [u8],
-    read_len: usize,
-    hash: &::Digest,
-) -> ::Result<&'a [u8]> {
-    if input.len() < read_len {
-        return Err(::Error::HashMismatch);
-    }
-    let out = &input[..read_len];
-    ::verify(out, hash)?;
-    *input = &input[read_len..];
-    Ok(out)
 }
 
 #[cfg(test)]

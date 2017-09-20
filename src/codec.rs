@@ -116,7 +116,7 @@ impl Decoder {
         let header_region = if let Some(region) = self.header {
             region
         } else {
-            let header_bytes = input.verify(0..::HEADER_SIZE, &self.header_hash)?;
+            let header_bytes = input.verify(::HEADER_SIZE, &self.header_hash)?;
             let decoded_len = BigEndian::read_u64(&header_bytes[..8]);
             let root_hash = array_ref!(header_bytes, 8, ::DIGEST_SIZE);
             self.header = Some(Region {
@@ -140,7 +140,7 @@ impl Decoder {
         // If we're down to chunk size, parse a chunk. Otherwise parse a node.
         if current_region.len <= ::CHUNK_SIZE as u64 {
             let chunk_bytes = input.verify(
-                0..current_region.len as usize,
+                current_region.len as usize,
                 &current_region.hash,
             )?;
             let chunk_offset = (self.offset - current_region.start) as usize;
@@ -148,7 +148,7 @@ impl Decoder {
             self.seek(current_region.start + current_region.len);
             Ok((ret.len(), Some(ret)))
         } else {
-            let node_bytes = input.verify(0..::NODE_SIZE, &current_region.hash)?;
+            let node_bytes = input.verify(::NODE_SIZE, &current_region.hash)?;
             let left_hash = array_ref!(node_bytes, 0, ::DIGEST_SIZE);
             let right_hash = array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE);
             let left_region = Region {
