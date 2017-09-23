@@ -9,8 +9,8 @@ struct Region {
 }
 
 impl Region {
-    fn contains(&self, offset: u64) -> bool {
-        self.start <= offset && offset < self.end
+    fn contains(&self, position: u64) -> bool {
+        self.start <= position && position < self.end
     }
 
     fn len(&self) -> u64 {
@@ -36,26 +36,33 @@ struct Node {
 }
 
 impl Node {
-    fn contains(&self, offset: u64) -> bool {
-        self.left.contains(offset) || self.right.contains(offset)
+    fn contains(&self, position: u64) -> bool {
+        self.left.contains(position) || self.right.contains(position)
     }
 
-    fn region_for(&self, offset: u64) -> Region {
-        if self.left.contains(offset) {
-            self.left
-        } else if self.right.contains(offset) {
-            self.right
+    fn region_for(&self, position: u64) -> Option<Region> {
+        if self.left.contains(position) {
+            Some(self.left)
+        } else if self.right.contains(position) {
+            Some(self.right)
         } else {
-            unreachable!("offset outside of the current node")
+            None
         }
     }
+}
+
+enum State {
+    NoHeader,
+    Eof,
+    Chunk(Region),
+    Node(Region),
 }
 
 #[derive(Debug, Clone)]
 pub struct Decoder {
     header_hash: ::Digest,
     header: Option<Region>,
-    offset: u64,
+    position: u64,
     stack: Vec<Node>,
 }
 
@@ -64,7 +71,7 @@ impl Decoder {
         Self {
             header_hash: *header_hash,
             header: None,
-            offset: 0,
+            position: 0,
             stack: Vec::new(),
         }
     }
@@ -73,40 +80,59 @@ impl Decoder {
         self.header.map(|h| h.len())
     }
 
-    pub fn seek(&mut self, offset: u64) {
-        self.offset = offset;
+    fn state(&self) -> State {
+        let header = if let Some(region) = self.header {
+            region
+        } else {
+            return State::NoHeader;
+        };
+        if self.position >= header.end {
+            return State::Eof;
+        }
+        let current_region = if let Some(node) = self.stack.last() {
+            node.region_for(self.position).expect(
+                "position must be within the last node",
+            )
+        } else {
+            header
+        };
+        if current_region.len() <= ::CHUNK_SIZE as u64 {
+            State::Chunk(current_region)
+        } else {
+            State::Node(current_region)
+        }
+    }
+
+    pub fn seek(&mut self, position: u64) {
+        // Setting the position breaks state()'s invariant, since now we might
+        // be outside the bounds of the last node in the stack. We can't call
+        // state() until we finish popping nodes below.
+        self.position = position;
+
+        // If we don't have the header yet, or if we're EOF, short circuit.
+        let header_end = self.header.map(|r| r.end).unwrap_or(0);
+        if self.position >= header_end {
+            return;
+        }
+
+        // Otherwise, pop off all nodes that don't contain the current
+        // position. Note that the first node (if any) will never be popped.
         while let Some(&node) = self.stack.last() {
-            if node.contains(offset) {
+            if node.contains(position) {
                 break;
             }
             self.stack.pop();
         }
     }
 
-    // Give the (offset, size) needed in the next call to feed(). A size of
-    // zero means EOF.
+    // Give the (encoded_offset, size) needed in the next call to feed(). A
+    // size of zero means EOF.
     pub fn needed(&self) -> (u64, usize) {
-        // Have we even read the header yet?
-        let header_region = if let Some(region) = self.header {
-            region
-        } else {
-            return (0, ::HEADER_SIZE);
-        };
-        // Are we at EOF?
-        if self.offset >= header_region.len() {
-            return (0, 0);
-        }
-        // How far down the tree are we right now?
-        let current_region = if let Some(node) = self.stack.last() {
-            node.region_for(self.offset)
-        } else {
-            header_region
-        };
-        // If we're down to chunk size, ask for a chunk. Otherwise more nodes.
-        if current_region.len() <= ::CHUNK_SIZE as u64 {
-            (current_region.encoded_offset, current_region.len() as usize)
-        } else {
-            (current_region.encoded_offset, ::NODE_SIZE)
+        match self.state() {
+            State::NoHeader => (0, ::HEADER_SIZE),
+            State::Eof => (0, 0),
+            State::Chunk(r) => (r.encoded_offset, r.len() as usize),
+            State::Node(r) => (r.encoded_offset, ::NODE_SIZE),
         }
     }
 
@@ -116,65 +142,68 @@ impl Decoder {
         // Immediately shadow input with a wrapper type that only gives us
         // bytes when the hash is correct.
         let input = ::evil::EvilBytes::wrap(input);
-        let header_region = if let Some(region) = self.header {
-            region
-        } else {
-            let header_bytes = input.verify(::HEADER_SIZE, &self.header_hash)?;
-            let decoded_len = BigEndian::read_u64(&header_bytes[..8]);
-            let root_hash = array_ref!(header_bytes, 8, ::DIGEST_SIZE);
-            self.header = Some(Region {
-                hash: *root_hash,
-                start: 0,
-                end: decoded_len,
-                encoded_offset: ::HEADER_SIZE as u64,
-            });
-            return Ok((::HEADER_SIZE, None));
-        };
-        // Are we at EOF?
-        if self.offset >= header_region.len() {
-            return Ok((0, None));
+
+        match self.state() {
+            State::NoHeader => self.feed_header(input),
+            State::Eof => Ok((0, None)),
+            State::Chunk(r) => self.feed_chunk(input, r),
+            State::Node(r) => self.feed_node(input, r),
         }
-        // How far down the tree are we right now?
-        let current_region = if let Some(node) = self.stack.last() {
-            node.region_for(self.offset)
-        } else {
-            header_region
+    }
+
+    fn feed_header<'a>(
+        &mut self,
+        input: ::evil::EvilBytes<'a>,
+    ) -> ::Result<(usize, Option<&'a [u8]>)> {
+        let header_bytes = input.verify(::HEADER_SIZE, &self.header_hash)?;
+        let decoded_len = BigEndian::read_u64(&header_bytes[..8]);
+        let root_hash = array_ref!(header_bytes, 8, ::DIGEST_SIZE);
+        self.header = Some(Region {
+            hash: *root_hash,
+            start: 0,
+            end: decoded_len,
+            encoded_offset: ::HEADER_SIZE as u64,
+        });
+        Ok((::HEADER_SIZE, None))
+    }
+
+    fn feed_chunk<'a>(
+        &mut self,
+        input: ::evil::EvilBytes<'a>,
+        region: Region,
+    ) -> ::Result<(usize, Option<&'a [u8]>)> {
+        let chunk_bytes = input.verify(region.len() as usize, &region.hash)?;
+        let chunk_offset = (self.position - region.start) as usize;
+        let ret = &chunk_bytes[chunk_offset..];
+        self.seek(region.end);
+        Ok((region.len() as usize, Some(ret)))
+    }
+
+    fn feed_node<'a>(
+        &mut self,
+        input: ::evil::EvilBytes<'a>,
+        region: Region,
+    ) -> ::Result<(usize, Option<&'a [u8]>)> {
+        let node_bytes = input.verify(::NODE_SIZE, &region.hash)?;
+        let left_hash = array_ref!(node_bytes, 0, ::DIGEST_SIZE);
+        let right_hash = array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE);
+        let left_region = Region {
+            hash: *left_hash,
+            start: region.start,
+            end: region.start + ::left_len(region.len()),
+            encoded_offset: checked_add(region.encoded_offset, ::NODE_SIZE as u64)?,
         };
-        // If we're down to chunk size, parse a chunk. Otherwise parse a node.
-        if current_region.len() <= ::CHUNK_SIZE as u64 {
-            let chunk_bytes = input.verify(
-                current_region.len() as usize,
-                &current_region.hash,
-            )?;
-            let chunk_offset = (self.offset - current_region.start) as usize;
-            let ret = &chunk_bytes[chunk_offset..current_region.len() as usize];
-            self.seek(current_region.end);
-            Ok((ret.len(), Some(ret)))
-        } else {
-            let node_bytes = input.verify(::NODE_SIZE, &current_region.hash)?;
-            let left_hash = array_ref!(node_bytes, 0, ::DIGEST_SIZE);
-            let right_hash = array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE);
-            let left_region = Region {
-                hash: *left_hash,
-                start: current_region.start,
-                end: current_region.start + ::left_len(current_region.len()),
-                encoded_offset: checked_add(current_region.encoded_offset, ::NODE_SIZE as u64)?,
-            };
-            let right_region = Region {
-                hash: *right_hash,
-                start: left_region.end,
-                end: current_region.end,
-                encoded_offset: checked_add(
-                    left_region.encoded_offset,
-                    left_region.encoded_len()?,
-                )?,
-            };
-            self.stack.push(Node {
-                left: left_region,
-                right: right_region,
-            });
-            Ok((::NODE_SIZE, None))
-        }
+        let right_region = Region {
+            hash: *right_hash,
+            start: left_region.end,
+            end: region.end,
+            encoded_offset: checked_add(left_region.encoded_offset, left_region.encoded_len()?)?,
+        };
+        self.stack.push(Node {
+            left: left_region,
+            right: right_region,
+        });
+        Ok((::NODE_SIZE, None))
     }
 }
 
