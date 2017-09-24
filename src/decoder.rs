@@ -239,7 +239,7 @@ mod test {
     }
 
     #[test]
-    fn test_codec() {
+    fn test_decoder() {
         // This simulates a writer who supplies exactly what's asked for by
         // needed(), until EOF.
         for &case in ::TEST_CASES {
@@ -272,7 +272,7 @@ mod test {
     }
 
     #[test]
-    fn test_codec_overfeed() {
+    fn test_decoder_overfeed() {
         // This simulates a writer who doesn't even call needed(), and instead
         // just feeds everything into every call to seek(), bumping the start
         // forward as bytes are consumed.
@@ -297,7 +297,7 @@ mod test {
     }
 
     #[test]
-    fn test_codec_feed_by_ones() {
+    fn test_decoder_feed_by_ones() {
         // This simulates a writer who tries to feed small amounts, making the
         // amount larger with each failure until things succeed.
         let input = vec![0; 4 * ::CHUNK_SIZE + 1];
@@ -332,7 +332,7 @@ mod test {
     }
 
     #[test]
-    fn test_codec_seek() {
+    fn test_decoder_seek() {
         for &case in ::TEST_CASES {
             println!("\n>>>>> case {}", case);
             // Use pseudorandom input, so that slices from different places are

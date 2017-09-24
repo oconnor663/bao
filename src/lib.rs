@@ -7,7 +7,7 @@ use ring::{constant_time, digest};
 use std::mem::size_of;
 
 pub mod simple;
-pub mod codec;
+pub mod decoder;
 mod evil;
 
 pub type Digest = [u8; DIGEST_SIZE];
