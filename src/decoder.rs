@@ -173,10 +173,22 @@ impl Decoder {
         region: Region,
     ) -> ::Result<(usize, Option<&'a [u8]>)> {
         let chunk_bytes = input.verify(region.len() as usize, &region.hash)?;
+        // We pay attention to the `chunk_offset` for cases where a previous
+        // seek() put us in the middle of the chunk. In that case, we still
+        // have to verify the whole thing, but we only return the bytes after
+        // the seek position. In regular reading without seeks, the chunk
+        // offset will always end up being zero.
         let chunk_offset = (self.position - region.start) as usize;
         let ret = &chunk_bytes[chunk_offset..];
+        // Successfully feeding a chunk moves the position foward, and pops any
+        // finished nodes off the node stack. Subsequent feeds will be for the
+        // following chunk.
         self.seek(region.end);
-        Ok((region.len() as usize, Some(ret)))
+        // Note that the length of the entire chunk is returned as "consumed",
+        // even in offset cases where only part of it is returned, because the
+        // caller still fed the whole chunk in and still needs to advance the
+        // entire chunk length forward in the encoded input.
+        Ok((chunk_bytes.len() as usize, Some(ret)))
     }
 
     fn feed_node<'a>(
