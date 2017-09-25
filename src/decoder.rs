@@ -19,8 +19,8 @@ impl Region {
 
     fn encoded_len(&self) -> ::Result<u64> {
         // Divide rounding up.
-        let num_chunks = checked_add(self.len(), (::CHUNK_SIZE - 1) as u64)? /
-            (::CHUNK_SIZE as u64);
+        let num_chunks = (self.len() / ::CHUNK_SIZE as u64) +
+            (self.len() % ::CHUNK_SIZE as u64 > 0) as u64;
         // Note that the empty input results in zero nodes, not "-1" nodes.
         checked_add(
             self.len(),
