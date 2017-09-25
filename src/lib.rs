@@ -8,6 +8,7 @@ use std::mem::size_of;
 
 pub mod simple;
 pub mod decoder;
+pub mod io;
 mod evil;
 
 pub type Digest = [u8; DIGEST_SIZE];
