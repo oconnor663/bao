@@ -51,6 +51,7 @@ impl Node {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 enum State {
     NoHeader,
     Eof,
