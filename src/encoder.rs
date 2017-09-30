@@ -1,5 +1,6 @@
 use byteorder::{ByteOrder, BigEndian};
 
+// TODO: Factor this type up and combine it with Region.
 #[derive(Debug, Copy, Clone)]
 struct Subtree {
     hash: ::Digest,

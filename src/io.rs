@@ -2,24 +2,19 @@ use std::io::prelude::*;
 use std::io;
 use std::cmp::min;
 
-struct Subtree {
-    hash: ::Digest,
-    len: u64,
-}
-
 pub struct Encoder<T: Write + Seek> {
     inner: T,
-    stack: Vec<Subtree>,
+    // stack: Vec<Subtree>,
     buffer: Vec<u8>,
     finalized: bool,
 }
 
 impl<T: Write + Seek> Encoder<T> {
     fn finalize(&mut self) -> io::Result<()> {
-        unimplemented!();
         self.finalized = true;
         // Force all IO to disk, so that we can report any errors.
-        self.flush()
+        self.flush()?;
+        unimplemented!()
     }
 }
 
