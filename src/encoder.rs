@@ -1,7 +1,42 @@
+use byteorder::{ByteOrder, BigEndian};
+
 #[derive(Debug, Copy, Clone)]
 struct Subtree {
     hash: ::Digest,
     len: u64,
+}
+
+impl Subtree {
+    fn join(&self, rhs: &Subtree) -> Subtree {
+        let mut node = [0; 2 * ::CHUNK_SIZE];
+        node[..::CHUNK_SIZE].copy_from_slice(&self.hash);
+        node[::CHUNK_SIZE..].copy_from_slice(&rhs.hash);
+        Subtree {
+            len: self.len.checked_add(rhs.len).expect("len overflow"),
+            hash: ::hash(&node),
+        }
+    }
+
+    fn to_header(&self) -> [u8; ::HEADER_SIZE] {
+        let mut ret = [0; ::HEADER_SIZE];
+        BigEndian::write_u64(&mut ret[..8], self.len);
+        ret[8..].copy_from_slice(&self.hash);
+        ret
+    }
+
+    fn from_chunk(chunk: &[u8]) -> Subtree {
+        Subtree {
+            len: chunk.len() as u64,
+            hash: ::hash(chunk),
+        }
+    }
+
+    fn empty() -> Subtree {
+        Subtree {
+            len: 0,
+            hash: ::hash(&*b""),
+        }
+    }
 }
 
 /// This encoder produces a *backwards* tree, with parent nodes to the right of
@@ -22,29 +57,20 @@ impl PostOrderEncoder {
         }
         self.out_buf.clear();
         self.out_buf.extend_from_slice(input);
-        self.stack.push(Subtree {
-            hash: ::hash(input),
-            len: ::CHUNK_SIZE as u64,
-        });
-        loop {
-            if self.stack.len() < 2 {
+        self.stack.push(Subtree::from_chunk(input));
+        // Fun fact: this loop is metaphorically just like adding one to a
+        // binary number and propagating the carry bit :)
+        while self.stack.len() >= 2 {
+            let left = self.stack[self.stack.len() - 2];
+            let right = self.stack[self.stack.len() - 1];
+            if left.len != right.len {
                 break;
             }
-            let subtree1 = self.stack[self.stack.len() - 1];
-            let subtree2 = self.stack[self.stack.len() - 2];
-            if subtree1.len != subtree2.len {
-                break;
-            }
-            let mut new_node = [0; 2 * ::CHUNK_SIZE];
-            new_node[..::CHUNK_SIZE].copy_from_slice(&subtree1.hash);
-            new_node[::CHUNK_SIZE..].copy_from_slice(&subtree2.hash);
-            self.out_buf.extend_from_slice(&new_node);
+            self.out_buf.extend_from_slice(&left.hash);
+            self.out_buf.extend_from_slice(&right.hash);
             self.stack.pop();
             self.stack.pop();
-            self.stack.push(Subtree {
-                hash: ::hash(&new_node),
-                len: subtree1.len.checked_mul(2).expect("len overflowed"),
-            });
+            self.stack.push(left.join(&right));
         }
         &self.out_buf
     }
@@ -55,7 +81,28 @@ impl PostOrderEncoder {
         }
         self.finalized = true;
         self.out_buf.clear();
-        self.out_buf.extend_from_slice(input);
-        unimplemented!()
+        if input.len() > 0 {
+            self.out_buf.extend_from_slice(input);
+            self.stack.push(Subtree::from_chunk(input));
+        }
+        // Joining all the remaining nodes into the final tree is very similar
+        // to the feed loop above, except we drop the constraint that the left
+        // and right sizes must match. That's another way of saying, nodes
+        // where the left len doesn't equal the right len only exist on the
+        // rightmost edge of the tree.
+        while self.stack.len() >= 2 {
+            let left = self.stack[self.stack.len() - 2];
+            let right = self.stack[self.stack.len() - 1];
+            self.out_buf.extend_from_slice(&left.hash);
+            self.out_buf.extend_from_slice(&right.hash);
+            self.stack.pop();
+            self.stack.pop();
+            self.stack.push(left.join(&right));
+        }
+        // Take the the final remaining subtree, or the empty subtree if there
+        // was never any input, and turn it into the header.
+        let root = self.stack.pop().unwrap_or_else(Subtree::empty);
+        self.out_buf.extend_from_slice(&root.to_header());
+        &self.out_buf
     }
 }
