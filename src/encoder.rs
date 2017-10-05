@@ -1,3 +1,4 @@
+use std::mem;
 use byteorder::{ByteOrder, BigEndian};
 
 // TODO: Factor this type up and combine it with Region.
@@ -158,6 +159,51 @@ impl PostOrderEncoder {
         self.out_buf.extend_from_slice(&header_bytes);
         (&self.out_buf, ::hash(&header_bytes))
     }
+}
+
+struct Node {
+    bytes: [u8; ::NODE_SIZE],
+    start: u64,
+    end: u64,
+}
+
+struct PostOrderReverser {
+    header: Option<Subtree>,
+    stack: Vec<Node>,
+}
+
+impl PostOrderReverser {
+    pub fn new() -> Self {
+        Self {
+            header: None,
+            stack: Vec::new(),
+            // buffer: Vec::new(),
+            // swap_buffer: Vec::new(),
+        }
+    }
+
+    // Returns 0 at EOF.
+    pub fn needed(&self) -> usize {
+        if self.header.is_none() {
+            return ::HEADER_SIZE;
+        }
+        unimplemented!();
+    }
+
+    // pub fn feed(&mut self, input: &[u8]) -> &[u8] {
+    //     // Input comes in from back to front. *Prepend* it to the buffer.
+    //     self.swap_buffer.clear();
+    //     self.swap_buffer.extend_from_slice(input);
+    //     self.swap_buffer.extend_from_slice(&self.buffer);
+    //     mem::swap(&mut self.buffer, &mut self.swap_buffer);
+
+    //     if self.header.is_none() {
+    //         if self.buffer.len() < ::HEADER_SIZE {
+    //             return &[];
+    //         }
+    //         self.header = Some(
+    //     }
+    // }
 }
 
 #[cfg(test)]
