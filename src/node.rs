@@ -33,6 +33,10 @@ impl Region {
         self.end - self.start
     }
 
+    pub fn contains(&self, position: u64) -> bool {
+        self.start <= position && position < self.end
+    }
+
     pub fn to_header(&self) -> [u8; ::HEADER_SIZE] {
         let mut ret = [0; ::HEADER_SIZE];
         BigEndian::write_u64(&mut ret[..8], self.len());
@@ -67,7 +71,7 @@ impl Region {
             )),
             hash: *array_ref!(bytes, ::DIGEST_SIZE, ::DIGEST_SIZE),
         };
-        Node { left, right }
+        Some(Node { left, right })
     }
 }
 
@@ -78,6 +82,10 @@ struct Node {
 }
 
 impl Node {
+    pub fn contains(&self, position: u64) -> bool {
+        self.left.start <= position && position < self.right.end
+    }
+
     pub fn to_bytes(&self) -> [u8; ::NODE_SIZE] {
         let mut bytes = [0; ::NODE_SIZE];
         bytes[..::DIGEST_SIZE].copy_from_slice(&self.left.hash);
@@ -111,10 +119,10 @@ impl Node {
 /// to build a tree incrementally, since appending input bytes only affects
 /// nodes on the rightmost edge of the tree.
 fn left_subregion_len(region_len: u64) -> u64 {
-    debug_assert!(input_len > CHUNK_SIZE as u64);
+    debug_assert!(region_len > ::CHUNK_SIZE as u64);
     // Reserve at least one byte for the right side.
-    let full_chunks = (input_len - 1) / CHUNK_SIZE as u64;
-    largest_power_of_two(full_chunks) * CHUNK_SIZE as u64
+    let full_chunks = (region_len - 1) / ::CHUNK_SIZE as u64;
+    largest_power_of_two(full_chunks) * ::CHUNK_SIZE as u64
 }
 
 /// Compute the largest power of two that's less than or equal to `n`.
@@ -140,8 +148,8 @@ fn largest_power_of_two(n: u64) -> u64 {
 /// for very large inputs. In that case, we return `None`.
 fn encoded_len(region_len: u64) -> Option<u64> {
     // Divide rounding up to get the number of chunks.
-    let num_chunks = (self.len() / ::CHUNK_SIZE as u64) +
-        (self.len() % ::CHUNK_SIZE as u64 > 0) as u64;
+    let num_chunks = (region_len / ::CHUNK_SIZE as u64) +
+        (region_len % ::CHUNK_SIZE as u64 > 0) as u64;
     // The number of nodes is one less, but not less than zero.
     let num_nodes = num_chunks.saturating_sub(1);
     // `all_nodes` can't overflow by itself unless the node size is larger
@@ -176,11 +184,20 @@ mod test {
 
     #[test]
     fn test_left_subregion_len() {
-        let s = CHUNK_SIZE as u64;
+        let s = ::CHUNK_SIZE as u64;
         let input_output = &[(s + 1, s), (2 * s - 1, s), (2 * s, s), (2 * s + 1, 2 * s)];
         for &(input, output) in input_output {
             println!("testing {} and {}", input, output);
             assert_eq!(left_subregion_len(input), output);
+        }
+    }
+
+    #[test]
+    fn test_encoded_len() {
+        for &case in ::TEST_CASES {
+            let found_len = ::simple::encode(&vec![0; case]).0.len() as u64;
+            let computed_len = encoded_len(case as u64).unwrap() + ::HEADER_SIZE as u64;
+            assert_eq!(found_len, computed_len, "wrong length in case {}", case);
         }
     }
 }

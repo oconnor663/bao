@@ -1,55 +1,4 @@
-use byteorder::{ByteOrder, BigEndian};
-
-#[derive(Debug, Clone, Copy)]
-struct Region {
-    hash: ::Digest,
-    start: u64,
-    end: u64,
-    encoded_offset: u64,
-}
-
-impl Region {
-    fn contains(&self, position: u64) -> bool {
-        self.start <= position && position < self.end
-    }
-
-    fn len(&self) -> u64 {
-        self.end - self.start
-    }
-
-    fn encoded_len(&self) -> ::Result<u64> {
-        // Divide rounding up.
-        let num_chunks = (self.len() / ::CHUNK_SIZE as u64) +
-            (self.len() % ::CHUNK_SIZE as u64 > 0) as u64;
-        // Note that the empty input results in zero nodes, not "-1" nodes.
-        checked_add(
-            self.len(),
-            checked_mul(num_chunks.saturating_sub(1), ::NODE_SIZE as u64)?,
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Node {
-    left: Region,
-    right: Region,
-}
-
-impl Node {
-    fn contains(&self, position: u64) -> bool {
-        self.left.contains(position) || self.right.contains(position)
-    }
-
-    fn region_for(&self, position: u64) -> Option<Region> {
-        if self.left.contains(position) {
-            Some(self.left)
-        } else if self.right.contains(position) {
-            Some(self.right)
-        } else {
-            None
-        }
-    }
-}
+use node::{Node, Region};
 
 #[derive(Debug, Clone, Copy)]
 enum State {
@@ -91,9 +40,12 @@ impl Decoder {
             return State::Eof;
         }
         let current_region = if let Some(node) = self.stack.last() {
-            node.region_for(self.position).expect(
-                "position must be within the last node",
-            )
+            if node.left.contains(self.position) {
+                node.left
+            } else {
+                debug_assert!(node.right.contains(self.position));
+                node.right
+            }
         } else {
             header
         };
@@ -220,36 +172,12 @@ impl Decoder {
     }
 }
 
-fn checked_add(a: u64, b: u64) -> ::Result<u64> {
-    a.checked_add(b).ok_or(::Error::Overflow)
-}
-
-fn checked_mul(a: u64, b: u64) -> ::Result<u64> {
-    a.checked_mul(b).ok_or(::Error::Overflow)
-}
-
 #[cfg(test)]
 mod test {
     extern crate rand;
     use self::rand::Rng;
 
     use super::*;
-
-    #[test]
-    fn test_encoded_len() {
-        for &case in ::TEST_CASES {
-            // All dummy values except for end.
-            let region = Region {
-                hash: [0; ::DIGEST_SIZE],
-                start: 0,
-                end: case as u64,
-                encoded_offset: 0,
-            };
-            let found_len = ::simple::encode(&vec![0; case]).0.len() as u64;
-            let computed_len = region.encoded_len().unwrap() + ::HEADER_SIZE as u64;
-            assert_eq!(found_len, computed_len, "wrong length in case {}", case);
-        }
-    }
 
     #[test]
     fn test_decoder() {
