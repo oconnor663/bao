@@ -1,55 +1,4 @@
-use byteorder::{ByteOrder, BigEndian};
-
-#[derive(Debug, Clone, Copy)]
-struct Region {
-    hash: ::Digest,
-    start: u64,
-    end: u64,
-    encoded_offset: u64,
-}
-
-impl Region {
-    fn contains(&self, position: u64) -> bool {
-        self.start <= position && position < self.end
-    }
-
-    fn len(&self) -> u64 {
-        self.end - self.start
-    }
-
-    fn encoded_len(&self) -> ::Result<u64> {
-        // Divide rounding up.
-        let num_chunks = (self.len() / ::CHUNK_SIZE as u64) +
-            (self.len() % ::CHUNK_SIZE as u64 > 0) as u64;
-        // Note that the empty input results in zero nodes, not "-1" nodes.
-        checked_add(
-            self.len(),
-            checked_mul(num_chunks.saturating_sub(1), ::NODE_SIZE as u64)?,
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Node {
-    left: Region,
-    right: Region,
-}
-
-impl Node {
-    fn contains(&self, position: u64) -> bool {
-        self.left.contains(position) || self.right.contains(position)
-    }
-
-    fn region_for(&self, position: u64) -> Option<Region> {
-        if self.left.contains(position) {
-            Some(self.left)
-        } else if self.right.contains(position) {
-            Some(self.right)
-        } else {
-            None
-        }
-    }
-}
+use node::{Region, Node};
 
 #[derive(Debug, Clone, Copy)]
 enum State {
@@ -91,9 +40,12 @@ impl Decoder {
             return State::Eof;
         }
         let current_region = if let Some(node) = self.stack.last() {
-            node.region_for(self.position).expect(
-                "position must be within the last node",
-            )
+            // invariant here: the current position is inside the last node
+            if node.left.contains(self.position) {
+                node.left
+            } else {
+                node.right
+            }
         } else {
             header
         };
@@ -106,8 +58,8 @@ impl Decoder {
 
     pub fn seek(&mut self, position: u64) {
         // Setting the position breaks state()'s invariant, since now we might
-        // be outside the bounds of the last node in the stack. We can't call
-        // state() until we finish popping nodes below.
+        // be outside the bounds of the last node in the stack. We have to fix
+        // it before we return.
         self.position = position;
 
         // If we don't have the header yet, or if we're EOF, short circuit.
@@ -157,14 +109,8 @@ impl Decoder {
         input: ::evil::EvilBytes<'a>,
     ) -> ::Result<(usize, Option<&'a [u8]>)> {
         let header_bytes = input.verify(::HEADER_SIZE, &self.header_hash)?;
-        let decoded_len = BigEndian::read_u64(&header_bytes[..8]);
-        let root_hash = array_ref!(header_bytes, 8, ::DIGEST_SIZE);
-        self.header = Some(Region {
-            hash: *root_hash,
-            start: 0,
-            end: decoded_len,
-            encoded_offset: ::HEADER_SIZE as u64,
-        });
+        let header_array = array_ref!(header_bytes, 0, ::HEADER_SIZE);
+        self.header = Some(Region::from_header(header_array));
         Ok((::HEADER_SIZE, None))
     }
 
@@ -198,34 +144,11 @@ impl Decoder {
         region: Region,
     ) -> ::Result<(usize, Option<&'a [u8]>)> {
         let node_bytes = input.verify(::NODE_SIZE, &region.hash)?;
-        let left_hash = array_ref!(node_bytes, 0, ::DIGEST_SIZE);
-        let right_hash = array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE);
-        let left_region = Region {
-            hash: *left_hash,
-            start: region.start,
-            end: region.start + ::left_len(region.len()),
-            encoded_offset: checked_add(region.encoded_offset, ::NODE_SIZE as u64)?,
-        };
-        let right_region = Region {
-            hash: *right_hash,
-            start: left_region.end,
-            end: region.end,
-            encoded_offset: checked_add(left_region.encoded_offset, left_region.encoded_len()?)?,
-        };
-        self.stack.push(Node {
-            left: left_region,
-            right: right_region,
-        });
+        let node_array = array_ref!(node_bytes, 0, ::NODE_SIZE);
+        let node = region.parse_node(node_array).ok_or(::Error::Overflow)?;
+        self.stack.push(node);
         Ok((::NODE_SIZE, None))
     }
-}
-
-fn checked_add(a: u64, b: u64) -> ::Result<u64> {
-    a.checked_add(b).ok_or(::Error::Overflow)
-}
-
-fn checked_mul(a: u64, b: u64) -> ::Result<u64> {
-    a.checked_mul(b).ok_or(::Error::Overflow)
 }
 
 #[cfg(test)]
@@ -234,22 +157,6 @@ mod test {
     use self::rand::Rng;
 
     use super::*;
-
-    #[test]
-    fn test_encoded_len() {
-        for &case in ::TEST_CASES {
-            // All dummy values except for end.
-            let region = Region {
-                hash: [0; ::DIGEST_SIZE],
-                start: 0,
-                end: case as u64,
-                encoded_offset: 0,
-            };
-            let found_len = ::simple::encode(&vec![0; case]).0.len() as u64;
-            let computed_len = region.encoded_len().unwrap() + ::HEADER_SIZE as u64;
-            assert_eq!(found_len, computed_len, "wrong length in case {}", case);
-        }
-    }
 
     #[test]
     fn test_decoder() {

@@ -11,6 +11,7 @@ pub mod encoder;
 pub mod decoder;
 pub mod io;
 mod evil;
+mod node;
 
 pub type Digest = [u8; DIGEST_SIZE];
 
