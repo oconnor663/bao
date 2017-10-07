@@ -1,3 +1,8 @@
+//! This module handles fiddly details like array formatting and overflow
+//! checking, so that the encoders and decoders can just focus on the higher
+//! level layout of the tree. In general there aren't any loops or recursion in
+//! here, just quick operations on nodes and regions.
+
 use byteorder::{ByteOrder, BigEndian};
 
 /// We use `None` to represent overflow here, and an equivalent to `try!` helps
@@ -9,6 +14,13 @@ macro_rules! try_opt {
             None => return None,
         }
     )
+}
+
+pub fn header_bytes(len: u64, hash: &::Digest) -> [u8; ::HEADER_SIZE] {
+    let mut ret = [0; ::HEADER_SIZE];
+    BigEndian::write_u64(&mut ret[..8], len);
+    ret[8..].copy_from_slice(hash);
+    ret
 }
 
 /// A `Region` represents some part of the content (or all of it, if it's the
@@ -37,14 +49,7 @@ impl Region {
         self.start <= position && position < self.end
     }
 
-    // pub fn to_header(&self) -> [u8; ::HEADER_SIZE] {
-    //     let mut ret = [0; ::HEADER_SIZE];
-    //     BigEndian::write_u64(&mut ret[..8], self.len());
-    //     ret[8..].copy_from_slice(&self.hash);
-    //     ret
-    // }
-
-    pub fn from_header(bytes: &[u8; ::HEADER_SIZE]) -> Region {
+    pub fn from_bytes(bytes: &[u8; ::HEADER_SIZE]) -> Region {
         Region {
             start: 0,
             end: BigEndian::read_u64(&bytes[..8]),

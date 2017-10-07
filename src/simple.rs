@@ -1,22 +1,18 @@
-use byteorder::{ByteOrder, BigEndian};
+use node::{header_bytes, Region};
 
 pub fn encode(input: &[u8]) -> (Vec<u8>, ::Digest) {
+    // Start with zeros for the header, to reserve space.
     let mut output = vec![0; ::HEADER_SIZE];
-
-    // Write the length of the input to the first 8 bytes of the header. The
-    // remaining 32 bytes in the header are reserved for the root hash.
-    BigEndian::write_u64(&mut output[..8], input.len() as u64);
 
     // Recursively encode all the input, appending to the output vector after
     // the header.
     let root_hash = encode_simple_inner(input, &mut output);
 
-    // Write the root hash to the reserved space in the header.
-    output[8..::HEADER_SIZE].copy_from_slice(&root_hash);
+    // Go back and fill in the header.
+    let header = header_bytes(input.len() as u64, &root_hash);
+    output[..::HEADER_SIZE].copy_from_slice(&header);
 
-    // Hash the header and return the results.
-    let header_hash = ::hash(&output[..::HEADER_SIZE]);
-    (output, header_hash)
+    (output, ::hash(&header))
 }
 
 fn encode_simple_inner(input: &[u8], output: &mut Vec<u8>) -> ::Digest {
@@ -59,52 +55,60 @@ pub fn decode(encoded: &[u8], hash: &::Digest) -> ::Result<Vec<u8>> {
     // Verify the header, and split out the input length and the root hash. We
     // bump `encoded` forward as we read, both here and in the recursive
     // helper.
-    let header = encoded.verify_bump(::HEADER_SIZE, hash)?;
-    let decoded_len = BigEndian::read_u64(&header[..8]);
-    if decoded_len > usize::max_value() as u64 {
-        panic!("encoded input length is too big to fit in memory");
-    }
-    let root_hash = array_ref!(header, 8, ::DIGEST_SIZE);
+    let header_slice = encoded.verify_bump(::HEADER_SIZE, hash)?;
+    let header_array = array_ref!(header_slice, 0, ::HEADER_SIZE);
+    let header = Region::from_bytes(header_array);
 
     // Recursively verify and decode the tree, appending decoded bytes to the
     // output.
-    // NOTE: We're respecting `decoded_len` and bumping the encoded input
-    // forward as we read it, rather than inspecting `encoded.len()`. That
-    // means that like a streaming reader, this decoding will ignore any extra
-    // trailing bytes appended to a valid encoding. As a result, ENCODED OUTPUT
-    // IS NOT NECESSARILY UNIQUE FOR A GIVEN INPUT. Hashes are unique, however,
-    // as a basic design requirement.
-    let mut output = Vec::with_capacity(decoded_len as usize);
-    decode_simple_inner(&mut encoded, decoded_len as usize, &root_hash, &mut output)?;
+    //
+    // NOTE: Throughout all this slicing and verifying, we never check whether
+    // the slice might have *more* bytes than we need. That means that after we
+    // decode the last chunk, we'll ignore any trailing garbage that might be
+    // appended to the encoding, just like a streaming decoder would. As a
+    // result, THERE ARE MANY VALID ENCODINGS FOR A GIVEN INPUT, differing only
+    // in their trailing garbage. Callers that assume different encoded bytes
+    // imply different (or invalid) input bytes, could get tripped up on this.
+    //
+    // It's tempting to solve this problem on our end, with a rule like
+    // "decoders must read to EOF and check for trailing garbage." But I think
+    // it's better to make no promises, than to make a promise we can't keep.
+    // Testing this rule across all future implementation would be very
+    // difficult. For example, an implementation might check for trailing
+    // garbage at the end of any block that it reads, and thus appear to past
+    // most tests, but forget the case where the end of the valid encoding
+    // lands precisely on a read boundary.
+
+    // This cast to usize could overflow on less-than-64-bit platforms. That's
+    // ok. Decoding will produce an Error::Overflow later.
+    let mut output = Vec::with_capacity(header.len() as usize);
+    decode_simple_inner(&mut encoded, &header, &mut output)?;
     Ok(output)
 }
 
 fn decode_simple_inner(
     encoded: &mut ::evil::EvilBytes,
-    decoded_len: usize,
-    hash: &::Digest,
+    region: &Region,
     output: &mut Vec<u8>,
 ) -> ::Result<()> {
     // If we're down to an individual chunk, verify its hash and append it to
     // the output. We bump the encoded input as we go, to keep track of what's
     // been read.
-    if decoded_len <= ::CHUNK_SIZE {
-        let chunk = encoded.verify_bump(decoded_len as usize, hash)?;
+    if region.len() <= ::CHUNK_SIZE as u64 {
+        let chunk = encoded.verify_bump(region.len() as usize, &region.hash)?;
         output.extend_from_slice(chunk);
         return Ok(());
     }
 
     // Otherwise we have a node, and we need to decode its left and right
     // subtrees. Verify the node bytes and read the subtree hashes.
-    let node = encoded.verify_bump(::NODE_SIZE, hash)?;
-    let left_hash = array_ref!(node, 0, ::DIGEST_SIZE);
-    let right_hash = array_ref!(node, ::DIGEST_SIZE, ::DIGEST_SIZE);
+    let node_slice = encoded.verify_bump(::NODE_SIZE, &region.hash)?;
+    let node_array = array_ref!(node_slice, 0, ::NODE_SIZE);
+    let node = region.parse_node(&node_array).ok_or(::Error::Overflow)?;
 
     // Recursively verify and decode the left and right subtrees.
-    let left_len = ::left_len(decoded_len as u64) as usize;
-    let right_len = decoded_len - left_len;
-    decode_simple_inner(encoded, left_len, left_hash, output)?;
-    decode_simple_inner(encoded, right_len, right_hash, output)?;
+    decode_simple_inner(encoded, &node.left, output)?;
+    decode_simple_inner(encoded, &node.right, output)?;
     Ok(())
 }
 

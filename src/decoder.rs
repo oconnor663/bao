@@ -110,7 +110,7 @@ impl Decoder {
     ) -> ::Result<(usize, Option<&'a [u8]>)> {
         let header_bytes = input.verify(::HEADER_SIZE, &self.header_hash)?;
         let header_array = array_ref!(header_bytes, 0, ::HEADER_SIZE);
-        self.header = Some(Region::from_header(header_array));
+        self.header = Some(Region::from_bytes(header_array));
         Ok((::HEADER_SIZE, None))
     }
 
