@@ -31,7 +31,7 @@ impl Subtree {
     fn children(&self, unverified_node: &::evil::EvilBytes) -> ::Result<(Subtree, Subtree)> {
         let verified_bytes = unverified_node.verify(::NODE_SIZE, &self.hash)?;
         let left = Subtree {
-            len: ::left_len(self.len),
+            len: ::node::left_subregion_len(self.len),
             hash: *array_ref!(verified_bytes, 0, ::DIGEST_SIZE),
         };
         let right = Subtree {

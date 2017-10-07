@@ -123,7 +123,7 @@ impl Node {
 /// `encoded_len` below. The stability of the left subtrees makes it efficient
 /// to build a tree incrementally, since appending input bytes only affects
 /// nodes on the rightmost edge of the tree.
-fn left_subregion_len(region_len: u64) -> u64 {
+pub fn left_subregion_len(region_len: u64) -> u64 {
     debug_assert!(region_len > ::CHUNK_SIZE as u64);
     // Reserve at least one byte for the right side.
     let full_chunks = (region_len - 1) / ::CHUNK_SIZE as u64;

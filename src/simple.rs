@@ -1,4 +1,4 @@
-use node::{header_bytes, Region};
+use node::{self, Region};
 
 pub fn encode(input: &[u8]) -> (Vec<u8>, ::Digest) {
     // Start with zeros for the header, to reserve space.
@@ -9,7 +9,7 @@ pub fn encode(input: &[u8]) -> (Vec<u8>, ::Digest) {
     let root_hash = encode_simple_inner(input, &mut output);
 
     // Go back and fill in the header.
-    let header = header_bytes(input.len() as u64, &root_hash);
+    let header = node::header_bytes(input.len() as u64, &root_hash);
     output[..::HEADER_SIZE].copy_from_slice(&header);
 
     (output, ::hash(&header))
@@ -35,7 +35,7 @@ fn encode_simple_inner(input: &[u8], output: &mut Vec<u8>) -> ::Digest {
     // Recursively encode the left and right subtrees, appending them to the
     // output. The left subtree is the largest full tree of full chunks that we
     // can make without leaving the right tree empty.
-    let left_len = ::left_len(input.len() as u64) as usize;
+    let left_len = node::left_subregion_len(input.len() as u64) as usize;
     let left_hash = encode_simple_inner(&input[..left_len], output);
     let right_hash = encode_simple_inner(&input[left_len..], output);
 
