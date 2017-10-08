@@ -1,62 +1,32 @@
-use byteorder::{ByteOrder, BigEndian};
-
-// TODO: Factor this type up and combine it with Region.
+// TODO: Unify this with Region somehow?
 #[derive(Debug, Copy, Clone)]
-struct Subtree {
+pub struct Subtree {
     len: u64,
     hash: ::Digest,
 }
 
 impl Subtree {
-    fn join(&self, rhs: &Subtree) -> Subtree {
-        let mut node = [0; 2 * ::DIGEST_SIZE];
-        node[..::DIGEST_SIZE].copy_from_slice(&self.hash);
-        node[::DIGEST_SIZE..].copy_from_slice(&rhs.hash);
-        Subtree {
-            len: self.len.checked_add(rhs.len).expect("len overflow"),
-            hash: ::hash(&node),
-        }
-    }
-
-    #[cfg(test)]
-    fn children(&self, node_bytes: &[u8]) -> (Subtree, Subtree) {
-        let left = Subtree {
-            len: ::node::left_subregion_len(self.len),
-            hash: *array_ref!(node_bytes, 0, ::DIGEST_SIZE),
-        };
-        let right = Subtree {
-            len: self.len - left.len,
-            hash: *array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE),
-        };
-        (left, right)
-    }
-
-    fn to_header_bytes(&self) -> [u8; ::HEADER_SIZE] {
-        let mut ret = [0; ::HEADER_SIZE];
-        BigEndian::write_u64(&mut ret[..8], self.len);
-        ret[8..].copy_from_slice(&self.hash);
-        ret
-    }
-
-    #[cfg(test)]
-    fn from_header_bytes(bytes: &[u8]) -> Subtree {
-        Subtree {
-            len: BigEndian::read_u64(&bytes[..8]),
-            hash: *array_ref!(bytes, 8, ::DIGEST_SIZE),
-        }
-    }
-
-    fn from_chunk(chunk: &[u8]) -> Subtree {
-        Subtree {
+    fn from_chunk(chunk: &[u8]) -> Self {
+        Self {
             len: chunk.len() as u64,
             hash: ::hash(chunk),
         }
     }
 
-    fn empty() -> Subtree {
-        Subtree {
+    fn empty() -> Self {
+        Self {
             len: 0,
-            hash: ::hash(&*b""),
+            hash: ::hash(&[]),
+        }
+    }
+
+    fn join(&self, rhs: &Self) -> Self {
+        let mut node = [0; ::NODE_SIZE];
+        node[..::DIGEST_SIZE].copy_from_slice(&self.hash);
+        node[::DIGEST_SIZE..].copy_from_slice(&rhs.hash);
+        Self {
+            len: self.len.checked_add(rhs.len).expect("overflow in encoding"),
+            hash: ::hash(&node),
         }
     }
 }
@@ -140,7 +110,7 @@ impl PostOrderEncoder {
         // Take the the final remaining subtree, or the empty subtree if there
         // was never any input, and turn it into the header.
         let root = self.stack.pop().unwrap_or_else(Subtree::empty);
-        let header_bytes = root.to_header_bytes();
+        let header_bytes = ::node::header_bytes(root.len, &root.hash);
         self.out_buf.extend_from_slice(&header_bytes);
         (&self.out_buf, ::hash(&header_bytes))
     }
@@ -150,6 +120,7 @@ impl PostOrderEncoder {
 mod test {
     use super::*;
     use unverified::Unverified;
+    use node::Region;
 
     // Very similar to the simple decoder function, but for a post-order tree.
     fn validate_post_order_encoding(encoded: &[u8], hash: &::Digest) {
@@ -157,24 +128,22 @@ mod test {
         let header_bytes = encoded.read_verify_back(::HEADER_SIZE, hash).expect(
             "bad header",
         );
-        let header = Subtree::from_header_bytes(header_bytes);
+        let header = Region::from_header_bytes(header_bytes);
         validate_post_order_encoding_inner(&mut encoded, &header);
     }
 
-    fn validate_post_order_encoding_inner(encoded: &mut Unverified, subtree: &Subtree) {
-        if subtree.len <= ::CHUNK_SIZE as u64 {
+    fn validate_post_order_encoding_inner(encoded: &mut Unverified, region: &Region) {
+        if region.len() <= ::CHUNK_SIZE as u64 {
             encoded
-                .read_verify_back(subtree.len as usize, &subtree.hash)
-                .expect("bad chunk");
+                .read_verify_back(region.len() as usize, &region.hash)
+                .unwrap();
             return;
         }
-        let node_bytes = encoded
-            .read_verify_back(::NODE_SIZE, &subtree.hash)
-            .expect("bad node");
-        let (left_subtree, right_subtree) = subtree.children(node_bytes);
+        let node_bytes = encoded.read_verify_back(::NODE_SIZE, &region.hash).unwrap();
+        let node = region.parse_node(node_bytes).unwrap();
         // Note that we have to validate right *then* left.
-        validate_post_order_encoding_inner(encoded, &right_subtree);
-        validate_post_order_encoding_inner(encoded, &left_subtree);
+        validate_post_order_encoding_inner(encoded, &node.right);
+        validate_post_order_encoding_inner(encoded, &node.left);
     }
 
     fn post_order_encode_all(mut input: &[u8]) -> (Vec<u8>, ::Digest) {
