@@ -1,4 +1,5 @@
 use node::{Region, Node};
+use unverified::Unverified;
 
 #[derive(Debug, Clone, Copy)]
 enum State {
@@ -94,32 +95,32 @@ impl Decoder {
     pub fn feed<'a>(&mut self, input: &'a [u8]) -> ::Result<(usize, Option<&'a [u8]>)> {
         // Immediately shadow input with a wrapper type that only gives us
         // bytes when the hash is correct.
-        let input = ::evil::EvilBytes::wrap(input);
+        let mut input = Unverified::wrap(input);
 
         match self.state() {
-            State::NoHeader => self.feed_header(input),
+            State::NoHeader => self.feed_header(&mut input),
             State::Eof => Ok((0, None)),
-            State::Chunk(r) => self.feed_chunk(input, r),
-            State::Node(r) => self.feed_node(input, r),
+            State::Chunk(r) => self.feed_chunk(&mut input, r),
+            State::Node(r) => self.feed_node(&mut input, r),
         }
     }
 
     fn feed_header<'a>(
         &mut self,
-        input: ::evil::EvilBytes<'a>,
+        input: &mut Unverified<'a>,
     ) -> ::Result<(usize, Option<&'a [u8]>)> {
-        let header_bytes = input.verify(::HEADER_SIZE, &self.header_hash)?;
+        let header_bytes = input.read_verify(::HEADER_SIZE, &self.header_hash)?;
         let header_array = array_ref!(header_bytes, 0, ::HEADER_SIZE);
-        self.header = Some(Region::from_bytes(header_array));
+        self.header = Some(Region::from_header_bytes(header_array));
         Ok((::HEADER_SIZE, None))
     }
 
     fn feed_chunk<'a>(
         &mut self,
-        input: ::evil::EvilBytes<'a>,
+        input: &mut Unverified<'a>,
         region: Region,
     ) -> ::Result<(usize, Option<&'a [u8]>)> {
-        let chunk_bytes = input.verify(region.len() as usize, &region.hash)?;
+        let chunk_bytes = input.read_verify(region.len() as usize, &region.hash)?;
         // We pay attention to the `chunk_offset` for cases where a previous
         // seek() put us in the middle of the chunk. In that case, we still
         // have to verify the whole thing, but we only return the bytes after
@@ -140,12 +141,11 @@ impl Decoder {
 
     fn feed_node<'a>(
         &mut self,
-        input: ::evil::EvilBytes<'a>,
+        input: &mut Unverified<'a>,
         region: Region,
     ) -> ::Result<(usize, Option<&'a [u8]>)> {
-        let node_bytes = input.verify(::NODE_SIZE, &region.hash)?;
-        let node_array = array_ref!(node_bytes, 0, ::NODE_SIZE);
-        let node = region.parse_node(node_array).ok_or(::Error::Overflow)?;
+        let node_bytes = input.read_verify(::NODE_SIZE, &region.hash)?;
+        let node = region.parse_node(node_bytes)?;
         self.stack.push(node);
         Ok((::NODE_SIZE, None))
     }

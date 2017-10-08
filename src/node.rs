@@ -1,27 +1,9 @@
-//! This module handles fiddly details like array formatting and overflow
+//! This module handles fiddly details like byte formatting and overflow
 //! checking, so that the encoders and decoders can just focus on the higher
 //! level layout of the tree. In general there aren't any loops or recursion in
 //! here, just quick operations on nodes and regions.
 
 use byteorder::{ByteOrder, BigEndian};
-
-/// We use `None` to represent overflow here, and an equivalent to `try!` helps
-/// make that code easier to write.
-macro_rules! try_opt {
-    ($e:expr) => (
-        match $e {
-            Some(v) => v,
-            None => return None,
-        }
-    )
-}
-
-pub fn header_bytes(len: u64, hash: &::Digest) -> [u8; ::HEADER_SIZE] {
-    let mut ret = [0; ::HEADER_SIZE];
-    BigEndian::write_u64(&mut ret[..8], len);
-    ret[8..].copy_from_slice(hash);
-    ret
-}
 
 /// A `Region` represents some part of the content (or all of it, if it's the
 /// "root region") with a given hash. If the length of the region is less than
@@ -49,7 +31,7 @@ impl Region {
         self.start <= position && position < self.end
     }
 
-    pub fn from_bytes(bytes: &[u8; ::HEADER_SIZE]) -> Region {
+    pub fn from_header_bytes(bytes: &[u8]) -> Region {
         Region {
             start: 0,
             end: BigEndian::read_u64(&bytes[..8]),
@@ -61,22 +43,20 @@ impl Region {
     /// Splits the current region into two subregions, with the key logic
     /// happening in `left_subregion_len`. If calculating the new
     /// `encoded_offset` overflows, return `None`.
-    pub fn parse_node(&self, bytes: &[u8; ::NODE_SIZE]) -> Option<Node> {
+    pub fn parse_node(&self, bytes: &[u8]) -> ::Result<Node> {
         let left = Region {
             start: self.start,
             end: self.start + left_subregion_len(self.len()),
-            encoded_offset: try_opt!(self.encoded_offset.checked_add(::NODE_SIZE as u64)),
+            encoded_offset: checked_add(self.encoded_offset, ::NODE_SIZE as u64)?,
             hash: *array_ref!(bytes, 0, ::DIGEST_SIZE),
         };
         let right = Region {
             start: left.end,
             end: self.end,
-            encoded_offset: try_opt!(left.encoded_offset.checked_add(
-                try_opt!(encoded_len(left.len())),
-            )),
+            encoded_offset: checked_add(left.encoded_offset, encoded_len(left.len())?)?,
             hash: *array_ref!(bytes, ::DIGEST_SIZE, ::DIGEST_SIZE),
         };
-        Some(Node { left, right })
+        Ok(Node { left, right })
     }
 }
 
@@ -90,22 +70,13 @@ impl Node {
     pub fn contains(&self, position: u64) -> bool {
         self.left.start <= position && position < self.right.end
     }
+}
 
-    // pub fn to_bytes(&self) -> [u8; ::NODE_SIZE] {
-    //     let mut bytes = [0; ::NODE_SIZE];
-    //     bytes[..::DIGEST_SIZE].copy_from_slice(&self.left.hash);
-    //     bytes[::DIGEST_SIZE..].copy_from_slice(&self.right.hash);
-    //     bytes
-    // }
-
-    // pub fn region(&self) -> Region {
-    //     Region {
-    //         start: self.left.start,
-    //         end: self.right.end,
-    //         encoded_offset: self.left.encoded_offset - ::NODE_SIZE as u64,
-    //         hash: ::hash(&self.to_bytes()),
-    //     }
-    // }
+pub fn header_bytes(len: u64, hash: &::Digest) -> [u8; ::HEADER_SIZE] {
+    let mut ret = [0; ::HEADER_SIZE];
+    BigEndian::write_u64(&mut ret[..8], len);
+    ret[8..].copy_from_slice(hash);
+    ret
 }
 
 /// "Given a region of input length `n`, larger than one chunk, what's the
@@ -151,7 +122,7 @@ fn largest_power_of_two(n: u64) -> u64 {
 ///
 /// Because the encoded len is longer than the input length, it can overflow
 /// for very large inputs. In that case, we return `None`.
-fn encoded_len(region_len: u64) -> Option<u64> {
+pub fn encoded_len(region_len: u64) -> ::Result<u64> {
     // Divide rounding up to get the number of chunks.
     let num_chunks = (region_len / ::CHUNK_SIZE as u64) +
         (region_len % ::CHUNK_SIZE as u64 > 0) as u64;
@@ -159,16 +130,16 @@ fn encoded_len(region_len: u64) -> Option<u64> {
     let num_nodes = num_chunks.saturating_sub(1);
     // `all_nodes` can't overflow by itself unless the node size is larger
     // than the chunk size, which would be pathological, but whatever :p
-    try_opt!(num_nodes.checked_mul(::NODE_SIZE as u64)).checked_add(region_len)
+    checked_add(checked_mul(num_nodes, ::NODE_SIZE as u64)?, region_len)
 }
 
-// fn checked_add(a: u64, b: u64) -> ::Result<u64> {
-//     a.checked_add(b).ok_or(::Error::Overflow)
-// }
+fn checked_add(a: u64, b: u64) -> ::Result<u64> {
+    a.checked_add(b).ok_or(::Error::Overflow)
+}
 
-// fn checked_mul(a: u64, b: u64) -> ::Result<u64> {
-//     a.checked_mul(b).ok_or(::Error::Overflow)
-// }
+fn checked_mul(a: u64, b: u64) -> ::Result<u64> {
+    a.checked_mul(b).ok_or(::Error::Overflow)
+}
 
 #[cfg(test)]
 mod test {

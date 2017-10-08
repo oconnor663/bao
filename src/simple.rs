@@ -1,4 +1,5 @@
 use node::{self, Region};
+use unverified::Unverified;
 
 pub fn encode(input: &[u8]) -> (Vec<u8>, ::Digest) {
     // Start with zeros for the header, to reserve space.
@@ -47,64 +48,57 @@ fn encode_simple_inner(input: &[u8], output: &mut Vec<u8>) -> ::Digest {
     ::hash(&output[node_start..node_end])
 }
 
+/// Recursively verify the encoded tree and return the content.
+///
+/// Throughout all this slicing and verifying, we never check whether a slice
+/// has *more* bytes than we need. That means that after we decode the last
+/// chunk, we'll ignore any trailing garbage that might be appended to the
+/// encoding, just like a streaming decoder would. As a result, THERE ARE MANY
+/// VALID ENCODINGS FOR A GIVEN INPUT, differing only in their trailing
+/// garbage. Callers that assume different encoded bytes imply different (or
+/// invalid) input bytes, could get tripped up on this.
+///
+/// It's tempting to solve this problem on our end, with a rule like "decoders
+/// must read to EOF and check for trailing garbage." But I think it's better
+/// to make no promises, than to make a promise we can't keep. Testing this
+/// rule across all future implementation would be very difficult. For example,
+/// an implementation might check for trailing garbage at the end of any block
+/// that it reads, and thus appear to past most tests, but forget the case
+/// where the end of the valid encoding lands precisely on a read boundary.
 pub fn decode(encoded: &[u8], hash: &::Digest) -> ::Result<Vec<u8>> {
     // Immediately shadow the encoded input with a wrapper type that only gives
     // us bytes when the hash is correct.
-    let mut encoded = ::evil::EvilBytes::wrap(encoded);
+    let mut encoded = Unverified::wrap(encoded);
 
-    // Verify the header, and split out the input length and the root hash. We
-    // bump `encoded` forward as we read, both here and in the recursive
-    // helper.
-    let header_slice = encoded.verify_bump(::HEADER_SIZE, hash)?;
-    let header_array = array_ref!(header_slice, 0, ::HEADER_SIZE);
-    let header = Region::from_bytes(header_array);
+    // Verify and parse the header. Each successful read_verify moves the
+    // encoded input forward.
+    let header_bytes = encoded.read_verify(::HEADER_SIZE, hash)?;
+    let header = Region::from_header_bytes(header_bytes);
 
     // Recursively verify and decode the tree, appending decoded bytes to the
     // output.
-    //
-    // NOTE: Throughout all this slicing and verifying, we never check whether
-    // the slice might have *more* bytes than we need. That means that after we
-    // decode the last chunk, we'll ignore any trailing garbage that might be
-    // appended to the encoding, just like a streaming decoder would. As a
-    // result, THERE ARE MANY VALID ENCODINGS FOR A GIVEN INPUT, differing only
-    // in their trailing garbage. Callers that assume different encoded bytes
-    // imply different (or invalid) input bytes, could get tripped up on this.
-    //
-    // It's tempting to solve this problem on our end, with a rule like
-    // "decoders must read to EOF and check for trailing garbage." But I think
-    // it's better to make no promises, than to make a promise we can't keep.
-    // Testing this rule across all future implementation would be very
-    // difficult. For example, an implementation might check for trailing
-    // garbage at the end of any block that it reads, and thus appear to past
-    // most tests, but forget the case where the end of the valid encoding
-    // lands precisely on a read boundary.
-
-    // This cast to usize could overflow on less-than-64-bit platforms. That's
-    // ok. Decoding will produce an Error::Overflow later.
     let mut output = Vec::with_capacity(header.len() as usize);
     decode_simple_inner(&mut encoded, &header, &mut output)?;
     Ok(output)
 }
 
 fn decode_simple_inner(
-    encoded: &mut ::evil::EvilBytes,
+    encoded: &mut Unverified,
     region: &Region,
     output: &mut Vec<u8>,
 ) -> ::Result<()> {
     // If we're down to an individual chunk, verify its hash and append it to
-    // the output. We bump the encoded input as we go, to keep track of what's
-    // been read.
+    // the output.
     if region.len() <= ::CHUNK_SIZE as u64 {
-        let chunk = encoded.verify_bump(region.len() as usize, &region.hash)?;
-        output.extend_from_slice(chunk);
+        let chunk_bytes = encoded.read_verify(region.len() as usize, &region.hash)?;
+        output.extend_from_slice(chunk_bytes);
         return Ok(());
     }
 
     // Otherwise we have a node, and we need to decode its left and right
     // subtrees. Verify the node bytes and read the subtree hashes.
-    let node_slice = encoded.verify_bump(::NODE_SIZE, &region.hash)?;
-    let node_array = array_ref!(node_slice, 0, ::NODE_SIZE);
-    let node = region.parse_node(&node_array).ok_or(::Error::Overflow)?;
+    let node_bytes = encoded.read_verify(::NODE_SIZE, &region.hash)?;
+    let node = region.parse_node(node_bytes)?;
 
     // Recursively verify and decode the left and right subtrees.
     decode_simple_inner(encoded, &node.left, output)?;

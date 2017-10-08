@@ -5,12 +5,13 @@ extern crate ring;
 
 use ring::{constant_time, digest};
 
+#[macro_use]
+mod unverified;
+mod node;
 pub mod simple;
 pub mod encoder;
 pub mod decoder;
 pub mod io;
-mod evil;
-mod node;
 
 pub type Digest = [u8; DIGEST_SIZE];
 

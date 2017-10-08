@@ -8,15 +8,6 @@ struct Subtree {
 }
 
 impl Subtree {
-    #[cfg(test)]
-    fn encoded_len(&self) -> u64 {
-        // Divide rounding up.
-        let num_chunks = (self.len / ::CHUNK_SIZE as u64) +
-            (self.len % ::CHUNK_SIZE as u64 > 0) as u64;
-        // Note that the empty input results in zero nodes, not "-1" nodes.
-        self.len + num_chunks.saturating_sub(1) * ::NODE_SIZE as u64
-    }
-
     fn join(&self, rhs: &Subtree) -> Subtree {
         let mut node = [0; 2 * ::DIGEST_SIZE];
         node[..::DIGEST_SIZE].copy_from_slice(&self.hash);
@@ -28,17 +19,16 @@ impl Subtree {
     }
 
     #[cfg(test)]
-    fn children(&self, unverified_node: &::evil::EvilBytes) -> ::Result<(Subtree, Subtree)> {
-        let verified_bytes = unverified_node.verify(::NODE_SIZE, &self.hash)?;
+    fn children(&self, node_bytes: &[u8]) -> (Subtree, Subtree) {
         let left = Subtree {
             len: ::node::left_subregion_len(self.len),
-            hash: *array_ref!(verified_bytes, 0, ::DIGEST_SIZE),
+            hash: *array_ref!(node_bytes, 0, ::DIGEST_SIZE),
         };
         let right = Subtree {
             len: self.len - left.len,
-            hash: *array_ref!(verified_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE),
+            hash: *array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE),
         };
-        Ok((left, right))
+        (left, right)
     }
 
     fn to_header_bytes(&self) -> [u8; ::HEADER_SIZE] {
@@ -49,15 +39,11 @@ impl Subtree {
     }
 
     #[cfg(test)]
-    fn from_header_bytes(
-        unverified_header: &::evil::EvilBytes,
-        hash: &::Digest,
-    ) -> ::Result<Subtree> {
-        let verified_bytes = unverified_header.verify(::HEADER_SIZE, hash)?;
-        Ok(Subtree {
-            len: BigEndian::read_u64(&verified_bytes[..8]),
-            hash: *array_ref!(verified_bytes, 8, ::DIGEST_SIZE),
-        })
+    fn from_header_bytes(bytes: &[u8]) -> Subtree {
+        Subtree {
+            len: BigEndian::read_u64(&bytes[..8]),
+            hash: *array_ref!(bytes, 8, ::DIGEST_SIZE),
+        }
     }
 
     fn from_chunk(chunk: &[u8]) -> Subtree {
@@ -163,35 +149,32 @@ impl PostOrderEncoder {
 #[cfg(test)]
 mod test {
     use super::*;
+    use unverified::Unverified;
 
     // Very similar to the simple decoder function, but for a post-order tree.
-    fn validate_post_order_encoding(encoded: &::evil::EvilBytes, hash: &::Digest) {
-        let header_start = encoded.len() - ::HEADER_SIZE;
-        let header_encoded = encoded.slice(header_start, encoded.len());
-        let header = Subtree::from_header_bytes(&header_encoded, hash).expect("bad header");
-        let encoded_rest = encoded.slice(0, header_start);
-        assert_eq!(
-            header.encoded_len(),
-            encoded_rest.len() as u64,
-            "encoded len doesn't make sense"
+    fn validate_post_order_encoding(encoded: &[u8], hash: &::Digest) {
+        let mut encoded = Unverified::wrap(encoded);
+        let header_bytes = encoded.read_verify_back(::HEADER_SIZE, hash).expect(
+            "bad header",
         );
-        validate_post_order_encoding_inner(&encoded_rest, &header);
+        let header = Subtree::from_header_bytes(header_bytes);
+        validate_post_order_encoding_inner(&mut encoded, &header);
     }
 
-    fn validate_post_order_encoding_inner(encoded: &::evil::EvilBytes, subtree: &Subtree) {
-        if encoded.len() <= ::CHUNK_SIZE {
-            encoded.verify(encoded.len(), &subtree.hash).expect(
-                "bad chunk",
-            );
+    fn validate_post_order_encoding_inner(encoded: &mut Unverified, subtree: &Subtree) {
+        if subtree.len <= ::CHUNK_SIZE as u64 {
+            encoded
+                .read_verify_back(subtree.len as usize, &subtree.hash)
+                .expect("bad chunk");
             return;
         }
-        let node_start = encoded.len() - ::NODE_SIZE;
-        let node_encoded = encoded.slice(node_start, encoded.len());
-        let (left_subtree, right_subtree) = subtree.children(&node_encoded).expect("bad node");
-        let left_encoded = encoded.slice(0, left_subtree.encoded_len() as usize);
-        validate_post_order_encoding_inner(&left_encoded, &left_subtree);
-        let right_encoded = encoded.slice(left_encoded.len(), node_start);
-        validate_post_order_encoding_inner(&right_encoded, &right_subtree);
+        let node_bytes = encoded
+            .read_verify_back(::NODE_SIZE, &subtree.hash)
+            .expect("bad node");
+        let (left_subtree, right_subtree) = subtree.children(node_bytes);
+        // Note that we have to validate right *then* left.
+        validate_post_order_encoding_inner(encoded, &right_subtree);
+        validate_post_order_encoding_inner(encoded, &left_subtree);
     }
 
     fn post_order_encode_all(mut input: &[u8]) -> (Vec<u8>, ::Digest) {
@@ -213,7 +196,7 @@ mod test {
             println!("starting case {}", case);
             let input = vec![0x33; case];
             let (encoded, hash) = post_order_encode_all(&input);
-            validate_post_order_encoding(&::evil::EvilBytes::wrap(&encoded), &hash);
+            validate_post_order_encoding(&encoded, &hash);
 
             // Also compare against the hash from the standard encoding.
             // Despite the difference in tree layout, the hashes should all be
