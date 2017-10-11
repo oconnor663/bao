@@ -104,12 +104,9 @@ fn decode_recurse(
     // Otherwise we have a node, and we need to decode its left and right
     // subtrees. Verify the node bytes and read the subtree hashes.
     let node_bytes = encoded.read_verify(::NODE_SIZE, &hash)?;
-    let left_hash = *array_ref!(node_bytes, 0, ::DIGEST_SIZE);
-    let right_hash = *array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE);
+    let (left_len, right_len, left_hash, right_hash) = split_node(region_len, node_bytes);
 
     // Recursively verify and decode the left and right subtrees.
-    let left_len = left_subregion_len(region_len);
-    let right_len = region_len - left_len;
     decode_recurse(encoded, left_len, &left_hash, output)?;
     decode_recurse(encoded, right_len, &right_hash, output)?;
     Ok(())
@@ -156,6 +153,14 @@ pub(crate) fn to_header_bytes(len: u64, hash: &::Digest) -> [u8; ::HEADER_SIZE] 
     BigEndian::write_u64(&mut ret[..8], len);
     ret[8..].copy_from_slice(hash);
     ret
+}
+
+pub(crate) fn split_node(region_len: u64, node_bytes: &[u8]) -> (u64, u64, ::Digest, ::Digest) {
+    let left_len = left_subregion_len(region_len);
+    let right_len = region_len - left_len;
+    let left_hash = *array_ref!(node_bytes, 0, ::DIGEST_SIZE);
+    let right_hash = *array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE);
+    (left_len, right_len, left_hash, right_hash)
 }
 
 #[cfg(test)]

@@ -1,7 +1,5 @@
-use node;
-use simple::{left_subregion_len, to_header_bytes};
+use simple::{left_subregion_len, to_header_bytes, from_header_bytes};
 
-// TODO: Unify this with Region somehow?
 #[derive(Debug, Copy, Clone)]
 pub struct Subtree {
     len: u64,
@@ -120,9 +118,9 @@ struct Node {
 }
 
 pub struct PostToPreFlipper {
-    header: Option<node::Region>,
-    span_start: u64,
-    span_len: u64,
+    header: [u8; ::HEADER_SIZE],
+    region_start: u64,
+    region_len: u64,
     stack: Vec<Node>,
     output: Vec<u8>,
 }
@@ -130,9 +128,9 @@ pub struct PostToPreFlipper {
 impl PostToPreFlipper {
     pub fn new() -> Self {
         Self {
-            header: None,
-            span_start: 0,
-            span_len: 0,
+            header: [0; ::HEADER_SIZE],
+            region_start: 0,
+            region_len: 0,
             stack: Vec::new(),
             output: Vec::new(),
         }
@@ -147,38 +145,35 @@ impl PostToPreFlipper {
     /// Note that there is no finalize method. The caller is expected to know
     /// when it's reached the front of its own input.
     pub fn feed_back(&mut self, input: &[u8]) -> ::Result<(usize, Option<&[u8]>)> {
-        let header = match self.header {
-            Some(header) => header,
-            None => {
-                let header = node::Region::from_header_bytes(bytes_from_end(input, ::HEADER_SIZE)?);
-                // If the header length field is zero, then we're already done,
-                // and we need to return it as output.
-                if header.len() == 0 {
-                    self.output.clear();
-                    self.output.extend_from_slice(
-                        &to_header_bytes(header.len(), &header.hash),
-                    );
-                    return Ok((::HEADER_SIZE, Some(&self.output)));
-                } else {
-                    self.header = Some(header);
-                    self.span_start = 0;
-                    self.span_len = header.end;
-                    return Ok((::HEADER_SIZE, None));
-                }
+        // If region_len is zero, the codec is uninitialized. We read the
+        // header and then either set region_len to non-zero, or immediately
+        // finish (having learned that the encoding has no content).
+        if self.region_len == 0 {
+            let header = bytes_from_end(input, ::HEADER_SIZE)?;
+            let (len, _) = from_header_bytes(header);
+            self.header = *array_ref!(header, 0, ::HEADER_SIZE);
+            self.region_start = 0;
+            self.region_len = len;
+            // If the header length field is zero, then we're already done,
+            // and we need to return it as output.
+            if len == 0 {
+                return Ok((::HEADER_SIZE, Some(&self.header[..])));
+            } else {
+                return Ok((::HEADER_SIZE, None));
             }
-        };
-        if self.span_len > ::CHUNK_SIZE as u64 {
+        }
+        if self.region_len > ::CHUNK_SIZE as u64 {
             // We need to read nodes. We'll keep following the right child of
             // the current node until eventually we reach the rightmost chunk.
-            let left_len = left_subregion_len(self.span_len);
+            let left_len = left_subregion_len(self.region_len);
             let node = Node {
                 bytes: *array_ref!(bytes_from_end(input, ::NODE_SIZE)?, 0, ::NODE_SIZE),
-                start: self.span_start,
+                start: self.region_start,
                 left_len,
             };
             self.stack.push(node);
-            self.span_start += left_len;
-            self.span_len -= left_len;
+            self.region_start += left_len;
+            self.region_len -= left_len;
             Ok((::NODE_SIZE, None))
         } else {
             // We've reached a chunk. We'll emit it as output, and we'll
@@ -187,20 +182,18 @@ impl PostToPreFlipper {
             //
             // Grab the chunk first, so that we don't make any mutations in
             // case it's too short.
-            let chunk = bytes_from_end(input, self.span_len as usize)?;
+            let chunk = bytes_from_end(input, self.region_len as usize)?;
             self.output.clear();
             // Figure out how many nodes we just finished with. They'll need to
             // be prepended to the chunk. If we're finished with all the nodes,
             // we'll also prepend the header. It's more common to be finished
             // with 1 node than with n nodes, so start from the end.
             let mut finished_index = self.stack.len();
-            while finished_index > 0 && self.span_start == self.stack[finished_index - 1].start {
+            while finished_index > 0 && self.region_start == self.stack[finished_index - 1].start {
                 finished_index -= 1;
             }
             if finished_index == 0 {
-                self.output.extend_from_slice(
-                    &to_header_bytes(header.len(), &header.hash),
-                );
+                self.output.extend_from_slice(&self.header[..]);
             }
             for node in self.stack.drain(finished_index..) {
                 self.output.extend_from_slice(&node.bytes);
@@ -211,8 +204,8 @@ impl PostToPreFlipper {
             // for the following reads. This is where we descend left; the
             // other branch which parses nodes always descends right.
             if let Some(node) = self.stack.last() {
-                self.span_start = node.start;
-                self.span_len = node.left_len;
+                self.region_start = node.start;
+                self.region_len = node.left_len;
             }
             Ok((chunk.len(), Some(&self.output)))
         }
@@ -231,7 +224,6 @@ fn bytes_from_end(input: &[u8], len: usize) -> ::Result<&[u8]> {
 mod test {
     use super::*;
     use unverified::Unverified;
-    use node::Region;
     use simple;
 
     // Very similar to the simple decoder function, but for a post-order tree.
@@ -240,22 +232,24 @@ mod test {
         let header_bytes = encoded.read_verify_back(::HEADER_SIZE, hash).expect(
             "bad header",
         );
-        let header = Region::from_header_bytes(header_bytes);
-        validate_post_order_encoding_inner(&mut encoded, &header);
+        let (len, hash) = simple::from_header_bytes(header_bytes);
+        validate_recurse(&mut encoded, len, &hash);
     }
 
-    fn validate_post_order_encoding_inner(encoded: &mut Unverified, region: &Region) {
-        if region.len() <= ::CHUNK_SIZE as u64 {
+    fn validate_recurse(encoded: &mut Unverified, region_len: u64, region_hash: &::Digest) {
+        if region_len <= ::CHUNK_SIZE as u64 {
             encoded
-                .read_verify_back(region.len() as usize, &region.hash)
+                .read_verify_back(region_len as usize, region_hash)
                 .unwrap();
             return;
         }
-        let node_bytes = encoded.read_verify_back(::NODE_SIZE, &region.hash).unwrap();
-        let node = region.parse_node(node_bytes).unwrap();
-        // Note that we have to validate right *then* left.
-        validate_post_order_encoding_inner(encoded, &node.right);
-        validate_post_order_encoding_inner(encoded, &node.left);
+        let node_bytes = encoded.read_verify_back(::NODE_SIZE, region_hash).unwrap();
+        let (left_len, right_len, left_hash, right_hash) =
+            simple::split_node(region_len, node_bytes);
+        // Note that we have to validate ***right then left***, because we're
+        // reading from the back.
+        validate_recurse(encoded, right_len, &right_hash);
+        validate_recurse(encoded, left_len, &left_hash);
     }
 
     fn post_order_encode_all(mut input: &[u8]) -> (Vec<u8>, ::Digest) {
