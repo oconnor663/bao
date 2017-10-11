@@ -230,7 +230,7 @@ impl Node {
 /// the bytes of the header itself, which aren't accounted for here.
 ///
 /// Because the encoded len is longer than the input length, it can overflow
-/// for very large inputs. In that case, we return `None`.
+/// for very large inputs. In that case, we return `Err(Overflow)`.
 pub fn encoded_len(region_len: u64) -> ::Result<u64> {
     // Divide rounding up to get the number of chunks.
     let num_chunks = (region_len / ::CHUNK_SIZE as u64) +
