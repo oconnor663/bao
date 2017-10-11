@@ -81,7 +81,7 @@ impl PostOrderEncoder {
             "full chunk or more passed to finalize"
         );
         self.out_buf.clear();
-        if input.len() > 0 {
+        if !input.is_empty() {
             self.out_buf.extend_from_slice(input);
             self.stack.push(Subtree::from_chunk(input));
         }

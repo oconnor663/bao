@@ -103,7 +103,7 @@ fn decode_recurse(
 
     // Otherwise we have a node, and we need to decode its left and right
     // subtrees. Verify the node bytes and read the subtree hashes.
-    let node_bytes = encoded.read_verify(::NODE_SIZE, &hash)?;
+    let node_bytes = encoded.read_verify(::NODE_SIZE, hash)?;
     let (left_len, right_len, left_hash, right_hash) = split_node(region_len, node_bytes);
 
     // Recursively verify and decode the left and right subtrees.
