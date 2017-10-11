@@ -5,7 +5,6 @@ extern crate ring;
 
 use ring::{constant_time, digest};
 
-#[macro_use]
 mod unverified;
 mod node;
 pub mod simple;

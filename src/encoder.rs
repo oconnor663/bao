@@ -1,4 +1,5 @@
 use node;
+use simple::{left_subregion_len, to_header_bytes};
 
 // TODO: Unify this with Region somehow?
 #[derive(Debug, Copy, Clone)]
@@ -103,7 +104,7 @@ impl PostOrderEncoder {
         // Take the the final remaining subtree, or the empty subtree if there
         // was never any input, and turn it into the header.
         let root = self.stack.pop().unwrap_or_else(Subtree::empty);
-        let header_bytes = node::header_bytes(root.len, &root.hash);
+        let header_bytes = to_header_bytes(root.len, &root.hash);
         self.out_buf.extend_from_slice(&header_bytes);
         (&self.out_buf, ::hash(&header_bytes))
     }
@@ -155,7 +156,7 @@ impl PostToPreFlipper {
                 if header.len() == 0 {
                     self.output.clear();
                     self.output.extend_from_slice(
-                        &node::header_bytes(header.len(), &header.hash),
+                        &to_header_bytes(header.len(), &header.hash),
                     );
                     return Ok((::HEADER_SIZE, Some(&self.output)));
                 } else {
@@ -169,7 +170,7 @@ impl PostToPreFlipper {
         if self.span_len > ::CHUNK_SIZE as u64 {
             // We need to read nodes. We'll keep following the right child of
             // the current node until eventually we reach the rightmost chunk.
-            let left_len = node::left_subregion_len(self.span_len);
+            let left_len = left_subregion_len(self.span_len);
             let node = Node {
                 bytes: *array_ref!(bytes_from_end(input, ::NODE_SIZE)?, 0, ::NODE_SIZE),
                 start: self.span_start,
@@ -198,7 +199,7 @@ impl PostToPreFlipper {
             }
             if finished_index == 0 {
                 self.output.extend_from_slice(
-                    &node::header_bytes(header.len(), &header.hash),
+                    &to_header_bytes(header.len(), &header.hash),
                 );
             }
             for node in self.stack.drain(finished_index..) {

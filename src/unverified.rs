@@ -7,8 +7,8 @@ impl<'a> Unverified<'a> {
         Unverified(bytes)
     }
 
-    /// Take a slice from the evil input, but only if its length and hash match
-    /// what we expect. On success, move the input forward.
+    /// Take a slice from the unverified input, but only if its length and hash
+    /// match what we expect. On success, move the input forward.
     pub fn read_verify(&mut self, len: usize, hash: &::Digest) -> ::Result<&'a [u8]> {
         if self.0.len() < len {
             return Err(::Error::ShortInput);

@@ -3,7 +3,7 @@
 //! level layout of the tree. In general there aren't any loops or recursion in
 //! here, just quick operations on nodes and regions.
 
-use byteorder::{ByteOrder, BigEndian};
+use simple;
 
 /// A `Region` represents some part of the content (or all of it, if it's the
 /// "root region") with a given hash. If the length of the region is less than
@@ -32,11 +32,12 @@ impl Region {
     }
 
     pub fn from_header_bytes(bytes: &[u8]) -> Region {
+        let (len, hash) = simple::from_header_bytes(bytes);
         Region {
             start: 0,
-            end: BigEndian::read_u64(&bytes[..8]),
+            end: len,
             encoded_offset: ::HEADER_SIZE as u64,
-            hash: *array_ref!(bytes, 8, ::DIGEST_SIZE),
+            hash: hash,
         }
     }
 
@@ -46,7 +47,7 @@ impl Region {
     pub fn parse_node(&self, bytes: &[u8]) -> ::Result<Node> {
         let left = Region {
             start: self.start,
-            end: self.start + left_subregion_len(self.len()),
+            end: self.start + simple::left_subregion_len(self.len()),
             encoded_offset: checked_add(self.encoded_offset, ::NODE_SIZE as u64)?,
             hash: *array_ref!(bytes, 0, ::DIGEST_SIZE),
         };
@@ -70,44 +71,6 @@ impl Node {
     pub fn contains(&self, position: u64) -> bool {
         self.left.start <= position && position < self.right.end
     }
-}
-
-pub fn header_bytes(len: u64, hash: &::Digest) -> [u8; ::HEADER_SIZE] {
-    let mut ret = [0; ::HEADER_SIZE];
-    BigEndian::write_u64(&mut ret[..8], len);
-    ret[8..].copy_from_slice(hash);
-    ret
-}
-
-/// "Given a region of input length `n`, larger than one chunk, what's the
-/// length of its left subregion?" The answer to this question completely
-/// determines the shape of the encoded tree. The answer is: the largest power
-/// of 2 count of full chunks that's strictly less than the input length.
-///
-/// Several properties fall out from that one:
-/// - All chunks are full, except maybe the last one.
-/// - The last chunk is never empty, unless there is no input.
-/// - All left subtrees are full, everywhere in the tree.
-/// - The tree is balanced.
-///
-/// We depend on these properties in several places, for example in
-/// `encoded_len` below. The stability of the left subtrees makes it efficient
-/// to build a tree incrementally, since appending input bytes only affects
-/// nodes on the rightmost edge of the tree.
-pub fn left_subregion_len(region_len: u64) -> u64 {
-    debug_assert!(region_len > ::CHUNK_SIZE as u64);
-    // Reserve at least one byte for the right side.
-    let full_chunks = (region_len - 1) / ::CHUNK_SIZE as u64;
-    largest_power_of_two(full_chunks) * ::CHUNK_SIZE as u64
-}
-
-/// Compute the largest power of two that's less than or equal to `n`.
-fn largest_power_of_two(n: u64) -> u64 {
-    // n=0 is nonsensical, so we set the first bit of n. This doesn't change
-    // the result for any other input, but it ensures that leading_zeros will
-    // be at most 63, so the subtraction doesn't underflow.
-    let masked_n = n | 1;
-    1 << (63 - masked_n.leading_zeros())
 }
 
 /// Computing the encoded length of a region is surprisingly cheap. All binary
@@ -144,41 +107,6 @@ fn checked_mul(a: u64, b: u64) -> ::Result<u64> {
 #[cfg(test)]
 mod test {
     use super::*;
-
-    #[test]
-    fn test_power_of_two() {
-        let input_output = &[
-            (0, 1),
-            (1, 1),
-            (2, 2),
-            (3, 2),
-            (4, 4),
-            (5, 4),
-            (6, 4),
-            (7, 4),
-            (8, 8),
-            // the largest possible u64
-            (0xffffffffffffffff, 0x8000000000000000),
-        ];
-        for &(input, output) in input_output {
-            assert_eq!(
-                output,
-                largest_power_of_two(input),
-                "wrong output for n={}",
-                input
-            );
-        }
-    }
-
-    #[test]
-    fn test_left_subregion_len() {
-        let s = ::CHUNK_SIZE as u64;
-        let input_output = &[(s + 1, s), (2 * s - 1, s), (2 * s, s), (2 * s + 1, 2 * s)];
-        for &(input, output) in input_output {
-            println!("testing {} and {}", input, output);
-            assert_eq!(left_subregion_len(input), output);
-        }
-    }
 
     #[test]
     fn test_encoded_len() {
