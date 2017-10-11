@@ -1,3 +1,5 @@
+use node;
+
 // TODO: Unify this with Region somehow?
 #[derive(Debug, Copy, Clone)]
 pub struct Subtree {
@@ -39,7 +41,6 @@ impl Subtree {
 pub struct PostOrderEncoder {
     stack: Vec<Subtree>,
     out_buf: Vec<u8>,
-    finalized: bool,
 }
 
 impl PostOrderEncoder {
@@ -47,14 +48,10 @@ impl PostOrderEncoder {
         Self {
             stack: Vec::new(),
             out_buf: Vec::new(),
-            finalized: false,
         }
     }
 
     pub fn feed(&mut self, input: &[u8; ::CHUNK_SIZE]) -> &[u8] {
-        if self.finalized {
-            panic!("feed called on a finalized encoder");
-        }
         self.out_buf.clear();
         self.out_buf.extend_from_slice(input);
         self.stack.push(Subtree::from_chunk(input));
@@ -80,14 +77,10 @@ impl PostOrderEncoder {
     }
 
     pub fn finalize(&mut self, input: &[u8]) -> (&[u8], ::Digest) {
-        if self.finalized {
-            panic!("finalize called on a finalized encoder");
-        }
         assert!(
             input.len() < ::CHUNK_SIZE,
             "full chunk or more passed to finalize"
         );
-        self.finalized = true;
         self.out_buf.clear();
         if input.len() > 0 {
             self.out_buf.extend_from_slice(input);
@@ -110,9 +103,116 @@ impl PostOrderEncoder {
         // Take the the final remaining subtree, or the empty subtree if there
         // was never any input, and turn it into the header.
         let root = self.stack.pop().unwrap_or_else(Subtree::empty);
-        let header_bytes = ::node::header_bytes(root.len, &root.hash);
+        let header_bytes = node::header_bytes(root.len, &root.hash);
         self.out_buf.extend_from_slice(&header_bytes);
         (&self.out_buf, ::hash(&header_bytes))
+    }
+}
+
+// When we encounter a node, we start traversing its right subregion
+// immediately. Thus the node bytes themselves are stored along with the left
+// subregion, since that's what we'll need to get back to.
+struct Node {
+    bytes: [u8; ::NODE_SIZE],
+    start: u64,
+    left_len: u64,
+}
+
+pub struct PostToPreFlipper {
+    header: Option<node::Region>,
+    span_start: u64,
+    span_len: u64,
+    stack: Vec<Node>,
+    output: Vec<u8>,
+}
+
+impl PostToPreFlipper {
+    pub fn new() -> Self {
+        Self {
+            header: None,
+            span_start: 0,
+            span_len: 0,
+            stack: Vec::new(),
+            output: Vec::new(),
+        }
+    }
+
+    /// Feed slices from the rear of the post-order encoding towards the front.
+    /// If the argument is long enough to make progress, returns (n, output). N
+    /// is the number of bytes consumed, from the *back* of the input slice.
+    /// Output is Some(&[u8]) if a chunk was consumed, otherwise None. If the
+    /// input is too short to make progress, Err(ShortInput) is returned.
+    ///
+    /// Note that there is no finalize method. The caller is expected to know
+    /// when it's reached the front of its own input.
+    pub fn feed_back(&mut self, input: &[u8]) -> ::Result<(usize, Option<&[u8]>)> {
+        let header = match self.header {
+            Some(header) => header,
+            None => {
+                let header = node::Region::from_header_bytes(bytes_from_end(input, ::HEADER_SIZE)?);
+                self.header = Some(header);
+                self.span_start = 0;
+                self.span_len = header.end;
+                return Ok((::HEADER_SIZE, None));
+            }
+        };
+        if self.span_len > ::CHUNK_SIZE as u64 {
+            // We need to read nodes. We'll keep following the right child of
+            // the current node until eventually we reach the rightmost chunk.
+            let left_len = node::left_subregion_len(self.span_len);
+            let node = Node {
+                bytes: *array_ref!(bytes_from_end(input, ::NODE_SIZE)?, 0, ::NODE_SIZE),
+                start: self.span_start,
+                left_len,
+            };
+            self.stack.push(node);
+            self.span_start += left_len;
+            self.span_len -= left_len;
+            Ok((::NODE_SIZE, None))
+        } else {
+            // We've reached a chunk. We'll emit it as output, and we'll
+            // prepend node bytes for all nodes that we're now finished with,
+            // including potentially the header.
+            //
+            // Grab the chunk first, so that we don't make any mutations in
+            // case it's too short.
+            let chunk = bytes_from_end(input, self.span_len as usize)?;
+            self.output.clear();
+            // Figure out how many nodes we just finished with. They'll need to
+            // be prepended to the chunk. If we're finished with all the nodes,
+            // we'll also prepend the header. It's more common to be finished
+            // with 1 node than with n nodes, so start from the end.
+            let mut finished_index = self.stack.len();
+            while finished_index > 0 && self.span_start == self.stack[finished_index - 1].start {
+                finished_index -= 1;
+            }
+            if finished_index == 0 {
+                self.output.extend_from_slice(
+                    &node::header_bytes(header.len(), &header.hash),
+                );
+            }
+            for node in self.stack.drain(finished_index..) {
+                self.output.extend_from_slice(&node.bytes);
+            }
+            self.output.extend_from_slice(chunk);
+            // If we're not yet done -- and remember, we might not have
+            // finished any nodes at all -- update our start and len indices
+            // for the following reads. This is where we descend left; the
+            // other branch which parses nodes always descends right.
+            if let Some(node) = self.stack.last() {
+                self.span_start = node.start;
+                self.span_len = node.left_len;
+            }
+            Ok((chunk.len(), Some(&self.output)))
+        }
+    }
+}
+
+fn bytes_from_end(input: &[u8], len: usize) -> ::Result<&[u8]> {
+    if input.len() < len {
+        Err(::Error::ShortInput)
+    } else {
+        Ok(&input[input.len() - len..])
     }
 }
 
