@@ -221,6 +221,7 @@ mod test {
     use super::*;
     use unverified::Unverified;
     use node::Region;
+    use simple;
 
     // Very similar to the simple decoder function, but for a post-order tree.
     fn validate_post_order_encoding(encoded: &[u8], hash: &::Digest) {
@@ -276,6 +277,46 @@ mod test {
                 hash,
                 "post order hash doesn't match the standard encoding"
             );
+        }
+    }
+
+    // Run the PostToPreFlipper across the encoded buffer, flipping it in place.
+    fn flip_in_place(buf: &mut [u8]) {
+        let mut flipper = PostToPreFlipper::new();
+        let mut read_cursor = buf.len();
+        let mut write_cursor = buf.len();
+        while read_cursor > 0 {
+            // First try feeding an empty slice, and confirm that we always get
+            // a ShortInput error back.
+            assert_eq!(Err(::Error::ShortInput), flipper.feed_back(&[]));
+            // Then just feed in all the available bytes and let the flipper
+            // take what it wants.
+            let (n, maybe_output) = flipper.feed_back(&buf[..read_cursor]).unwrap();
+            read_cursor -= n;
+            if let Some(output) = maybe_output {
+                let write_start = write_cursor - output.len();
+                assert!(
+                    write_start >= read_cursor,
+                    "mustn't write over unread bytes"
+                );
+                buf[write_start..write_cursor].copy_from_slice(output);
+                write_cursor = write_start;
+            }
+        }
+        assert_eq!(write_cursor, 0);
+    }
+
+    #[test]
+    fn test_flipper() {
+        for &case in ::TEST_CASES {
+            println!("starting case {}", case);
+            let input = vec![0x01; case];
+            let (mut encoded, hash) = post_order_encode_all(&input);
+            flip_in_place(&mut encoded);
+            // Now that the encoding is pre-order, we can test decoding it with
+            // the regular simple decoder.
+            let decoded = simple::decode(&encoded, &hash).unwrap();
+            assert_eq!(input, decoded);
         }
     }
 }

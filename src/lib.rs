@@ -15,7 +15,7 @@ pub mod io;
 
 pub type Digest = [u8; DIGEST_SIZE];
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     HashMismatch,
     ShortInput,
