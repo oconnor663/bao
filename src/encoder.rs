@@ -150,10 +150,20 @@ impl PostToPreFlipper {
             Some(header) => header,
             None => {
                 let header = node::Region::from_header_bytes(bytes_from_end(input, ::HEADER_SIZE)?);
-                self.header = Some(header);
-                self.span_start = 0;
-                self.span_len = header.end;
-                return Ok((::HEADER_SIZE, None));
+                // If the header length field is zero, then we're already done,
+                // and we need to return it as output.
+                if header.len() == 0 {
+                    self.output.clear();
+                    self.output.extend_from_slice(
+                        &node::header_bytes(header.len(), &header.hash),
+                    );
+                    return Ok((::HEADER_SIZE, Some(&self.output)));
+                } else {
+                    self.header = Some(header);
+                    self.span_start = 0;
+                    self.span_len = header.end;
+                    return Ok((::HEADER_SIZE, None));
+                }
             }
         };
         if self.span_len > ::CHUNK_SIZE as u64 {
