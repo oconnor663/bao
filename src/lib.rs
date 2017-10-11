@@ -6,7 +6,6 @@ extern crate ring;
 use ring::{constant_time, digest};
 
 mod unverified;
-mod node;
 pub mod simple;
 pub mod encoder;
 pub mod decoder;
