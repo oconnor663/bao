@@ -161,23 +161,23 @@ impl Decoder {
 /// where the region's chunk or node begins. Note how this is different from
 /// "start" and "end", which are offsets in the *content*, not the encoding.
 #[derive(Debug, Copy, Clone)]
-pub struct Region {
-    pub start: u64,
-    pub end: u64,
-    pub encoded_offset: u64,
-    pub hash: ::Digest,
+struct Region {
+    start: u64,
+    end: u64,
+    encoded_offset: u64,
+    hash: ::Digest,
 }
 
 impl Region {
-    pub fn len(&self) -> u64 {
+    fn len(&self) -> u64 {
         self.end - self.start
     }
 
-    pub fn contains(&self, position: u64) -> bool {
+    fn contains(&self, position: u64) -> bool {
         self.start <= position && position < self.end
     }
 
-    pub fn from_header_bytes(bytes: &[u8]) -> Region {
+    fn from_header_bytes(bytes: &[u8]) -> Region {
         let (len, hash) = from_header_bytes(bytes);
         Region {
             start: 0,
@@ -190,7 +190,7 @@ impl Region {
     /// Splits the current region into two subregions, with the key logic
     /// happening in `left_subregion_len`. If calculating the new
     /// `encoded_offset` overflows, return `None`.
-    pub fn parse_node(&self, bytes: &[u8]) -> ::Result<Node> {
+    fn parse_node(&self, bytes: &[u8]) -> ::Result<Node> {
         let left = Region {
             start: self.start,
             end: self.start + left_subregion_len(self.len()),
@@ -208,13 +208,13 @@ impl Region {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct Node {
-    pub left: Region,
-    pub right: Region,
+struct Node {
+    left: Region,
+    right: Region,
 }
 
 impl Node {
-    pub fn contains(&self, position: u64) -> bool {
+    fn contains(&self, position: u64) -> bool {
         self.left.start <= position && position < self.right.end
     }
 }
@@ -231,7 +231,7 @@ impl Node {
 ///
 /// Because the encoded len is longer than the input length, it can overflow
 /// for very large inputs. In that case, we return `Err(Overflow)`.
-pub fn encoded_len(region_len: u64) -> ::Result<u64> {
+fn encoded_len(region_len: u64) -> ::Result<u64> {
     // Divide rounding up to get the number of chunks.
     let num_chunks = (region_len / ::CHUNK_SIZE as u64) +
         (region_len % ::CHUNK_SIZE as u64 > 0) as u64;

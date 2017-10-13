@@ -1,7 +1,7 @@
 use simple::{left_subregion_len, to_header_bytes, from_header_bytes};
 
 #[derive(Debug, Copy, Clone)]
-pub struct Subtree {
+struct Subtree {
     len: u64,
     hash: ::Digest,
 }
