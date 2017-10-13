@@ -147,3 +147,29 @@ impl<T: Read + Write + Seek> Write for Encoder<T> {
         self.inner_writer.flush()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::io::Cursor;
+    use simple;
+
+    #[test]
+    fn test_writer() {
+        for &case in ::TEST_CASES {
+            println!("starting case {}", case);
+            let input = vec![0xb7; case];
+            let mut encoded = Cursor::new(Vec::new());
+            let hash = {
+                let mut encoder = Encoder::new(&mut encoded);
+                encoder.write_all(&input).unwrap();
+                encoder.finish().unwrap()
+            };
+
+            // Compare to the simple encoder;
+            let (simple_encoded, simple_hash) = simple::encode(&input);
+            assert_eq!(hash, simple_hash);
+            assert_eq!(encoded.get_ref(), &simple_encoded);
+        }
+    }
+}

@@ -78,8 +78,8 @@ impl PostOrderEncoder {
 
     pub fn finish(&mut self, input: &[u8]) -> (&[u8], ::Digest) {
         assert!(
-            input.len() < ::CHUNK_SIZE,
-            "full chunk or more passed to finish"
+            input.len() <= ::CHUNK_SIZE,
+            "more than one chunk passed to finish"
         );
         self.out_buf.clear();
         if !input.is_empty() {
