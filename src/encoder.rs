@@ -50,6 +50,7 @@ impl PostOrderEncoder {
         }
     }
 
+    // TODO: stop requiring an array, and let the caller gradually fill the buffer
     pub fn feed(&mut self, input: &[u8; ::CHUNK_SIZE]) -> &[u8] {
         self.out_buf.clear();
         self.out_buf.extend_from_slice(input);
