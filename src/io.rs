@@ -3,6 +3,7 @@ use std::io;
 use std::cmp::min;
 
 use encoder::{PostOrderEncoder, PostToPreFlipper};
+use decoder::Decoder;
 
 /// We have an output buffer that needs to get written to the sink. It might
 /// take multiple writes, and any one of them might fail, so we need to keep
@@ -21,7 +22,7 @@ fn write_out<W: Write>(
     Ok(())
 }
 
-pub struct Encoder<T: Read + Write + Seek> {
+pub struct Writer<T: Read + Write + Seek> {
     inner_writer: T,
     // TODO: scrap the in_buffer, and let PostOrderEncoder accept smaller writes
     in_buffer: Vec<u8>,
@@ -32,7 +33,7 @@ pub struct Encoder<T: Read + Write + Seek> {
     flipper: PostToPreFlipper,
 }
 
-impl<T: Read + Write + Seek> Encoder<T> {
+impl<T: Read + Write + Seek> Writer<T> {
     pub fn new(inner_writer: T) -> Self {
         Self {
             inner_writer,
@@ -100,7 +101,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
     }
 }
 
-impl<T: Read + Write + Seek> Drop for Encoder<T> {
+impl<T: Read + Write + Seek> Drop for Writer<T> {
     fn drop(&mut self) {
         // We can't report errors from drop(), but we make a best effort to
         // finish the encoding.
@@ -110,7 +111,7 @@ impl<T: Read + Write + Seek> Drop for Encoder<T> {
     }
 }
 
-impl<T: Read + Write + Seek> Write for Encoder<T> {
+impl<T: Read + Write + Seek> Write for Writer<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.check_finished()?;
 
@@ -148,6 +149,48 @@ impl<T: Read + Write + Seek> Write for Encoder<T> {
     }
 }
 
+pub struct Reader<T> {
+    inner_reader: T,
+    in_buffer: Vec<u8>,
+    out_buffer: Vec<u8>,
+    decoder: Decoder,
+}
+
+impl<T> Reader<T> {
+    pub fn new(inner_reader: T, hash: &::Digest) -> Self {
+        Self {
+            inner_reader,
+            in_buffer: Vec::new(),
+            out_buffer: Vec::new(),
+            decoder: Decoder::new(hash),
+        }
+    }
+}
+
+impl<T: Read> Read for Reader<T> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // TODO: performance, save state during errors
+        while self.out_buffer.len() == 0 {
+            let (_, needed) = self.decoder.needed();
+            // Check for EOF.
+            if needed == 0 {
+                return Ok(0);
+            }
+            self.in_buffer.resize(needed, 0);
+            self.inner_reader.read_exact(&mut self.in_buffer)?;
+            let (_, out) = self.decoder.feed(&self.in_buffer).expect("was needed");
+            // Could be empty.
+            self.out_buffer.extend_from_slice(out);
+        }
+
+        let copy_len = min(self.out_buffer.len(), buf.len());
+        buf[..copy_len].copy_from_slice(&self.out_buffer[..copy_len]);
+        // TODO: perf
+        self.out_buffer.drain(..copy_len);
+        Ok(copy_len)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -161,15 +204,29 @@ mod test {
             let input = vec![0xb7; case];
             let mut encoded = Cursor::new(Vec::new());
             let hash = {
-                let mut encoder = Encoder::new(&mut encoded);
-                encoder.write_all(&input).unwrap();
-                encoder.finish().unwrap()
+                let mut writer = Writer::new(&mut encoded);
+                writer.write_all(&input).unwrap();
+                writer.finish().unwrap()
             };
 
-            // Compare to the simple encoder;
+            // Compare to the simple encoder.
             let (simple_encoded, simple_hash) = simple::encode(&input);
             assert_eq!(hash, simple_hash);
             assert_eq!(encoded.get_ref(), &simple_encoded);
+        }
+    }
+
+    #[test]
+    fn test_reader() {
+        for &case in ::TEST_CASES {
+            println!("starting case {}", case);
+            let input = vec![0xa9; case];
+            let (encoded, hash) = simple::encode(&input);
+
+            let mut reader = Reader::new(Cursor::new(&encoded), &hash);
+            let mut output = Vec::new();
+            reader.read_to_end(&mut output).unwrap();
+            assert_eq!(input, output);
         }
     }
 }

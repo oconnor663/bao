@@ -6,7 +6,7 @@ use hex::ToHex;
 use std::env::args_os;
 use std::fs::OpenOptions;
 use std::io::{copy, stdin};
-use rad::io::Encoder;
+use rad::io::Writer;
 
 fn main() {
     let filename = args_os().skip(1).next();
@@ -21,8 +21,8 @@ fn main() {
         .truncate(true)
         .open(filename.unwrap())
         .expect("error opening file");
-    let mut encoder = Encoder::new(file);
-    copy(&mut stdin(), &mut encoder).unwrap();
-    let hash = encoder.finish().unwrap();
+    let mut writer = Writer::new(file);
+    copy(&mut stdin(), &mut writer).unwrap();
+    let hash = writer.finish().unwrap();
     println!("{}", hash.to_hex());
 }

@@ -92,34 +92,31 @@ impl Decoder {
 
     // Returns (consumed, output), where output is Some() when a chunk was
     // consumed.
-    pub fn feed<'a>(&mut self, input: &'a [u8]) -> ::Result<(usize, Option<&'a [u8]>)> {
+    pub fn feed<'a>(&mut self, input: &'a [u8]) -> ::Result<(usize, &'a [u8])> {
         // Immediately shadow input with a wrapper type that only gives us
         // bytes when the hash is correct.
         let mut input = Unverified::wrap(input);
 
         match self.state() {
             State::NoHeader => self.feed_header(&mut input),
-            State::Eof => Ok((0, None)),
+            State::Eof => Ok((0, &[])),
             State::Chunk(r) => self.feed_chunk(&mut input, r),
             State::Node(r) => self.feed_node(&mut input, r),
         }
     }
 
-    fn feed_header<'a>(
-        &mut self,
-        input: &mut Unverified<'a>,
-    ) -> ::Result<(usize, Option<&'a [u8]>)> {
+    fn feed_header<'a>(&mut self, input: &mut Unverified<'a>) -> ::Result<(usize, &'a [u8])> {
         let header_bytes = input.read_verify(::HEADER_SIZE, &self.header_hash)?;
         let header_array = array_ref!(header_bytes, 0, ::HEADER_SIZE);
         self.header = Some(Region::from_header_bytes(header_array));
-        Ok((::HEADER_SIZE, None))
+        Ok((::HEADER_SIZE, &[]))
     }
 
     fn feed_chunk<'a>(
         &mut self,
         input: &mut Unverified<'a>,
         region: Region,
-    ) -> ::Result<(usize, Option<&'a [u8]>)> {
+    ) -> ::Result<(usize, &'a [u8])> {
         let chunk_bytes = input.read_verify(region.len() as usize, &region.hash)?;
         // We pay attention to the `chunk_offset` for cases where a previous
         // seek() put us in the middle of the chunk. In that case, we still
@@ -136,18 +133,18 @@ impl Decoder {
         // even in offset cases where only part of it is returned, because the
         // caller still fed the whole chunk in and still needs to advance the
         // entire chunk length forward in the encoded input.
-        Ok((chunk_bytes.len() as usize, Some(ret)))
+        Ok((chunk_bytes.len() as usize, ret))
     }
 
     fn feed_node<'a>(
         &mut self,
         input: &mut Unverified<'a>,
         region: Region,
-    ) -> ::Result<(usize, Option<&'a [u8]>)> {
+    ) -> ::Result<(usize, &'a [u8])> {
         let node_bytes = input.read_verify(::NODE_SIZE, &region.hash)?;
         let node = region.parse_node(node_bytes)?;
         self.stack.push(node);
-        Ok((::NODE_SIZE, None))
+        Ok((::NODE_SIZE, &[]))
     }
 }
 
@@ -285,16 +282,10 @@ mod test {
                     break;
                 }
                 let encoded_input = &encoded[offset as usize..offset as usize + len];
-                let (consumed, maybe_output) = decoder.feed(encoded_input).unwrap();
-                println!(
-                    "consumed: {} (gave output: {})",
-                    consumed,
-                    maybe_output.is_some()
-                );
+                let (consumed, out_slice) = decoder.feed(encoded_input).unwrap();
+                println!("consumed: {} (gave output: {})", consumed, output.len());
                 assert_eq!(consumed, len);
-                if let Some(slice) = maybe_output {
-                    output.extend_from_slice(slice);
-                }
+                output.extend_from_slice(out_slice);
             }
             assert_eq!(input, output);
         }
@@ -312,13 +303,11 @@ mod test {
             let mut output = Vec::new();
             let mut encoded_input = &encoded[..];
             loop {
-                let (consumed, maybe_output) = decoder.feed(encoded_input).unwrap();
+                let (consumed, out_slice) = decoder.feed(encoded_input).unwrap();
                 if consumed == 0 {
                     break;
                 }
-                if let Some(slice) = maybe_output {
-                    output.extend_from_slice(slice);
-                }
+                output.extend_from_slice(out_slice);
                 encoded_input = &encoded_input[consumed..]
             }
             assert_eq!(input, output);
@@ -337,7 +326,7 @@ mod test {
         let mut feed_len = 0;
         loop {
             match decoder.feed(&encoded_slice[..feed_len]) {
-                Ok((consumed, maybe_output)) => {
+                Ok((consumed, out_slice)) => {
                     if consumed == 0 {
                         // Note that this EOF will happen after the last
                         // successful feed, when we attempt to feed 0 bytes
@@ -345,9 +334,7 @@ mod test {
                         // zero, we'd end up slicing out of bounds.
                         break;
                     }
-                    if let Some(bytes) = maybe_output {
-                        output.extend_from_slice(bytes);
-                    }
+                    output.extend_from_slice(out_slice);
                     encoded_slice = &encoded_slice[consumed..];
                     feed_len = 0;
                 }
@@ -387,10 +374,8 @@ mod test {
                         break;
                     }
                     let encoded_input = &encoded[offset as usize..offset as usize + len];
-                    let (_, maybe_output) = decoder.feed(encoded_input).unwrap();
-                    if let Some(bytes) = maybe_output {
-                        output.extend_from_slice(bytes);
-                    }
+                    let (_, out_slice) = decoder.feed(encoded_input).unwrap();
+                    output.extend_from_slice(out_slice);
                 }
                 let expected = &input[seek_case..];
                 assert_eq!(expected, &output[..]);
