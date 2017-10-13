@@ -21,7 +21,7 @@ fn write_out<W: Write>(
     Ok(())
 }
 
-pub struct Encoder<T: Write + Seek> {
+pub struct Encoder<T: Read + Write + Seek> {
     inner_writer: T,
     // TODO: scrap the in_buffer, and let PostOrderEncoder accept smaller writes
     in_buffer: Vec<u8>,
@@ -32,7 +32,7 @@ pub struct Encoder<T: Write + Seek> {
     flipper: PostToPreFlipper,
 }
 
-impl<T: Write + Seek> Encoder<T> {
+impl<T: Read + Write + Seek> Encoder<T> {
     pub fn new(inner_writer: T) -> Self {
         Self {
             inner_writer,
@@ -45,14 +45,39 @@ impl<T: Write + Seek> Encoder<T> {
         }
     }
 
-    pub fn finish(&mut self) -> io::Result<()> {
+    /// Currently we don't make any attempt to make IO errors recoverable
+    /// during finish. Errors should be somewhat less common, since finish is
+    /// only overwriting existing bytes, and not allocating new space, but
+    /// still anything can fail.
+    pub fn finish(&mut self) -> io::Result<::Digest> {
         self.check_finished()?;
-        self.flush()?;
 
-        unimplemented!();
+        // Write out the output buffer. Doing this first is important, because
+        // encoder.finish() will have more output.
+        self.write_out()?;
+
+        // Call finish on the post-order encoder, which formats the last chunk
+        // + nodes + header.
+        let (final_out, hash) = self.encoder.finish(&self.in_buffer);
+        self.inner_writer.write_all(final_out)?;
+
+        // TODO: This doesn't make any attempt at efficient IO.
+        let mut read_position = self.inner_writer.seek(io::SeekFrom::Current(0))?;
+        let mut write_position = read_position;
+        while write_position > 0 {
+            let needed = self.flipper.needed();
+            read_position -= needed as u64;
+            self.inner_writer.seek(io::SeekFrom::Start(read_position))?;
+            self.in_buffer.resize(needed, 0);
+            self.inner_writer.read_exact(&mut self.in_buffer)?;
+            let (_, out) = self.flipper.feed_back(&self.in_buffer).expect("needs met");
+            write_position -= out.len() as u64;
+            self.inner_writer.seek(io::SeekFrom::Start(write_position))?;
+            self.inner_writer.write_all(out)?;
+        }
 
         self.finished = true;
-        Ok(())
+        Ok(hash)
     }
 
     fn write_out(&mut self) -> io::Result<()> {
@@ -75,7 +100,7 @@ impl<T: Write + Seek> Encoder<T> {
     }
 }
 
-impl<T: Write + Seek> Drop for Encoder<T> {
+impl<T: Read + Write + Seek> Drop for Encoder<T> {
     fn drop(&mut self) {
         // We can't report errors from drop(), but we make a best effort to
         // finish the encoding.
@@ -85,11 +110,11 @@ impl<T: Write + Seek> Drop for Encoder<T> {
     }
 }
 
-impl<T: Write + Seek> Write for Encoder<T> {
+impl<T: Read + Write + Seek> Write for Encoder<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.check_finished()?;
 
-        // Do all the encoding steps in "back to front order", first flushing
+        // Do all the encoding steps in "last first order", first flushing
         // output, then encoding input we already have, then accepting more
         // input. This keeps buffer sizes fixed, and it guarantees that we
         // never return an error after we've (irreversibly) consumed bytes from

@@ -63,7 +63,7 @@ impl PostOrderEncoder {
             // In the feed loop, we only build full trees, where the left and
             // right are the same length. All the partial trees (with their
             // roots on the right edge of the final edge) get constructed
-            // during finalize() below.
+            // during finish() below.
             if left.len != right.len {
                 break;
             }
@@ -76,10 +76,10 @@ impl PostOrderEncoder {
         &self.out_buf
     }
 
-    pub fn finalize(&mut self, input: &[u8]) -> (&[u8], ::Digest) {
+    pub fn finish(&mut self, input: &[u8]) -> (&[u8], ::Digest) {
         assert!(
             input.len() < ::CHUNK_SIZE,
-            "full chunk or more passed to finalize"
+            "full chunk or more passed to finish"
         );
         self.out_buf.clear();
         if !input.is_empty() {
@@ -148,14 +148,13 @@ impl PostToPreFlipper {
     }
 
     /// Feed slices from the rear of the post-order encoding towards the front.
-    /// If the argument is long enough to make progress, returns (n, output). N
-    /// is the number of bytes consumed, from the *back* of the input slice.
-    /// Output is Some(&[u8]) if a chunk was consumed, otherwise None. If the
-    /// input is too short to make progress, Err(ShortInput) is returned.
+    /// Returns (n, output), though sometimes (if a node was consumed) the
+    /// output slice is empty. If the input is too short to make progress,
+    /// Err(ShortInput) is returned.
     ///
-    /// Note that there is no finalize method. The caller is expected to know
+    /// Note that there is no finish method. The caller is expected to know
     /// when it's reached the front of its own input.
-    pub fn feed_back(&mut self, input: &[u8]) -> ::Result<(usize, Option<&[u8]>)> {
+    pub fn feed_back(&mut self, input: &[u8]) -> ::Result<(usize, &[u8])> {
         // If region_len is zero, the codec is uninitialized. We read the
         // header and then either set region_len to non-zero, or immediately
         // finish (having learned that the encoding has no content).
@@ -168,9 +167,9 @@ impl PostToPreFlipper {
             // If the header length field is zero, then we're already done,
             // and we need to return it as output.
             if len == 0 {
-                return Ok((::HEADER_SIZE, Some(&self.header[..])));
+                return Ok((::HEADER_SIZE, &self.header[..]));
             } else {
-                return Ok((::HEADER_SIZE, None));
+                return Ok((::HEADER_SIZE, &[]));
             }
         }
         if self.region_len > ::CHUNK_SIZE as u64 {
@@ -185,7 +184,7 @@ impl PostToPreFlipper {
             self.stack.push(node);
             self.region_start += left_len;
             self.region_len -= left_len;
-            Ok((::NODE_SIZE, None))
+            Ok((::NODE_SIZE, &[]))
         } else {
             // We've reached a chunk. We'll emit it as output, and we'll
             // prepend node bytes for all nodes that we're now finished with,
@@ -218,7 +217,7 @@ impl PostToPreFlipper {
                 self.region_start = node.start;
                 self.region_len = node.left_len;
             }
-            Ok((chunk.len(), Some(&self.output)))
+            Ok((chunk.len(), &self.output))
         }
     }
 }
@@ -271,7 +270,7 @@ mod test {
             output.extend_from_slice(out_slice);
             input = &input[::CHUNK_SIZE..];
         }
-        let (out_slice, hash) = encoder.finalize(input);
+        let (out_slice, hash) = encoder.finish(input);
         output.extend_from_slice(out_slice);
         (output, hash)
     }
@@ -306,22 +305,21 @@ mod test {
             // a ShortInput error back.
             assert_eq!(Err(::Error::ShortInput), flipper.feed_back(&[]));
             // Then feed in what it says it needs. Assert that it told the
-            // truth too, after feeding.
+            // truth too, after feeding. Note that the output we get might be
+            // empty.
             let needed = flipper.needed();
-            let (n, maybe_output) = flipper
+            let (n, output) = flipper
                 .feed_back(&buf[read_cursor - needed..read_cursor])
                 .unwrap();
             assert_eq!(needed, n, "encoder lied about what it needed");
             read_cursor -= n;
-            if let Some(output) = maybe_output {
-                let write_start = write_cursor - output.len();
-                assert!(
-                    write_start >= read_cursor,
-                    "mustn't write over unread bytes"
-                );
-                buf[write_start..write_cursor].copy_from_slice(output);
-                write_cursor = write_start;
-            }
+            let write_start = write_cursor - output.len();
+            assert!(
+                write_start >= read_cursor,
+                "mustn't write over unread bytes"
+            );
+            buf[write_start..write_cursor].copy_from_slice(output);
+            write_cursor = write_start;
         }
         assert_eq!(write_cursor, 0);
     }
