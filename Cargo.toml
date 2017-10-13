@@ -7,6 +7,7 @@ version = "0.1.0"
 arrayref = "^0.3"
 byteorder = "^1.1"
 ring = "^0.12"
+hex = "0.2"
 
 [dev-dependencies]
 rand = "^0.3"
