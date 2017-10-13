@@ -137,6 +137,16 @@ impl PostToPreFlipper {
         }
     }
 
+    pub fn needed(&self) -> usize {
+        if self.region_len == 0 {
+            ::HEADER_SIZE
+        } else if self.region_len > ::CHUNK_SIZE as u64 {
+            ::NODE_SIZE
+        } else {
+            self.region_len as usize
+        }
+    }
+
     /// Feed slices from the rear of the post-order encoding towards the front.
     /// If the argument is long enough to make progress, returns (n, output). N
     /// is the number of bytes consumed, from the *back* of the input slice.
@@ -295,9 +305,13 @@ mod test {
             // First try feeding an empty slice, and confirm that we always get
             // a ShortInput error back.
             assert_eq!(Err(::Error::ShortInput), flipper.feed_back(&[]));
-            // Then just feed in all the available bytes and let the flipper
-            // take what it wants.
-            let (n, maybe_output) = flipper.feed_back(&buf[..read_cursor]).unwrap();
+            // Then feed in what it says it needs. Assert that it told the
+            // truth too, after feeding.
+            let needed = flipper.needed();
+            let (n, maybe_output) = flipper
+                .feed_back(&buf[read_cursor - needed..read_cursor])
+                .unwrap();
+            assert_eq!(needed, n, "encoder lied about what it needed");
             read_cursor -= n;
             if let Some(output) = maybe_output {
                 let write_start = write_cursor - output.len();
