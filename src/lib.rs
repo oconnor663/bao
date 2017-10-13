@@ -22,10 +22,10 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-const CHUNK_SIZE: usize = 4096;
-const DIGEST_SIZE: usize = 32;
-const NODE_SIZE: usize = 2 * DIGEST_SIZE;
-const HEADER_SIZE: usize = 8 + DIGEST_SIZE;
+pub const CHUNK_SIZE: usize = 4096;
+pub const DIGEST_SIZE: usize = 32;
+pub const NODE_SIZE: usize = 2 * DIGEST_SIZE;
+pub const HEADER_SIZE: usize = 8 + DIGEST_SIZE;
 
 fn hash(input: &[u8]) -> Digest {
     // First 32 bytes of SHA512. (The same as NaCl's crypto_hash.)
