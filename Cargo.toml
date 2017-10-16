@@ -4,10 +4,10 @@ name = "rad"
 version = "0.1.0"
 
 [dependencies]
-arrayref = "^0.3"
-byteorder = "^1.1"
-ring = "^0.12"
-hex = "0.2"
+arrayref = "0.3.4"
+byteorder = "1.1.0"
+hex = "0.2.0"
+ring = "0.12.1"
 
 [dev-dependencies]
-rand = "^0.3"
+rand = "0.3.17"

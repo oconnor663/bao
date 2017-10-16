@@ -149,6 +149,8 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
     }
 }
 
+/// Note that `Reader` works even if the underlying type doesn't implement
+/// `Seek`. This is a major design requirement of the tree layout.
 pub struct Reader<T> {
     inner_reader: T,
     in_buffer: Vec<u8>,
