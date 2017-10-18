@@ -2,6 +2,9 @@
 authors = ["jacko"]
 name = "bao"
 version = "0.1.0"
+description = "a general purpose tree hash for files"
+license = "MIT"
+repository = "https://github.com/oconnor663/bao"
 
 [dependencies]
 arrayref = "0.3.4"
