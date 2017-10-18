@@ -1,6 +1,6 @@
 [package]
 authors = ["jacko"]
-name = "rad"
+name = "bao"
 version = "0.1.0"
 
 [dependencies]

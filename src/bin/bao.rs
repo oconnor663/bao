@@ -1,4 +1,4 @@
-extern crate rad;
+extern crate bao;
 extern crate hex;
 #[macro_use]
 extern crate arrayref;
@@ -9,7 +9,7 @@ use std::fs::OpenOptions;
 use hex::{FromHex, ToHex};
 
 fn encode(output: &str) -> io::Result<()> {
-    let mut writer = rad::io::Writer::new(OpenOptions::new()
+    let mut writer = bao::io::Writer::new(OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
@@ -24,20 +24,20 @@ fn encode(output: &str) -> io::Result<()> {
 
 fn decode(hash: &str) -> io::Result<()> {
     let hash_vec = Vec::from_hex(hash).expect("valid hex");
-    if hash_vec.len() != rad::DIGEST_SIZE {
+    if hash_vec.len() != bao::DIGEST_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
                 "hash must be {} bytes, got {}",
-                rad::DIGEST_SIZE,
+                bao::DIGEST_SIZE,
                 hash_vec.len()
             ),
         ));
     };
-    let hash_array = *array_ref!(&hash_vec, 0, rad::DIGEST_SIZE);
+    let hash_array = *array_ref!(&hash_vec, 0, bao::DIGEST_SIZE);
     let stdin = io::stdin();
     let stdout = io::stdout();
-    let mut reader = rad::io::Reader::new(stdin.lock(), &hash_array);
+    let mut reader = bao::io::Reader::new(stdin.lock(), &hash_array);
     io::copy(&mut reader, &mut stdout.lock()).unwrap();
     Ok(())
 }

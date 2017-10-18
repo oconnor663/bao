@@ -1,5 +1,5 @@
 [root]
-name = "rad"
+name = "bao"
 version = "0.1.0"
 dependencies = [
  "arrayref 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
