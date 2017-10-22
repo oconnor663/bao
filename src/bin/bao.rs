@@ -2,19 +2,23 @@ extern crate bao;
 extern crate hex;
 #[macro_use]
 extern crate arrayref;
+#[macro_use]
+extern crate clap;
 
 use std::io;
 use std::error::Error;
 use std::fs::OpenOptions;
+use std::process::exit;
 use hex::{FromHex, ToHex};
+use clap::{App, Arg, SubCommand, ArgMatches};
 
-fn encode(output: &str) -> io::Result<()> {
+fn encode(args: &ArgMatches) -> io::Result<()> {
     let mut writer = bao::io::Writer::new(OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(true)
-        .open(output)?);
+        .open(args.value_of_os("output").unwrap())?);
     let stdin = io::stdin();
     io::copy(&mut stdin.lock(), &mut writer)?;
     let hash = writer.finish().unwrap();
@@ -22,8 +26,8 @@ fn encode(output: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn decode(hash: &str) -> io::Result<()> {
-    let hash_vec = Vec::from_hex(hash).expect("valid hex");
+fn decode(args: &ArgMatches) -> io::Result<()> {
+    let hash_vec = Vec::from_hex(args.value_of("hash").unwrap()).expect("valid hex");
     if hash_vec.len() != bao::DIGEST_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -43,25 +47,29 @@ fn decode(hash: &str) -> io::Result<()> {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        eprintln!("command missing");
-        std::process::exit(1);
-    }
-    if args.len() < 3 {
-        eprintln!("argument missing");
-        std::process::exit(1);
-    }
-    let ret = match args[1].as_str() {
-        "encode" => encode(&args[2]),
-        "decode" => decode(&args[2]),
-        command => {
-            eprintln!("unknown command: {}", command);
-            std::process::exit(1);
+    let app = App::new("bao")
+        .version(crate_version!())
+        .subcommand(SubCommand::with_name("encode").arg(
+            Arg::with_name("output").required(true).help(
+                "the file to write the tree to",
+            ),
+        ))
+        .subcommand(SubCommand::with_name("decode").arg(
+            Arg::with_name("hash").required(true).help(
+                "the hash given by `encode`",
+            ),
+        ));
+    let matches = app.get_matches();
+    let ret = match matches.subcommand() {
+        ("encode", Some(args)) => encode(args),
+        ("decode", Some(args)) => decode(args),
+        rest => {
+            eprintln!("{:?}", rest);
+            exit(1);
         }
     };
     if let Err(e) = ret {
         eprintln!("{}", e.description());
-        std::process::exit(1);
+        exit(1);
     }
 }
