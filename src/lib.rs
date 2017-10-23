@@ -27,7 +27,7 @@ pub const DIGEST_SIZE: usize = 32;
 pub const NODE_SIZE: usize = 2 * DIGEST_SIZE;
 pub const HEADER_SIZE: usize = 8 + DIGEST_SIZE;
 
-fn hash(input: &[u8]) -> Digest {
+pub fn hash(input: &[u8]) -> Digest {
     // First 32 bytes of SHA512. (The same as NaCl's crypto_hash.)
     let digest = digest::digest(&digest::SHA512, input);
     let mut ret = [0; DIGEST_SIZE];

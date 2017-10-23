@@ -55,22 +55,33 @@ fn encode(args: &ArgMatches) -> io::Result<()> {
 }
 
 fn decode(args: &ArgMatches) -> io::Result<()> {
-    let hash_vec = Vec::from_hex(args.value_of("hash").unwrap()).expect("valid hex");
-    if hash_vec.len() != bao::DIGEST_SIZE {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!(
-                "hash must be {} bytes, got {}",
-                bao::DIGEST_SIZE,
-                hash_vec.len()
-            ),
-        ));
-    };
-    let hash_array = *array_ref!(&hash_vec, 0, bao::DIGEST_SIZE);
-    let stdin = io::stdin();
+    let mut stdin = io::stdin();
     let stdout = io::stdout();
-    let mut reader = bao::io::Reader::new(stdin.lock(), &hash_array);
-    io::copy(&mut reader, &mut stdout.lock()).unwrap();
+    match (args.value_of("hash"), args.is_present("any")) {
+        (None, false) => exit!("must specify either a hash or --any"),
+        (Some(_), true) => exit!("cannot use both a hash and --any"),
+        (None, true) => {
+            let mut header_bytes = [0; bao::HEADER_SIZE];
+            stdin.read_exact(&mut header_bytes).unwrap();
+            let header_hash = bao::hash(&header_bytes);
+            let chained_reader = io::Cursor::new(&header_bytes[..]).chain(stdin.lock());
+            let mut reader = bao::io::Reader::new(chained_reader, &header_hash);
+            io::copy(&mut reader, &mut stdout.lock()).unwrap();
+        }
+        (Some(hash), false) => {
+            let hash_vec = Vec::from_hex(hash).expect("valid hex");
+            if hash_vec.len() != bao::DIGEST_SIZE {
+                exit!(
+                    "hash must be {} bytes, got {}",
+                    bao::DIGEST_SIZE,
+                    hash_vec.len()
+                );
+            };
+            let hash_array = *array_ref!(&hash_vec, 0, bao::DIGEST_SIZE);
+            let mut reader = bao::io::Reader::new(stdin.lock(), &hash_array);
+            io::copy(&mut reader, &mut stdout.lock()).unwrap();
+        }
+    }
     Ok(())
 }
 
@@ -86,11 +97,13 @@ fn main() {
                     "encode in memory and write to stdout afterwards",
                 )),
         )
-        .subcommand(SubCommand::with_name("decode").arg(
-            Arg::with_name("hash").required(true).help(
-                "the hash given by `encode`",
-            ),
-        ));
+        .subcommand(
+            SubCommand::with_name("decode")
+                .arg(Arg::with_name("hash").help("the hash given by `encode`"))
+                .arg(Arg::with_name("any").long("--any").help(
+                    "allow any root hash",
+                )),
+        );
     let matches = app.get_matches();
     let ret = match matches.subcommand() {
         ("encode", Some(args)) => encode(args),
