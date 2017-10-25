@@ -2,7 +2,7 @@ use std::io::prelude::*;
 use std::io;
 use std::cmp::min;
 
-use encoder::{PostOrderEncoder, PostToPreFlipper};
+use encoder::{PostOrderEncoder, PostToPreFlipper, BackBuffer};
 use decoder::Decoder;
 
 /// We have an output buffer that needs to get written to the sink. It might
@@ -23,23 +23,21 @@ fn write_out<W: Write>(
 }
 
 pub struct Writer<T: Read + Write + Seek> {
-    inner_writer: T,
+    inner: T,
     out_buffer: Vec<u8>,
     out_position: usize,
     finished: bool,
     encoder: PostOrderEncoder,
-    flipper: PostToPreFlipper,
 }
 
 impl<T: Read + Write + Seek> Writer<T> {
-    pub fn new(inner_writer: T) -> Self {
+    pub fn new(inner: T) -> Self {
         Self {
-            inner_writer,
+            inner,
             out_buffer: Vec::new(),
             out_position: 0,
             finished: false,
             encoder: PostOrderEncoder::new(),
-            flipper: PostToPreFlipper::new(),
         }
     }
 
@@ -56,21 +54,38 @@ impl<T: Read + Write + Seek> Writer<T> {
         // Call finish on the post-order encoder, which formats the last chunk
         // + nodes + header.
         let (final_out, hash) = self.encoder.finish();
-        self.inner_writer.write_all(final_out)?;
+        self.inner.write_all(final_out)?;
 
-        // TODO: This doesn't make any attempt at efficient IO.
-        let mut read_position = self.inner_writer.seek(io::SeekFrom::Current(0))?;
-        let mut write_position = read_position;
+        // Flip everything! This part is honestly a little hard to follow...
+        let mut read_array = [0; 4096];
+        let file_len = self.inner.seek(io::SeekFrom::Current(0))?;
+        let mut read_position = file_len;
+        let mut write_buffer = BackBuffer::new();
+        let mut write_position = file_len;
+        let mut flipper = PostToPreFlipper::new();
         while write_position > 0 {
-            let needed = self.flipper.needed();
-            read_position -= needed as u64;
-            self.inner_writer.seek(io::SeekFrom::Start(read_position))?;
-            self.out_buffer.resize(needed, 0);
-            self.inner_writer.read_exact(&mut self.out_buffer)?;
-            let (_, out) = self.flipper.feed_back(&self.out_buffer).expect("needs met");
-            write_position -= out.len() as u64;
-            self.inner_writer.seek(io::SeekFrom::Start(write_position))?;
-            self.inner_writer.write_all(out)?;
+            // Move the read position to the previous block start. Account for
+            // the fact that the starting position at the end of the file
+            // probably isn't on a block boundary.
+            read_position -= 1;
+            read_position -= read_position % read_array.len() as u64;
+            self.inner.seek(io::SeekFrom::Start(read_position))?;
+            let read_len = (file_len - read_position).min(read_array.len() as u64) as usize;
+            let read_buffer = &mut read_array[..read_len];
+            self.inner.read_exact(read_buffer)?;
+            // Write the entire read buffer through the flipper, and accumulate
+            // its output (back to front) in the write buffer.
+            write_buffer.clear();
+            let mut input_end = read_buffer.len();
+            while input_end > 0 {
+                let (used, output) = flipper.feed_back(&read_buffer[..input_end]);
+                write_buffer.extend_front(output);
+                input_end -= used;
+            }
+            // Write the entire write buffer.
+            write_position -= write_buffer.len() as u64;
+            self.inner.seek(io::SeekFrom::Start(write_position))?;
+            self.inner.write_all(&write_buffer)?;
         }
 
         Ok(hash)
@@ -80,7 +95,7 @@ impl<T: Read + Write + Seek> Writer<T> {
         write_out(
             &mut self.out_buffer,
             &mut self.out_position,
-            &mut self.inner_writer,
+            &mut self.inner,
         )
     }
 
@@ -126,7 +141,7 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
     fn flush(&mut self) -> io::Result<()> {
         self.check_finished()?;
         self.write_out()?;
-        self.inner_writer.flush()
+        self.inner.flush()
     }
 }
 

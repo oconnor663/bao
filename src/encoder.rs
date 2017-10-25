@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use simple::{left_subregion_len, to_header_bytes, from_header_bytes};
 
 #[derive(Debug, Copy, Clone)]
@@ -26,8 +27,8 @@ impl Subtree {
 }
 
 // returns number of bytes used
-fn extend_up_to(buf: &mut Vec<u8>, target: usize, input: &[u8]) -> usize {
-    let wanted = target.saturating_sub(buf.len());
+fn extend_up_to(buf: &mut Vec<u8>, target_len: usize, input: &[u8]) -> usize {
+    let wanted = target_len.saturating_sub(buf.len());
     let used = input.len().min(wanted);
     buf.extend_from_slice(&input[..used]);
     used
@@ -126,9 +127,88 @@ impl PostOrderEncoder {
     }
 }
 
+/// A buffer that supports efficiently prepending. This is useful for driving
+/// the PostToPreFlipper and it's IO wrapper, making reading from the back
+/// slightly less inconvenient.
+pub(crate) struct BackBuffer {
+    buf: Vec<u8>,
+    cursor: usize,
+    filled: bool,
+}
+
+impl BackBuffer {
+    pub fn new() -> Self {
+        Self {
+            buf: Vec::new(),
+            cursor: 0,
+            filled: false,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.buf.len() - self.cursor
+    }
+
+    pub fn clear(&mut self) {
+        self.cursor = self.buf.len();
+        self.filled = false;
+    }
+
+    /// Add bytes onto the front of the buffer, reallocating if necessary.
+    pub fn extend_front(&mut self, input: &[u8]) {
+        if input.len() > self.cursor {
+            // Not enough space. Reallocate by at least a factor of 2. That
+            // keeps our amortized cost down, and it also means we can copy
+            // non-overlapping slices without unsafe code.
+            let needed = self.len() + input.len();
+            let new_size = needed.max(2 * self.buf.len());
+            let old_end = self.buf.len();
+            self.buf.resize(new_size, 0);
+            let (old_slice, new_slice) = self.buf.split_at_mut(old_end);
+            let content = &old_slice[self.cursor..];
+            let new_content_start = new_slice.len() - content.len();
+            new_slice[new_content_start..].copy_from_slice(content);
+            self.cursor = new_size - content.len();
+        }
+        let start = self.cursor - input.len();
+        self.buf[start..self.cursor].copy_from_slice(input);
+        self.cursor = start;
+    }
+
+    /// The convention for filling the buffer in the PostToPreFlipper is that,
+    /// once it's filled to the target length, we set a filled flag. We'll then
+    /// automatically empty it in the next call to reinit_fill, so the caller
+    /// must finish using the contents before then. This lets us return a slice
+    /// from the filled buffer, without needing a destructor somewhere to clear
+    /// the buffer after we're done with the slice.
+    ///
+    /// Note that when this consumes less than the entire input slice, it
+    /// consumes from the *back* of it.
+    pub fn reinit_fill(&mut self, target_len: usize, input: &[u8]) -> (bool, usize) {
+        if self.filled {
+            self.clear();
+        }
+        debug_assert!(self.len() < target_len);
+        let wanted = target_len - self.len();
+        let used = input.len().min(wanted);
+        self.extend_front(&input[input.len() - used..]);
+        self.filled = self.len() == target_len;
+        (self.filled, used)
+    }
+}
+
+impl Deref for BackBuffer {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        &self.buf[self.cursor..]
+    }
+}
+
 // When we encounter a node, we start traversing its right subregion
 // immediately. Thus the node bytes themselves are stored along with the left
 // subregion, since that's what we'll need to get back to.
+#[derive(Clone, Copy)]
 struct Node {
     bytes: [u8; ::NODE_SIZE],
     start: u64,
@@ -140,7 +220,7 @@ pub struct PostToPreFlipper {
     region_start: u64,
     region_len: u64,
     stack: Vec<Node>,
-    output: Vec<u8>,
+    buf: BackBuffer,
 }
 
 impl PostToPreFlipper {
@@ -150,100 +230,81 @@ impl PostToPreFlipper {
             region_start: 0,
             region_len: 0,
             stack: Vec::new(),
-            output: Vec::new(),
-        }
-    }
-
-    pub fn needed(&self) -> usize {
-        if self.region_len == 0 {
-            ::HEADER_SIZE
-        } else if self.region_len > ::CHUNK_SIZE as u64 {
-            ::NODE_SIZE
-        } else {
-            self.region_len as usize
+            buf: BackBuffer::new(),
         }
     }
 
     /// Feed slices from the rear of the post-order encoding towards the front.
-    /// Returns (n, output), though sometimes (if a node was consumed) the
-    /// output slice is empty. If the input is too short to make progress,
-    /// Err(ShortInput) is returned.
+    /// Returns (n, output), though the output slice may be empty. Note that n
+    /// is the count of bytes consumed from the *back* of the input.
     ///
-    /// Note that there is no finish method. The caller is expected to know
-    /// when it's reached the front of its own input.
-    pub fn feed_back(&mut self, input: &[u8]) -> ::Result<(usize, &[u8])> {
-        // If region_len is zero, the codec is uninitialized. We read the
-        // header and then either set region_len to non-zero, or immediately
-        // finish (having learned that the encoding has no content).
+    /// Note also that there is no finish method. The caller is expected to
+    /// know when it's reached the front of its own input.
+    pub fn feed_back(&mut self, input: &[u8]) -> (usize, &[u8]) {
         if self.region_len == 0 {
-            let header = bytes_from_end(input, ::HEADER_SIZE)?;
-            let (len, _) = from_header_bytes(header);
-            self.header = *array_ref!(header, 0, ::HEADER_SIZE);
+            // The codec is uninitialized. We read the header and then either
+            // set region_len to non-zero, or immediately finish (having
+            // learned that the encoding has no content).
+            let (filled, used) = self.buf.reinit_fill(::HEADER_SIZE, input);
+            if !filled {
+                return (used, &[]);
+            }
+            self.header = *array_ref!(&self.buf, 0, ::HEADER_SIZE);
+            let (len, _) = from_header_bytes(&self.header);
             self.region_start = 0;
             self.region_len = len;
             // If the header length field is zero, then we're already done,
             // and we need to return it as output.
             if len == 0 {
-                return Ok((::HEADER_SIZE, &self.header[..]));
+                (used, &self.header)
             } else {
-                return Ok((::HEADER_SIZE, &[]));
+                (used, &[])
             }
-        }
-        if self.region_len > ::CHUNK_SIZE as u64 {
+        } else if self.region_len > ::CHUNK_SIZE as u64 {
             // We need to read nodes. We'll keep following the right child of
             // the current node until eventually we reach the rightmost chunk.
-            let left_len = left_subregion_len(self.region_len);
+            let (filled, used) = self.buf.reinit_fill(::NODE_SIZE, input);
+            if !filled {
+                return (used, &[]);
+            }
             let node = Node {
-                bytes: *array_ref!(bytes_from_end(input, ::NODE_SIZE)?, 0, ::NODE_SIZE),
+                bytes: *array_ref!(&self.buf, 0, ::NODE_SIZE),
                 start: self.region_start,
-                left_len,
+                left_len: left_subregion_len(self.region_len),
             };
             self.stack.push(node);
-            self.region_start += left_len;
-            self.region_len -= left_len;
-            Ok((::NODE_SIZE, &[]))
+            self.region_start += node.left_len;
+            self.region_len -= node.left_len;
+            (used, &[])
         } else {
-            // We've reached a chunk. We'll emit it as output, and we'll
-            // prepend node bytes for all nodes that we're now finished with,
-            // including potentially the header.
-            //
-            // Grab the chunk first, so that we don't make any mutations in
-            // case it's too short.
-            let chunk = bytes_from_end(input, self.region_len as usize)?;
-            self.output.clear();
-            // Figure out how many nodes we just finished with. They'll need to
-            // be prepended to the chunk. If we're finished with all the nodes,
-            // we'll also prepend the header. It's more common to be finished
-            // with 1 node than with n nodes, so start from the end.
-            let mut finished_index = self.stack.len();
-            while finished_index > 0 && self.region_start == self.stack[finished_index - 1].start {
-                finished_index -= 1;
+            // We've reached a chunk. Once we've collected the entire chunk,
+            // we'll prepend all the nodes we're finished with, potentially
+            // including the header, and emit the whole thing as output.
+            let (filled, used) = self.buf.reinit_fill(self.region_len as usize, input);
+            if !filled {
+                return (used, &[]);
             }
-            if finished_index == 0 {
-                self.output.extend_from_slice(&self.header[..]);
+            // Prepend all the nodes that we're finished with, and maybe update
+            // our position.
+            while let Some(&node) = self.stack.last() {
+                if node.start == self.region_start {
+                    self.buf.extend_front(&node.bytes);
+                    self.stack.pop();
+                } else {
+                    // We're not done with all the nodes yet. Record our new
+                    // position. This is where we descend left; the other
+                    // branch which parses nodes always descends right.
+                    self.region_start = node.start;
+                    self.region_len = node.left_len;
+                    break;
+                }
             }
-            for node in self.stack.drain(finished_index..) {
-                self.output.extend_from_slice(&node.bytes);
+            // Prepend the header, if we've reached the beginning.
+            if self.stack.is_empty() {
+                self.buf.extend_front(&self.header);
             }
-            self.output.extend_from_slice(chunk);
-            // If we're not yet done -- and remember, we might not have
-            // finished any nodes at all -- update our start and len indices
-            // for the following reads. This is where we descend left; the
-            // other branch which parses nodes always descends right.
-            if let Some(node) = self.stack.last() {
-                self.region_start = node.start;
-                self.region_len = node.left_len;
-            }
-            Ok((chunk.len(), &self.output))
+            (used, &self.buf)
         }
-    }
-}
-
-fn bytes_from_end(input: &[u8], len: usize) -> ::Result<&[u8]> {
-    if input.len() < len {
-        Err(::Error::ShortInput)
-    } else {
-        Ok(&input[input.len() - len..])
     }
 }
 
@@ -312,33 +373,66 @@ mod test {
         }
     }
 
+    #[test]
+    fn test_back_buffer() {
+        let mut buf = BackBuffer::new();
+
+        // Test filling up the buffer with a series of writes.
+        buf.extend_front(&[b'r']);
+        assert_eq!(buf.buf.len(), 1);
+        assert_eq!(buf.cursor, 0);
+        assert_eq!(buf.len(), 1);
+        buf.extend_front(&[b'a']);
+        assert_eq!(buf.buf.len(), 2);
+        assert_eq!(buf.cursor, 0);
+        assert_eq!(buf.len(), 2);
+        buf.extend_front(&[b'b']);
+        assert_eq!(buf.buf.len(), 4);
+        assert_eq!(buf.cursor, 1);
+        assert_eq!(buf.len(), 3);
+        buf.extend_front("foo".as_bytes());
+        assert_eq!(buf.buf.len(), 8);
+        assert_eq!(buf.cursor, 2);
+        assert_eq!(buf.len(), 6);
+        assert_eq!(&*buf, "foobar".as_bytes());
+
+        // Test clear.
+        buf.clear();
+        assert_eq!(buf.buf.len(), 8);
+        assert_eq!(buf.cursor, 8);
+        assert_eq!(buf.len(), 0);
+
+        // Test the reinit_fill convention.
+        buf.reinit_fill(2, &[0]);
+        assert_eq!(buf.buf.len(), 8);
+        assert_eq!(buf.cursor, 7);
+        assert_eq!(buf.len(), 1);
+        buf.reinit_fill(2, &[0]);
+        assert_eq!(buf.buf.len(), 8);
+        assert_eq!(buf.cursor, 6);
+        assert_eq!(buf.len(), 2);
+        // Another fill after the target should reinit the buffer.
+        buf.reinit_fill(2, &[0]);
+        assert_eq!(buf.buf.len(), 8);
+        assert_eq!(buf.cursor, 7);
+        assert_eq!(buf.len(), 1);
+    }
+
     // Run the PostToPreFlipper across the encoded buffer, flipping it in place.
     fn flip_in_place(buf: &mut [u8]) {
         let mut flipper = PostToPreFlipper::new();
-        let mut read_cursor = buf.len();
-        let mut write_cursor = buf.len();
-        while read_cursor > 0 {
-            // First try feeding an empty slice, and confirm that we always get
-            // a ShortInput error back.
-            assert_eq!(Err(::Error::ShortInput), flipper.feed_back(&[]));
-            // Then feed in what it says it needs. Assert that it told the
-            // truth too, after feeding. Note that the output we get might be
-            // empty.
-            let needed = flipper.needed();
-            let (n, output) = flipper
-                .feed_back(&buf[read_cursor - needed..read_cursor])
-                .unwrap();
-            assert_eq!(needed, n, "encoder lied about what it needed");
-            read_cursor -= n;
-            let write_start = write_cursor - output.len();
-            assert!(
-                write_start >= read_cursor,
-                "mustn't write over unread bytes"
-            );
-            buf[write_start..write_cursor].copy_from_slice(output);
-            write_cursor = write_start;
+        let mut read_end = buf.len();
+        let mut write_start = buf.len();
+        while read_end > 0 {
+            let (used, output) = flipper.feed_back(&buf[..read_end]);
+            read_end -= used;
+            let write_end = write_start;
+            write_start -= output.len();
+            assert!(write_start >= read_end, "mustn't write over unread bytes");
+            buf[write_start..write_end].copy_from_slice(output);
         }
-        assert_eq!(write_cursor, 0);
+        assert_eq!(read_end, 0);
+        assert_eq!(write_start, 0);
     }
 
     #[test]
