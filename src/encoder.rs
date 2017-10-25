@@ -14,13 +14,6 @@ impl Subtree {
         }
     }
 
-    fn empty() -> Self {
-        Self {
-            len: 0,
-            hash: ::hash(&[]),
-        }
-    }
-
     fn join(&self, rhs: &Self) -> Self {
         let mut node = [0; ::NODE_SIZE];
         node[..::DIGEST_SIZE].copy_from_slice(&self.hash);
@@ -32,6 +25,14 @@ impl Subtree {
     }
 }
 
+// returns number of bytes used
+fn extend_up_to(buf: &mut Vec<u8>, target: usize, input: &[u8]) -> usize {
+    let wanted = target.saturating_sub(buf.len());
+    let used = input.len().min(wanted);
+    buf.extend_from_slice(&input[..used]);
+    used
+}
+
 /// This encoder produces a *backwards* tree, with parent nodes to the right of
 /// both their children. This is the only flavor of binary tree that we can
 /// write in a streaming way. Our approach will be to encode all the input in
@@ -39,22 +40,35 @@ impl Subtree {
 #[derive(Debug, Clone)]
 pub struct PostOrderEncoder {
     stack: Vec<Subtree>,
-    out_buf: Vec<u8>,
+    buf: Vec<u8>,
 }
 
 impl PostOrderEncoder {
     pub fn new() -> Self {
         Self {
             stack: Vec::new(),
-            out_buf: Vec::new(),
+            buf: Vec::new(),
         }
     }
 
-    // TODO: stop requiring an array, and let the caller gradually fill the buffer
-    pub fn feed(&mut self, input: &[u8; ::CHUNK_SIZE]) -> &[u8] {
-        self.out_buf.clear();
-        self.out_buf.extend_from_slice(input);
-        self.stack.push(Subtree::from_chunk(input));
+    // returns (used, output), where output may be empty
+    pub fn feed(&mut self, input: &[u8]) -> (usize, &[u8]) {
+        // If the buffer len is >= CHUNK_SIZE, then it was used as output in
+        // the last call to feed(), and we need to clear it now. (Note that
+        // finish() has the same invariant.)
+        if self.buf.len() >= ::CHUNK_SIZE {
+            self.buf.clear()
+        }
+        // Consume bytes from the caller until the buffer is CHUNK_SIZE. If we
+        // don't get there, short circuit and let the caller feed more bytes.
+        let used = extend_up_to(&mut self.buf, ::CHUNK_SIZE, input);
+        if self.buf.len() < ::CHUNK_SIZE {
+            return (used, &[]);
+        }
+        // We have a full chunk in the buffer. Update the node stack, append
+        // any nodes that are finished, and emit the result as ouput. The next
+        // call to feed() will clear the buffer.
+        self.stack.push(Subtree::from_chunk(&self.buf));
         // Fun fact: this loop is metaphorically just like adding one to a
         // binary number and propagating the carry bit :)
         while self.stack.len() >= 2 {
@@ -67,24 +81,27 @@ impl PostOrderEncoder {
             if left.len != right.len {
                 break;
             }
-            self.out_buf.extend_from_slice(&left.hash);
-            self.out_buf.extend_from_slice(&right.hash);
+            self.buf.extend_from_slice(&left.hash);
+            self.buf.extend_from_slice(&right.hash);
             self.stack.pop();
             self.stack.pop();
             self.stack.push(left.join(&right));
         }
-        &self.out_buf
+        (used, &self.buf)
     }
 
-    pub fn finish(&mut self, input: &[u8]) -> (&[u8], ::Digest) {
-        assert!(
-            input.len() <= ::CHUNK_SIZE,
-            "more than one chunk passed to finish"
-        );
-        self.out_buf.clear();
-        if !input.is_empty() {
-            self.out_buf.extend_from_slice(input);
-            self.stack.push(Subtree::from_chunk(input));
+    pub fn finish(&mut self) -> (&[u8], ::Digest) {
+        // If the buffer len is >= CHUNK_SIZE, then it was used as output in
+        // the last call to feed(), and we need to clear it now. (Note that
+        // feed() has the same invariant.)
+        if self.buf.len() >= ::CHUNK_SIZE {
+            self.buf.clear()
+        }
+        // If the buffer is nonempty, then there's a final partial chunk that
+        // needs to get added to the node stack. In that case the remaining
+        // nodes will get appended to the chunk.
+        if self.buf.len() > 0 {
+            self.stack.push(Subtree::from_chunk(&self.buf));
         }
         // Joining all the remaining nodes into the final tree is very similar
         // to the feed loop above, except we drop the constraint that the left
@@ -94,18 +111,18 @@ impl PostOrderEncoder {
         while self.stack.len() >= 2 {
             let left = self.stack[self.stack.len() - 2];
             let right = self.stack[self.stack.len() - 1];
-            self.out_buf.extend_from_slice(&left.hash);
-            self.out_buf.extend_from_slice(&right.hash);
+            self.buf.extend_from_slice(&left.hash);
+            self.buf.extend_from_slice(&right.hash);
             self.stack.pop();
             self.stack.pop();
             self.stack.push(left.join(&right));
         }
         // Take the the final remaining subtree, or the empty subtree if there
         // was never any input, and turn it into the header.
-        let root = self.stack.pop().unwrap_or_else(Subtree::empty);
+        let root = self.stack.pop().unwrap_or(Subtree::from_chunk(&[]));
         let header_bytes = to_header_bytes(root.len, &root.hash);
-        self.out_buf.extend_from_slice(&header_bytes);
-        (&self.out_buf, ::hash(&header_bytes))
+        self.buf.extend_from_slice(&header_bytes);
+        (&self.buf, ::hash(&header_bytes))
     }
 }
 
@@ -265,12 +282,12 @@ mod test {
     fn post_order_encode_all(mut input: &[u8]) -> (Vec<u8>, ::Digest) {
         let mut encoder = PostOrderEncoder::new();
         let mut output = Vec::new();
-        while input.len() >= ::CHUNK_SIZE {
-            let out_slice = encoder.feed(array_ref!(input, 0, ::CHUNK_SIZE));
+        while input.len() > 0 {
+            let (n, out_slice) = encoder.feed(input);
             output.extend_from_slice(out_slice);
-            input = &input[::CHUNK_SIZE..];
+            input = &input[n..];
         }
-        let (out_slice, hash) = encoder.finish(input);
+        let (out_slice, hash) = encoder.finish();
         output.extend_from_slice(out_slice);
         (output, hash)
     }

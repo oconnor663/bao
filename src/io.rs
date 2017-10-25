@@ -24,8 +24,6 @@ fn write_out<W: Write>(
 
 pub struct Writer<T: Read + Write + Seek> {
     inner_writer: T,
-    // TODO: scrap the in_buffer, and let PostOrderEncoder accept smaller writes
-    in_buffer: Vec<u8>,
     out_buffer: Vec<u8>,
     out_position: usize,
     finished: bool,
@@ -37,7 +35,6 @@ impl<T: Read + Write + Seek> Writer<T> {
     pub fn new(inner_writer: T) -> Self {
         Self {
             inner_writer,
-            in_buffer: Vec::new(),
             out_buffer: Vec::new(),
             out_position: 0,
             finished: false,
@@ -47,11 +44,10 @@ impl<T: Read + Write + Seek> Writer<T> {
     }
 
     /// Currently we don't make any attempt to make IO errors recoverable
-    /// during finish. Errors should be somewhat less common, since finish is
-    /// only overwriting existing bytes, and not allocating new space, but
-    /// still anything can fail.
+    /// during finish.
     pub fn finish(&mut self) -> io::Result<::Digest> {
         self.check_finished()?;
+        self.finished = true;
 
         // Write out the output buffer. Doing this first is important, because
         // encoder.finish() will have more output.
@@ -59,7 +55,7 @@ impl<T: Read + Write + Seek> Writer<T> {
 
         // Call finish on the post-order encoder, which formats the last chunk
         // + nodes + header.
-        let (final_out, hash) = self.encoder.finish(&self.in_buffer);
+        let (final_out, hash) = self.encoder.finish();
         self.inner_writer.write_all(final_out)?;
 
         // TODO: This doesn't make any attempt at efficient IO.
@@ -69,15 +65,14 @@ impl<T: Read + Write + Seek> Writer<T> {
             let needed = self.flipper.needed();
             read_position -= needed as u64;
             self.inner_writer.seek(io::SeekFrom::Start(read_position))?;
-            self.in_buffer.resize(needed, 0);
-            self.inner_writer.read_exact(&mut self.in_buffer)?;
-            let (_, out) = self.flipper.feed_back(&self.in_buffer).expect("needs met");
+            self.out_buffer.resize(needed, 0);
+            self.inner_writer.read_exact(&mut self.out_buffer)?;
+            let (_, out) = self.flipper.feed_back(&self.out_buffer).expect("needs met");
             write_position -= out.len() as u64;
             self.inner_writer.seek(io::SeekFrom::Start(write_position))?;
             self.inner_writer.write_all(out)?;
         }
 
-        self.finished = true;
         Ok(hash)
     }
 
@@ -115,29 +110,15 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.check_finished()?;
 
-        // Do all the encoding steps in "last first order", first flushing
-        // output, then encoding input we already have, then accepting more
-        // input. This keeps buffer sizes fixed, and it guarantees that we
-        // never return an error after we've (irreversibly) consumed bytes from
-        // the caller.
-
-        // Flush the output buffer.
+        // First write out any existing bytes in the output buffer. Doing this
+        // first keeps its size bounded.
         self.write_out()?;
 
-        // If we have a full input buffer, encode it to the output buffer.
-        if self.in_buffer.len() == ::CHUNK_SIZE {
-            let output = self.encoder.feed(
-                array_ref!(&self.in_buffer, 0, ::CHUNK_SIZE),
-            );
-            self.out_buffer.extend_from_slice(output);
-            self.in_buffer.clear();
-        }
-
-        // Finally, if there's room in the input buffer, accept more input.
-        let needed = ::CHUNK_SIZE - self.in_buffer.len();
-        let copy_len = min(buf.len(), needed);
-        self.in_buffer.extend_from_slice(&buf[..copy_len]);
-        Ok(copy_len)
+        // Then write input to the encoder, possibly accepting output into the
+        // output buffer.
+        let (used, output) = self.encoder.feed(buf);
+        self.out_buffer.extend_from_slice(output);
+        Ok(used)
     }
 
     /// Flush isn't very useful to callers, since none of the output is
