@@ -91,7 +91,7 @@ impl PostOrderEncoder {
         (used, &self.buf)
     }
 
-    pub fn finish(&mut self) -> (&[u8], ::Digest) {
+    pub fn finish(&mut self) -> (::Digest, &[u8]) {
         // If the buffer len is >= CHUNK_SIZE, then it was used as output in
         // the last call to feed(), and we need to clear it now. (Note that
         // feed() has the same invariant.)
@@ -123,7 +123,7 @@ impl PostOrderEncoder {
         let root = self.stack.pop().unwrap_or(Subtree::from_chunk(&[]));
         let header_bytes = to_header_bytes(root.len, &root.hash);
         self.buf.extend_from_slice(&header_bytes);
-        (&self.buf, ::hash(&header_bytes))
+        (::hash(&header_bytes), &self.buf)
     }
 }
 
@@ -348,7 +348,7 @@ mod test {
             output.extend_from_slice(out_slice);
             input = &input[n..];
         }
-        let (out_slice, hash) = encoder.finish();
+        let (hash, out_slice) = encoder.finish();
         output.extend_from_slice(out_slice);
         (output, hash)
     }

@@ -8,7 +8,7 @@ extern crate clap;
 use std::io;
 use std::io::prelude::*;
 use std::error::Error;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use hex::{FromHex, ToHex};
 use clap::{App, Arg, SubCommand, ArgMatches};
 
@@ -85,6 +85,39 @@ fn decode(args: &ArgMatches) -> io::Result<()> {
     Ok(())
 }
 
+fn hash(args: &ArgMatches) -> io::Result<()> {
+    if let Some(filepath) = args.value_of_os("file") {
+        let input = File::open(filepath)?;
+        return rest(input);
+    } else {
+        let stdin = io::stdin();
+        return rest(stdin.lock());
+    }
+
+    fn rest<T: Read>(mut reader: T) -> io::Result<()> {
+        // We use the PostOrderEncoder as a digest, by discarding all its
+        // output except for the hash at the end. This involves more byte
+        // copying than a pure digest would, but my guess is that that overhead
+        // is dominated by the hashing time.
+        let mut digest = bao::encoder::PostOrderEncoder::new();
+        let mut read_buffer = [0; 4096];
+        loop {
+            let n = reader.read(&mut read_buffer)?;
+            if n == 0 {
+                break; // EOF
+            }
+            let mut bytes = &read_buffer[..n];
+            while !bytes.is_empty() {
+                let (used, _) = digest.feed(bytes);
+                bytes = &bytes[used..];
+            }
+        }
+        let (hash, _) = digest.finish();
+        println!("{}", hash.to_hex());
+        Ok(())
+    }
+}
+
 fn main() {
     let app = App::new("bao")
         .version(crate_version!())
@@ -103,11 +136,17 @@ fn main() {
                 .arg(Arg::with_name("any").long("--any").help(
                     "allow any root hash",
                 )),
-        );
+        )
+        .subcommand(SubCommand::with_name("hash").arg(
+            Arg::with_name("file").help(
+                "the file to hash, instead of stdin",
+            ),
+        ));
     let matches = app.get_matches();
     let ret = match matches.subcommand() {
         ("encode", Some(args)) => encode(args),
         ("decode", Some(args)) => decode(args),
+        ("hash", Some(args)) => hash(args),
         rest => {
             exit!("other args: {:?}", rest);
         }

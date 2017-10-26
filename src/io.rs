@@ -53,7 +53,7 @@ impl<T: Read + Write + Seek> Writer<T> {
 
         // Call finish on the post-order encoder, which formats the last chunk
         // + nodes + header.
-        let (final_out, hash) = self.encoder.finish();
+        let (hash, final_out) = self.encoder.finish();
         self.inner.write_all(final_out)?;
 
         // Flip everything! This part is honestly a little hard to follow...
