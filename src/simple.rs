@@ -1,4 +1,4 @@
-use byteorder::{ByteOrder, BigEndian};
+use byteorder::{ByteOrder, LittleEndian};
 use unverified::Unverified;
 
 /// Given a slice of input bytes, encode the entire thing in memory and return
@@ -143,14 +143,14 @@ fn largest_power_of_two(n: u64) -> u64 {
 }
 
 pub(crate) fn from_header_bytes(bytes: &[u8]) -> (u64, ::Digest) {
-    let len = BigEndian::read_u64(&bytes[..8]);
+    let len = LittleEndian::read_u64(&bytes[..8]);
     let hash = *array_ref!(bytes, 8, ::DIGEST_SIZE);
     (len, hash)
 }
 
 pub(crate) fn to_header_bytes(len: u64, hash: &::Digest) -> [u8; ::HEADER_SIZE] {
     let mut ret = [0; ::HEADER_SIZE];
-    BigEndian::write_u64(&mut ret[..8], len);
+    LittleEndian::write_u64(&mut ret[..8], len);
     ret[8..].copy_from_slice(hash);
     ret
 }

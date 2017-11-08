@@ -27,7 +27,7 @@ def encode(b):
         return hash_bytes(node), node + left_encoded + right_encoded
 
     root_hash, encoded = encode_tree(b)
-    header = len(b).to_bytes(8, "big") + root_hash
+    header = len(b).to_bytes(8, "little") + root_hash
     return hash(header), header + encoded
 
 def decode(header_hash, b):
@@ -48,7 +48,7 @@ def decode(header_hash, b):
 
     header = b[:HEADER_SIZE]
     assert header_hash == hash_bytes(header)
-    content_len = int.from_bytes(header[:8], "big")
+    content_len = int.from_bytes(header[:8], "little")
     tree_hash = header[8:]
     _, decoded = decode_tree(tree_hash, content_len, HEADER_SIZE, b)
     return decoded
