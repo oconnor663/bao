@@ -1,9 +1,10 @@
 #[macro_use]
 extern crate arrayref;
+extern crate blake2_c;
 extern crate byteorder;
 extern crate ring;
 
-use ring::{constant_time, digest};
+use ring::constant_time;
 
 mod unverified;
 pub mod simple;
@@ -27,12 +28,12 @@ pub const DIGEST_SIZE: usize = 32;
 pub const NODE_SIZE: usize = 2 * DIGEST_SIZE;
 pub const HEADER_SIZE: usize = 8 + DIGEST_SIZE;
 
+// Currently we use blake2b-256, though this will get parametrized.
 pub fn hash(input: &[u8]) -> Digest {
-    // First 32 bytes of SHA512. (The same as NaCl's crypto_hash.)
-    let digest = digest::digest(&digest::SHA512, input);
-    let mut ret = [0; DIGEST_SIZE];
-    ret.copy_from_slice(&digest.as_ref()[..DIGEST_SIZE]);
-    ret
+    let digest = blake2_c::blake2b_256(input);
+    let mut array = [0; DIGEST_SIZE];
+    array[..].copy_from_slice(&digest.bytes);
+    array
 }
 
 fn verify(input: &[u8], digest: &Digest) -> Result<()> {
@@ -69,7 +70,7 @@ mod test {
     use ::*;
 
     #[test]
-    fn test_hash() {
+    fn test_hash_works_at_all() {
         let inputs: &[&[u8]] = &[b"", b"f", b"foo"];
         for input in inputs {
             let mut digest = hash(input);

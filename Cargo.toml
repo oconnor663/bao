@@ -9,6 +9,7 @@ repository = "https://github.com/oconnor663/bao"
 [dependencies]
 arrayref = "0.3.4"
 byteorder = "1.1.0"
+blake2_c = "0.1.0"
 clap = "2.26.2"
 hex = "0.2.0"
 ring = "0.12.1"
