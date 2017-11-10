@@ -260,4 +260,15 @@ mod test {
             assert_eq!(&input, &python_decoded, "decoding mismatch");
         }
     }
+
+    // Tested in both simple.rs and decode.rs.
+    #[test]
+    fn test_40_zeros_fails() {
+        // This is something of a pitfall in the current design. I've written
+        // the bug where in --any mode, the implementation never checks that
+        // the last 32 bytes in the header are actually the hash of [].
+        let encoded = vec![0; 40];
+        let hash = ::hash(&encoded);
+        assert_eq!(decode(&encoded, &hash).unwrap_err(), ::Error::HashMismatch);
+    }
 }
