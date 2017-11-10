@@ -165,6 +165,8 @@ pub(crate) fn split_node(region_len: u64, node_bytes: &[u8]) -> (u64, u64, ::Dig
 
 #[cfg(test)]
 mod test {
+    use hex::ToHex;
+
     use super::*;
 
     #[test]
@@ -228,6 +230,34 @@ mod test {
                     encoded[tweak_case] ^= 1;
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_compare_python() {
+        for &case in ::TEST_CASES {
+            println!("case {}", case);
+            let input = vec![0x99; case];
+            let (rust_encoded, rust_digest) = ::simple::encode(&input);
+
+            // Have the Python implementation encode the same input, and make
+            // sure the result is identical.
+            let python_encoded = cmd!("python3", "./python/bao.py", "encode")
+                .input(input.clone())
+                .stdout_capture()
+                .run()
+                .expect("is python3 installed?")
+                .stdout;
+            assert_eq!(&rust_encoded, &python_encoded, "encoding mismatch");
+
+            // Make sure the Python implementation can decode too.
+            let python_decoded = cmd!("python3", "./python/bao.py", "decode", rust_digest.to_hex())
+                .input(python_encoded)
+                .stdout_capture()
+                .run()
+                .expect("decoding failed")
+                .stdout;
+            assert_eq!(&input, &python_decoded, "decoding mismatch");
         }
     }
 }

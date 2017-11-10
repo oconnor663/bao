@@ -4,6 +4,12 @@ extern crate blake2_c;
 extern crate byteorder;
 extern crate ring;
 
+#[cfg(test)]
+#[macro_use]
+extern crate duct;
+#[cfg(test)]
+extern crate hex;
+
 use ring::constant_time;
 
 mod unverified;
