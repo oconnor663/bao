@@ -291,6 +291,46 @@ mod test {
         }
     }
 
+    fn decode_all(mut encoded: &[u8], hash: &::Digest) -> ::Result<Vec<u8>> {
+        let mut decoder = Decoder::new(&hash);
+        let mut output = Vec::new();
+        loop {
+            let (_, len) = decoder.needed();
+            if len == 0 {
+                return Ok(output);
+            }
+            let (consumed, out_slice) = decoder.feed(encoded)?;
+            output.extend_from_slice(out_slice);
+            encoded = &encoded[consumed..];
+        }
+    }
+
+    #[test]
+    fn test_decoder_corrupted() {
+        // Similar to test_simple_corrupted. We flip bits and make things stop
+        // working.
+        for &case in ::TEST_CASES {
+            println!("\n>>>>> starting case {}", case);
+            let input = vec![0x72; case];
+            let (encoded, hash) = encode(&input);
+            println!("encoded lenth {}", encoded.len());
+            for &tweak_case in ::TEST_CASES {
+                if tweak_case >= encoded.len() {
+                    continue;
+                }
+                println!("tweak case {}", tweak_case);
+                let mut corrupted = encoded.clone();
+                corrupted[tweak_case] ^= 1;
+                assert_eq!(
+                    decode_all(&corrupted, &hash).unwrap_err(),
+                    ::Error::HashMismatch
+                );
+                // But make sure it does work without the tweak.
+                decode_all(&encoded, &hash).unwrap();
+            }
+        }
+    }
+
     #[test]
     fn test_decoder_overfeed() {
         // This simulates a writer who doesn't even call needed(), and instead
