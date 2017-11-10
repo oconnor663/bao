@@ -9,7 +9,7 @@ DIGEST_SIZE = 32
 HEADER_SIZE = 8 + DIGEST_SIZE
 
 def hash_bytes(b):
-    return hashlib.sha512(b).digest()[:DIGEST_SIZE]
+    return hashlib.blake2b(b, digest_size=32).digest()
 
 def left_len(total_len):
     available_chunks = (total_len - 1) // CHUNK_SIZE
