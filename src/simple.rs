@@ -242,7 +242,7 @@ mod test {
 
             // Have the Python implementation encode the same input, and make
             // sure the result is identical.
-            let python_encoded = cmd!("python3", "./python/bao.py", "encode")
+            let python_encoded = cmd!("python3", "./python/bao.py", "encode", "--memory")
                 .input(input.clone())
                 .stdout_capture()
                 .run()
@@ -251,8 +251,13 @@ mod test {
             assert_eq!(&rust_encoded, &python_encoded, "encoding mismatch");
 
             // Make sure the Python implementation can decode too.
-            let python_decoded = cmd!("python3", "./python/bao.py", "decode", rust_digest.to_hex())
-                .input(python_encoded)
+            let python_decoded = cmd!(
+                "python3",
+                "./python/bao.py",
+                "decode",
+                "--hash",
+                rust_digest.to_hex()
+            ).input(python_encoded)
                 .stdout_capture()
                 .run()
                 .expect("decoding failed")
