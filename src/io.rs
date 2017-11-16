@@ -176,6 +176,7 @@ impl<T: Read> Read for Reader<T> {
             }
             self.in_buffer.resize(needed, 0);
             self.inner_reader.read_exact(&mut self.in_buffer)?;
+            // TODO: Return hash mismatches properly!
             let (_, out) = self.decoder.feed(&self.in_buffer).expect("was needed");
             // Could be empty.
             self.out_buffer.extend_from_slice(out);
