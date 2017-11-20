@@ -32,11 +32,21 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub const CHUNK_SIZE: usize = 4096;
 pub const DIGEST_SIZE: usize = 32;
 pub const NODE_SIZE: usize = 2 * DIGEST_SIZE;
-pub const HEADER_SIZE: usize = 8 + DIGEST_SIZE;
+pub const HEADER_SIZE: usize = 8;
 
 // Currently we use blake2b-256, though this will get parametrized.
 pub fn hash(input: &[u8]) -> Digest {
     let digest = blake2_c::blake2b_256(input);
+    let mut array = [0; DIGEST_SIZE];
+    array[..].copy_from_slice(&digest.bytes);
+    array
+}
+
+pub fn hash_two(input1: &[u8], input2: &[u8]) -> Digest {
+    let mut state = blake2_c::blake2b::State::new(DIGEST_SIZE);
+    state.update(input1);
+    state.update(input2);
+    let digest = state.finalize();
     let mut array = [0; DIGEST_SIZE];
     array[..].copy_from_slice(&digest.bytes);
     array
@@ -84,5 +94,10 @@ mod test {
             digest[0] ^= 1;
             verify(input, &digest).unwrap_err();
         }
+    }
+
+    #[test]
+    fn test_hash_two() {
+        assert_eq!(hash(b"foobar"), hash_two(b"foo", b"bar"));
     }
 }

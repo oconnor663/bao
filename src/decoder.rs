@@ -1,4 +1,4 @@
-use simple::{from_header_bytes, left_subregion_len};
+use simple::{from_header_bytes, left_subtree_len};
 use unverified::Unverified;
 
 #[derive(Debug, Clone, Copy)]
@@ -185,12 +185,12 @@ impl Region {
     }
 
     /// Splits the current region into two subregions, with the key logic
-    /// happening in `left_subregion_len`. If calculating the new
+    /// happening in `left_subtree_len`. If calculating the new
     /// `encoded_offset` overflows, return `None`.
     fn parse_node(&self, bytes: &[u8]) -> ::Result<Node> {
         let left = Region {
             start: self.start,
-            end: self.start + left_subregion_len(self.len()),
+            end: self.start + left_subtree_len(self.len()),
             encoded_offset: checked_add(self.encoded_offset, ::NODE_SIZE as u64)?,
             hash: *array_ref!(bytes, 0, ::DIGEST_SIZE),
         };
@@ -423,18 +423,18 @@ mod test {
         }
     }
 
-    // Tested in both simple.rs and decode.rs. The decoder is the one that
-    // originally got this wrong.
+    // Tested in both simple.rs and decode.rs.
     #[test]
-    fn test_40_zeros_fails() {
-        // This is something of a pitfall in the current design. I've written
-        // the bug where in --any mode, the implementation never checks that
-        // the last 32 bytes in the header are actually the hash of [].
-        let encoded = vec![0; 40];
+    fn test_short_header_fails() {
+        // A permissive decoder might allow 7 null bytes to be zero just like 8
+        // null bytes would be. That would be a bug, and a security bug at
+        // that. The hash of 7 nulls isn't the same as the hash of 8, and it's
+        // crucial that a given input has a unique hash.
+        let encoded = vec![0; 7];
         let hash = ::hash(&encoded);
         assert_eq!(
             decode_all(&encoded, &hash).unwrap_err(),
-            ::Error::HashMismatch
+            ::Error::ShortInput
         );
     }
 }

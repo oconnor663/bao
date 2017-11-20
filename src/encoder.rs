@@ -1,5 +1,5 @@
 use std::ops::Deref;
-use simple::{left_subregion_len, to_header_bytes, from_header_bytes};
+use simple::{left_subtree_len, to_header_bytes, from_header_bytes};
 
 #[derive(Debug, Copy, Clone)]
 struct Subtree {
@@ -270,7 +270,7 @@ impl PostToPreFlipper {
             let node = Node {
                 bytes: *array_ref!(&self.buf, 0, ::NODE_SIZE),
                 start: self.region_start,
-                left_len: left_subregion_len(self.region_len),
+                left_len: left_subtree_len(self.region_len),
             };
             self.stack.push(node);
             self.region_start += node.left_len;

@@ -7,26 +7,24 @@ use unverified::Unverified;
 /// This implementation uses recursion, and it's designed to be as simple as
 /// possible to read.
 pub fn encode(input: &[u8]) -> (Vec<u8>, ::Digest) {
-    // Start with zeros for the header, to reserve space.
+    // Start with the encoded length.
     let mut output = vec![0; ::HEADER_SIZE];
+    LittleEndian::write_u64(&mut output, input.len() as u64);
 
     // Recursively encode all the input, appending to the output vector after
-    // the header.
-    let root_hash = encode_recurse(input, &mut output);
+    // the encoded length. The root node will incorporate the encoded length as
+    // a prefix.
+    let root_hash = encode_recurse(input, &mut output, ::HEADER_SIZE);
 
-    // Go back and fill in the header.
-    let header = to_header_bytes(input.len() as u64, &root_hash);
-    output[..::HEADER_SIZE].copy_from_slice(&header);
-
-    (output, ::hash(&header))
+    (output, root_hash)
 }
 
-fn encode_recurse(input: &[u8], output: &mut Vec<u8>) -> ::Digest {
+fn encode_recurse(input: &[u8], output: &mut Vec<u8>, prefix_len: usize) -> ::Digest {
     // If we're down to an individual chunk, write it directly to the ouput, and
     // return its hash.
     if input.len() <= ::CHUNK_SIZE {
         output.extend_from_slice(input);
-        return ::hash(input);
+        return ::hash(&output[output.len() - input.len() - prefix_len..]);
     }
 
     // Otherwise we have more than one chunk, and we need to encode a left
@@ -40,17 +38,18 @@ fn encode_recurse(input: &[u8], output: &mut Vec<u8>) -> ::Digest {
 
     // Recursively encode the left and right subtrees, appending them to the
     // output. The left subtree is the largest full tree of full chunks that we
-    // can make without leaving the right tree empty.
-    let left_len = left_subregion_len(input.len() as u64) as usize;
-    let left_hash = encode_recurse(&input[..left_len], output);
-    let right_hash = encode_recurse(&input[left_len..], output);
+    // can make without leaving the right tree empty. Nodes below the root
+    // never have a prefix.
+    let left_len = left_subtree_len(input.len() as u64) as usize;
+    let left_hash = encode_recurse(&input[..left_len], output, 0);
+    let right_hash = encode_recurse(&input[left_len..], output, 0);
 
     // Write the left and right hashes into the space of the current node.
     output[node_start..node_half].copy_from_slice(&left_hash);
     output[node_half..node_end].copy_from_slice(&right_hash);
 
     // Return the hash of the current node.
-    ::hash(&output[node_start..node_end])
+    ::hash(&output[node_start - prefix_len..node_end])
 }
 
 /// Recursively verify the encoded tree and return the content.
@@ -71,66 +70,80 @@ fn encode_recurse(input: &[u8], output: &mut Vec<u8>) -> ::Digest {
 /// that it reads, and thus appear to past most tests, but forget the case
 /// where the end of the valid encoding lands precisely on a read boundary.
 pub fn decode(encoded: &[u8], hash: &::Digest) -> ::Result<Vec<u8>> {
-    // Immediately shadow the encoded input with a wrapper type that only gives
-    // us bytes when the hash is correct.
-    let mut encoded = Unverified::wrap(encoded);
-
-    // Verify and parse the header. Each successful read_verify moves the
-    // encoded input forward.
-    let header_bytes = encoded.read_verify(::HEADER_SIZE, hash)?;
-    let (len, hash) = from_header_bytes(header_bytes);
+    // Read the content length from the front of the encoding. These bytes are
+    // unverified, but they'll be included as a prefix for the root node in the
+    // recursive portion.
+    if encoded.len() < ::HEADER_SIZE {
+        return Err(::Error::ShortInput);
+    }
+    let content_len = LittleEndian::read_u64(&encoded[..::HEADER_SIZE]);
 
     // Recursively verify and decode the tree, appending decoded bytes to the
     // output.
-    let mut output = Vec::with_capacity(len as usize);
-    decode_recurse(&mut encoded, len, &hash, &mut output)?;
+    let mut unverified = Unverified::wrap(encoded);
+    let mut output = Vec::with_capacity(content_len as usize);
+    decode_recurse(
+        &mut unverified,
+        content_len,
+        ::HEADER_SIZE,
+        &hash,
+        &mut output,
+    )?;
     Ok(output)
 }
 
 fn decode_recurse(
     encoded: &mut Unverified,
-    region_len: u64,
+    content_len: u64,
+    prefix_len: usize,
     hash: &::Digest,
     output: &mut Vec<u8>,
 ) -> ::Result<()> {
     // If we're down to an individual chunk, verify its hash and append it to
-    // the output.
-    if region_len <= ::CHUNK_SIZE as u64 {
-        let chunk_bytes = encoded.read_verify(region_len as usize, hash)?;
-        output.extend_from_slice(chunk_bytes);
+    // the output. Skip the prefix if any.
+    if content_len <= ::CHUNK_SIZE as u64 {
+        let chunk_bytes = encoded.read_verify(prefix_len + content_len as usize, hash)?;
+        output.extend_from_slice(&chunk_bytes[prefix_len..]);
         return Ok(());
     }
 
     // Otherwise we have a node, and we need to decode its left and right
-    // subtrees. Verify the node bytes and read the subtree hashes.
-    let node_bytes = encoded.read_verify(::NODE_SIZE, hash)?;
-    let (left_len, right_len, left_hash, right_hash) = split_node(region_len, node_bytes);
+    // subtrees. Verify the node bytes and read the subtree hashes. Skip the
+    // prefix if any.
+    let node_bytes = encoded.read_verify(prefix_len + ::NODE_SIZE, hash)?;
+    let (left_len, right_len, left_hash, right_hash) =
+        split_node(content_len, &node_bytes[prefix_len..]);
 
-    // Recursively verify and decode the left and right subtrees.
-    decode_recurse(encoded, left_len, &left_hash, output)?;
-    decode_recurse(encoded, right_len, &right_hash, output)?;
+    // Recursively verify and decode the left and right subtrees. Nodes below
+    // the root never have a prefix.
+    decode_recurse(encoded, left_len, 0, &left_hash, output)?;
+    decode_recurse(encoded, right_len, 0, &right_hash, output)?;
     Ok(())
 }
 
-/// "Given a region of input of length `n`, larger than one chunk, what's the
-/// length of its left subregion?" The answer to this question completely
-/// determines the shape of the encoded tree. The answer is: the largest power
-/// of 2 count of full chunks that's strictly less than the input length.
+/// "Given input of length `n`, larger than one chunk, how much of it goes in
+/// the left subtree?" The answer to this question completely determines the
+/// shape of the encoded tree. The answer is: the left subtree is the largest
+/// perfect tree (power of 2 leaves) of full chunks that leaves at least one
+/// byte for the right side. So for example, if the input is exactly 4 chunks,
+/// then the split is 2 chunks on the left and the right, but if it's 4 chunks
+/// plus 1 byte, then the split is 4 full chunks on the left and one byte on
+/// the right.
 ///
-/// Several properties fall out from that one:
+/// Several properties fall out from this rule, recursively applied:
 /// - All chunks are full, except maybe the last one.
 /// - The last chunk is never empty, unless there is no input.
 /// - All left subtrees are full, everywhere in the tree.
 /// - The tree is balanced.
 ///
 /// We depend on these properties in several places, for example in computing
-/// the encoded size of a tree. The stability of the left subtrees makes it
-/// efficient to build a tree incrementally, since appending input bytes only
-/// affects nodes on the rightmost edge of the tree.
-pub(crate) fn left_subregion_len(region_len: u64) -> u64 {
-    debug_assert!(region_len > ::CHUNK_SIZE as u64);
-    // Reserve at least one byte for the right side.
-    let full_chunks = (region_len - 1) / ::CHUNK_SIZE as u64;
+/// the encoded size of a tree. The stability of the left subtrees also makes
+/// it efficient to build a tree incrementally, since appending input bytes
+/// only affects nodes on the rightmost edge of the tree.
+pub(crate) fn left_subtree_len(content_len: u64) -> u64 {
+    debug_assert!(content_len > ::CHUNK_SIZE as u64);
+    // Subtract 1 to reserve at least one byte for the right side.
+    let full_chunks = (content_len - 1) / ::CHUNK_SIZE as u64;
     largest_power_of_two(full_chunks) * ::CHUNK_SIZE as u64
 }
 
@@ -155,9 +168,9 @@ pub(crate) fn to_header_bytes(len: u64, hash: &::Digest) -> [u8; ::HEADER_SIZE] 
     ret
 }
 
-pub(crate) fn split_node(region_len: u64, node_bytes: &[u8]) -> (u64, u64, ::Digest, ::Digest) {
-    let left_len = left_subregion_len(region_len);
-    let right_len = region_len - left_len;
+pub(crate) fn split_node(content_len: u64, node_bytes: &[u8]) -> (u64, u64, ::Digest, ::Digest) {
+    let left_len = left_subtree_len(content_len);
+    let right_len = content_len - left_len;
     let left_hash = *array_ref!(node_bytes, 0, ::DIGEST_SIZE);
     let right_hash = *array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE);
     (left_len, right_len, left_hash, right_hash)
@@ -195,12 +208,12 @@ mod test {
     }
 
     #[test]
-    fn test_left_subregion_len() {
+    fn test_left_subtree_len() {
         let s = ::CHUNK_SIZE as u64;
         let input_output = &[(s + 1, s), (2 * s - 1, s), (2 * s, s), (2 * s + 1, 2 * s)];
         for &(input, output) in input_output {
             println!("testing {} and {}", input, output);
-            assert_eq!(left_subregion_len(input), output);
+            assert_eq!(left_subtree_len(input), output);
         }
     }
 
@@ -268,12 +281,13 @@ mod test {
 
     // Tested in both simple.rs and decode.rs.
     #[test]
-    fn test_40_zeros_fails() {
-        // This is something of a pitfall in the current design. I've written
-        // the bug where in --any mode, the implementation never checks that
-        // the last 32 bytes in the header are actually the hash of [].
-        let encoded = vec![0; 40];
+    fn test_short_header_fails() {
+        // A permissive decoder might allow 7 null bytes to be zero just like 8
+        // null bytes would be. That would be a bug, and a security bug at
+        // that. The hash of 7 nulls isn't the same as the hash of 8, and it's
+        // crucial that a given input has a unique hash.
+        let encoded = vec![0; 7];
         let hash = ::hash(&encoded);
-        assert_eq!(decode(&encoded, &hash).unwrap_err(), ::Error::HashMismatch);
+        assert_eq!(decode(&encoded, &hash).unwrap_err(), ::Error::ShortInput);
     }
 }
