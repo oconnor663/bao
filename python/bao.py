@@ -13,45 +13,59 @@ import sys
 
 CHUNK_SIZE = 4096
 DIGEST_SIZE = 32
-HEADER_SIZE = 8 + DIGEST_SIZE
 
-def blake2b_256(buf):
-    return hashlib.blake2b(buf, digest_size=32).digest()
+# The root node (whether it's a chunk or a parent) is hashed with the Blake2
+# "last node" flag set, and with the content length as a suffix.
+def hash_node(node, suffix=None):
+    return hashlib.blake2b(
+        node + (suffix or b""),
+        last_node=bool(suffix),
+        digest_size=DIGEST_SIZE
+    ).digest()
 
+# Left subtrees contain the largest possible power of two chunks, with at least
+# one byte left for the right subtree.
 def left_len(total_len):
     available_chunks = (total_len - 1) // CHUNK_SIZE
     power_of_two_chunks = 2 ** (available_chunks.bit_length() - 1)
     return CHUNK_SIZE * power_of_two_chunks
 
 def bao_encode(buf):
-    def encode_recurse(buf, prefix):
+    def encode_recurse(buf, hash_suffix):
         if len(buf) <= CHUNK_SIZE:
-            return blake2b_256(prefix + buf), prefix + buf
+            return hash_node(buf, suffix=hash_suffix), buf
         llen = left_len(len(buf))
-        left_hash, left_encoded = encode_recurse(buf[:llen], b"")
-        right_hash, right_encoded = encode_recurse(buf[llen:], b"")
-        node = prefix + left_hash + right_hash
-        return blake2b_256(node), node + left_encoded + right_encoded
+        # Nodes below the root have no hash suffix.
+        left_hash, left_encoded = encode_recurse(buf[:llen], None)
+        right_hash, right_encoded = encode_recurse(buf[llen:], None)
+        node = left_hash + right_hash
+        encoded = node + left_encoded + right_encoded
+        return hash_node(node, suffix=hash_suffix), encoded
 
-    prefix = len(buf).to_bytes(8, "little")
-    return encode_recurse(buf, prefix)
+    # The 8-byte little endian content length is used as a hash suffix for the
+    # root node, and as a prefix for the final encoding.
+    length_bytes = len(buf).to_bytes(8, "little")
+    hash, encoded = encode_recurse(buf, length_bytes)
+    return hash, length_bytes + encoded
 
 def bao_decode(buf, digest):
-    def decode_recurse(buf, digest, encoded_offset, content_len, prefix):
+    def decode_recurse(buf, digest, encoded_offset, content_len, hash_suffix):
         if content_len <= CHUNK_SIZE:
             new_offset = encoded_offset + content_len
             chunk = buf[encoded_offset:new_offset]
             if digest is not None:
-                assert digest == blake2b_256(prefix + chunk)
+                assert digest == hash_node(chunk, hash_suffix)
             return new_offset, chunk
         new_offset = encoded_offset + 2*DIGEST_SIZE
         node = buf[encoded_offset:new_offset]
         if digest is not None:
-            assert digest == blake2b_256(prefix + node)
+            assert digest == hash_node(node, hash_suffix)
         left_hash, right_hash = node[:DIGEST_SIZE], node[DIGEST_SIZE:]
         llen = left_len(content_len)
-        new_offset, left_decoded = decode_recurse(buf, left_hash, new_offset, llen, b"")
-        new_offset, right_decoded = decode_recurse(buf, right_hash, new_offset, content_len - llen, b"")
+        new_offset, left_decoded = decode_recurse(
+            buf, left_hash, new_offset, llen, None)
+        new_offset, right_decoded = decode_recurse(
+            buf, right_hash, new_offset, content_len - llen, None)
         return new_offset, left_decoded + right_decoded
 
     assert len(buf) >= 8, "not enough bytes for header"
