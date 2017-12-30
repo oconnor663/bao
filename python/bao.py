@@ -3,7 +3,7 @@
 __doc__ = """\
 Usage: bao.py encode --memory
        bao.py decode (--hash=<hash> | --any)
-       bao.py hash
+       bao.py hash [--encoded]
 """
 
 import binascii
@@ -73,6 +73,15 @@ def bao_decode(buf, digest):
     _, decoded = decode_recurse(buf, digest, 8, content_len, buf[:8])
     return decoded
 
+def bao_hash_encoded(stream):
+    length_bytes = stream.read(8)
+    length = int.from_bytes(length_bytes, "little")
+    if length > CHUNK_SIZE:
+        root_node = stream.read(2 * DIGEST_SIZE)
+    else:
+        root_node = stream.read(length)
+    return hash_node(root_node, suffix=length_bytes)
+
 def main():
     args = docopt.docopt(__doc__)
     if args["encode"]:
@@ -87,7 +96,10 @@ def main():
         decoded = bao_decode(buf, header_hash)
         sys.stdout.buffer.write(decoded)
     elif args["hash"]:
-        bao_hash, _ = bao_encode(sys.stdin.buffer.read())
+        if args["--encoded"]:
+            bao_hash = bao_hash_encoded(sys.stdin.buffer)
+        else:
+            bao_hash, _ = bao_encode(sys.stdin.buffer.read())
         print(bao_hash.hex())
 
 if __name__ == "__main__":
