@@ -324,6 +324,14 @@ mod test {
         validate_recurse(&mut encoded, len, &hash);
     }
 
+    fn split_node(content_len: u64, node_bytes: &[u8]) -> (u64, u64, ::Digest, ::Digest) {
+        let left_len = left_subtree_len(content_len);
+        let right_len = content_len - left_len;
+        let left_hash = *array_ref!(node_bytes, 0, ::DIGEST_SIZE);
+        let right_hash = *array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE);
+        (left_len, right_len, left_hash, right_hash)
+    }
+
     fn validate_recurse(encoded: &mut Unverified, region_len: u64, region_hash: &::Digest) {
         if region_len <= ::CHUNK_SIZE as u64 {
             encoded
@@ -332,8 +340,7 @@ mod test {
             return;
         }
         let node_bytes = encoded.read_verify_back(::NODE_SIZE, region_hash).unwrap();
-        let (left_len, right_len, left_hash, right_hash) =
-            simple::split_node(region_len, node_bytes);
+        let (left_len, right_len, left_hash, right_hash) = split_node(region_len, node_bytes);
         // Note that we have to validate ***right then left***, because we're
         // reading from the back.
         validate_recurse(encoded, right_len, &right_hash);

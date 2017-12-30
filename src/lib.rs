@@ -52,6 +52,37 @@ pub fn hash_two(input1: &[u8], input2: &[u8]) -> Digest {
     array
 }
 
+fn hash_node(node: &[u8], suffix: &[u8]) -> Digest {
+    let mut state = blake2_c::blake2b::State::new(DIGEST_SIZE);
+    state.update(node);
+    if !suffix.is_empty() {
+        state.update(suffix);
+        state.set_last_node(true);
+    }
+    let finalized = state.finalize();
+    let mut digest = [0; DIGEST_SIZE];
+    digest.copy_from_slice(&finalized.bytes);
+    digest
+}
+
+fn verify_node<'a>(
+    input: &'a [u8],
+    len: usize,
+    digest: &Digest,
+    suffix: &[u8],
+) -> Result<&'a [u8]> {
+    if input.len() < len {
+        return Err(::Error::ShortInput);
+    }
+    let bytes = &input[..len];
+    let computed = hash_node(bytes, suffix);
+    if constant_time::verify_slices_are_equal(digest, &computed).is_ok() {
+        Ok(bytes)
+    } else {
+        Err(Error::HashMismatch)
+    }
+}
+
 fn verify(input: &[u8], digest: &Digest) -> Result<()> {
     let computed = hash(input);
     constant_time::verify_slices_are_equal(&digest[..], &computed[..])
