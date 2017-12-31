@@ -1,3 +1,4 @@
+extern crate arrayvec;
 #[macro_use]
 extern crate arrayref;
 extern crate blake2_c;
@@ -10,13 +11,15 @@ extern crate duct;
 #[cfg(test)]
 extern crate hex;
 
+use byteorder::{ByteOrder, LittleEndian};
 use ring::constant_time;
 
 mod unverified;
-pub mod simple;
-pub mod encoder;
 pub mod decoder;
+pub mod encoder;
+pub mod hash;
 pub mod io;
+pub mod simple;
 
 pub type Digest = [u8; DIGEST_SIZE];
 
@@ -33,6 +36,23 @@ pub const CHUNK_SIZE: usize = 4096;
 pub const DIGEST_SIZE: usize = 32;
 pub const NODE_SIZE: usize = 2 * DIGEST_SIZE;
 pub const HEADER_SIZE: usize = 8;
+
+fn suffix_root(state: &mut blake2_c::blake2b::State, len: u64) {
+    let mut len_bytes = [0; 8];
+    LittleEndian::write_u64(&mut len_bytes, len);
+    state.update(&len_bytes);
+    state.set_last_node(true);
+}
+
+fn finalize_node(state: &mut blake2_c::blake2b::State) -> Digest {
+    let blake_digest = state.finalize().bytes;
+    *array_ref!(blake_digest, 0, ::DIGEST_SIZE)
+}
+
+fn finalize_root(state: &mut blake2_c::blake2b::State, len: u64) -> Digest {
+    suffix_root(state, len);
+    finalize_node(state)
+}
 
 // Currently we use blake2b-256, though this will get parametrized.
 pub fn hash(input: &[u8]) -> Digest {
