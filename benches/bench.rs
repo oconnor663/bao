@@ -15,18 +15,28 @@ fn bench_blake2b_short(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_short(b: &mut Bencher) {
-    b.iter(|| { bao::hash::hash(SHORT); });
-}
-
-#[bench]
 fn bench_blake2b_long(b: &mut Bencher) {
     b.iter(|| { blake2_c::blake2b_256(LONG); });
 }
 
 #[bench]
+fn bench_bao_hash_short(b: &mut Bencher) {
+    b.iter(|| { bao::hash::hash(SHORT); });
+}
+
+#[bench]
 fn bench_bao_hash_long(b: &mut Bencher) {
     b.iter(|| { bao::hash::hash(LONG); });
+}
+
+#[bench]
+fn bench_bao_hash_parallel_short(b: &mut Bencher) {
+    b.iter(|| { bao::hash_parallel::hash(SHORT); });
+}
+
+#[bench]
+fn bench_bao_hash_parallel_long(b: &mut Bencher) {
+    b.iter(|| { bao::hash_parallel::hash(LONG); });
 }
 
 #[bench]
