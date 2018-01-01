@@ -105,7 +105,33 @@ mod test {
                 .input(input.clone())
                 .read()
                 .expect("is python3 installed?");
-            assert_eq!(hash_hex, python_hash, "encoding mismatch");
+            assert_eq!(hash_hex, python_hash, "hashes don't match");
+        }
+    }
+
+    #[test]
+    fn test_compare_simple() {
+        for &case in ::TEST_CASES {
+            println!("case {}", case);
+            let input = vec![0x42; case];
+            let state_hash = hash(&input);
+            let simple_hash = ::simple::encode(&input).1;
+            assert_eq!(state_hash, simple_hash, "hashes don't match");
+        }
+    }
+
+    #[test]
+    fn test_compare_simple_byte_at_a_time() {
+        for &case in ::TEST_CASES {
+            println!("case {}", case);
+            let input = vec![0x42; case];
+            let mut state = State::new();
+            for i in 0..input.len() {
+                state.update(&input[i..i + 1]);
+            }
+            let state_hash = state.finalize();
+            let simple_hash = ::simple::encode(&input).1;
+            assert_eq!(state_hash, simple_hash, "hashes don't match");
         }
     }
 }
