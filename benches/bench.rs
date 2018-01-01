@@ -30,13 +30,23 @@ fn bench_bao_hash_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_parallel_short(b: &mut Bencher) {
-    b.iter(|| { bao::hash_parallel::hash(SHORT); });
+fn bench_bao_hash_parallel1_short(b: &mut Bencher) {
+    b.iter(|| { bao::hash_parallel1::hash(SHORT); });
 }
 
 #[bench]
-fn bench_bao_hash_parallel_long(b: &mut Bencher) {
-    b.iter(|| { bao::hash_parallel::hash(LONG); });
+fn bench_bao_hash_parallel1_long(b: &mut Bencher) {
+    b.iter(|| { bao::hash_parallel1::hash(LONG); });
+}
+
+#[bench]
+fn bench_bao_hash_parallel2_short(b: &mut Bencher) {
+    b.iter(|| { bao::hash_parallel2::hash(SHORT); });
+}
+
+#[bench]
+fn bench_bao_hash_parallel2_long(b: &mut Bencher) {
+    b.iter(|| { bao::hash_parallel2::hash(LONG); });
 }
 
 #[bench]
