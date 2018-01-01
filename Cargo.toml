@@ -13,7 +13,7 @@ byteorder = "1.1.0"
 blake2_c = "0.3.0"
 docopt = "0.8.1"
 hex = "0.2.0"
-ring = "0.12.1"
+ring = "0.13.0-alpha"
 serde = "1.0.20"
 serde_derive = "1.0.20"
 
