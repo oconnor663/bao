@@ -18,6 +18,7 @@ mod unverified;
 pub mod decoder;
 pub mod encoder;
 pub mod hash;
+pub mod hash_parallel;
 pub mod io;
 pub mod simple;
 
@@ -52,6 +53,12 @@ fn finalize_node(state: &mut blake2_c::blake2b::State) -> Digest {
 fn finalize_root(state: &mut blake2_c::blake2b::State, len: u64) -> Digest {
     suffix_root(state, len);
     finalize_node(state)
+}
+
+pub fn hash_root(node: &[u8], len: u64) -> Digest {
+    let mut state = blake2_c::blake2b::State::new(DIGEST_SIZE);
+    state.update(node);
+    finalize_root(&mut state, len)
 }
 
 // Currently we use blake2b-256, though this will get parametrized.

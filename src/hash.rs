@@ -82,6 +82,7 @@ impl State {
             }
             self.nodes.push(::finalize_node(&mut parent_digest));
         }
+        // TODO: unreachable?
         self.nodes[0]
     }
 }
