@@ -18,7 +18,7 @@ mod unverified;
 pub mod decoder;
 pub mod encoder;
 pub mod hash;
-pub mod hash_parallel;
+pub mod hash_parallel1;
 pub mod io;
 pub mod simple;
 
