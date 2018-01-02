@@ -50,6 +50,16 @@ fn bench_bao_hash_parallel2_long(b: &mut Bencher) {
 }
 
 #[bench]
+fn bench_bao_hash_parallel3_short(b: &mut Bencher) {
+    b.iter(|| { bao::hash_parallel3::hash(SHORT); });
+}
+
+#[bench]
+fn bench_bao_hash_parallel3_long(b: &mut Bencher) {
+    b.iter(|| { bao::hash_parallel3::hash(LONG); });
+}
+
+#[bench]
 fn bench_bao_encode_simple_short(b: &mut Bencher) {
     b.iter(|| { bao::simple::encode(SHORT); });
 }

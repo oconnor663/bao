@@ -20,6 +20,7 @@ pub mod encoder;
 pub mod hash;
 pub mod hash_parallel1;
 pub mod hash_parallel2;
+pub mod hash_parallel3;
 pub mod io;
 pub mod simple;
 
