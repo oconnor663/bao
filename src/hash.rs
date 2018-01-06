@@ -1,56 +1,160 @@
 use arrayvec::ArrayVec;
 use blake2_c::blake2b;
+use byteorder::{ByteOrder, LittleEndian};
+use rayon;
+use std::cmp::min;
+use Hash;
+use DIGEST_SIZE;
+use CHUNK_SIZE;
 
-pub fn hash(input: &[u8]) -> ::Digest {
-    let mut state = State::new();
-    state.update(input);
-    state.finalize()
+pub(crate) fn finalize_hash(state: &mut blake2b::State, root_len: Option<u64>) -> Hash {
+    // For the root node, we hash in the length as a suffix, and we set the
+    // Blake2 last node flag. One of the reasons for this design is that we
+    // don't need to know a given node is the root until the very end, so we
+    // don't always need a chunk buffer.
+    if let Some(len) = root_len {
+        let mut len_bytes = [0; 8];
+        LittleEndian::write_u64(&mut len_bytes, len);
+        state.update(&len_bytes);
+        state.set_last_node(true);
+    }
+    let blake_digest = state.finalize();
+    *array_ref!(blake_digest.bytes, 0, DIGEST_SIZE)
+}
+
+pub(crate) fn hash_chunk(chunk: &[u8], root_len: Option<u64>) -> Hash {
+    debug_assert!(chunk.len() <= CHUNK_SIZE);
+    let mut state = blake2b::State::new(DIGEST_SIZE);
+    state.update(chunk);
+    finalize_hash(&mut state, root_len)
+}
+
+pub(crate) fn hash_parent(left_hash: &[u8], right_hash: &[u8], root_len: Option<u64>) -> Hash {
+    debug_assert_eq!(left_hash.len(), DIGEST_SIZE);
+    debug_assert_eq!(right_hash.len(), DIGEST_SIZE);
+    let mut state = blake2b::State::new(DIGEST_SIZE);
+    state.update(left_hash);
+    state.update(right_hash);
+    finalize_hash(&mut state, root_len)
+}
+
+// Find the largest power of two that's less than or equal to `n`. We use this
+// for computing subtree sizes below.
+fn largest_power_of_two(n: u64) -> u64 {
+    debug_assert!(n != 0);
+    1 << (63 - n.leading_zeros())
+}
+
+// Given some input larger than one chunk, find the largest perfect tree of
+// chunks that can go on the left.
+pub(crate) fn left_len(content_len: u64) -> u64 {
+    debug_assert!(content_len > CHUNK_SIZE as u64);
+    // Subtract 1 to reserve at least one byte for the right side.
+    let full_chunks = (content_len - 1) / CHUNK_SIZE as u64;
+    largest_power_of_two(full_chunks) * CHUNK_SIZE as u64
+}
+
+pub(crate) fn hash_recurse(input: &[u8], root_len: Option<u64>) -> Hash {
+    if input.len() <= CHUNK_SIZE {
+        return hash_chunk(input, root_len);
+    }
+    // If we have more than one chunk of input, recursively hash the left and
+    // right sides. The left_len() function determines the shape of the tree.
+    let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
+    // Child nodes are never the root, so their root_len is None.
+    let left_hash = hash_recurse(left, None);
+    let right_hash = hash_recurse(right, None);
+    hash_parent(&left_hash, &right_hash, root_len)
+}
+
+pub fn hash(input: &[u8]) -> Hash {
+    hash_recurse(input, Some(input.len() as u64))
+}
+
+pub(crate) fn hash_recurse_parallel(input: &[u8], root_len: Option<u64>) -> Hash {
+    if input.len() <= CHUNK_SIZE {
+        return hash_chunk(input, root_len);
+    }
+    let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
+    let (left_hash, right_hash) = rayon::join(|| hash_recurse_parallel(left, None), || {
+        hash_recurse_parallel(right, None)
+    });
+    hash_parent(&left_hash, &right_hash, root_len)
+}
+
+pub fn hash_parallel(input: &[u8]) -> Hash {
+    hash_recurse_parallel(input, Some(input.len() as u64))
+}
+
+// This is a cute algorithm for merging partially completed trees. We keep only
+// the hash of each subtree assembled so far, ordered from largest to smallest
+// in an ArrayVec. Because all subtrees (prior to the finalization step) are a
+// power of two times the chunk size, adding a new subtree to the small end is
+// conceptually very similar to adding two binary numbers and propagating the
+// carry bit.
+pub(crate) fn rollup_subtree(
+    subtrees: &mut ArrayVec<[Hash; 64]>,
+    new_total_len: u64,
+    new_subtree: Hash,
+) {
+    let final_num_trees = (new_total_len / CHUNK_SIZE as u64).count_ones();
+    subtrees.push(new_subtree);
+    while subtrees.len() > final_num_trees as usize {
+        let right_child = subtrees.pop().expect("called with too few nodes");
+        let left_child = subtrees.pop().expect("called with too few nodes");
+        subtrees.push(hash_parent(&left_child, &right_child, None));
+    }
+}
+
+// Similar to rollup_subtree, but for the finalization step, where we allow
+// imperfect subtrees on the right edge. From smallest to largest, every pair
+// of subtrees gets merged into a parent node, regardless of their length. The
+// rule that all left subtrees are perfect is still preserved.
+pub(crate) fn rollup_final(
+    subtrees: &mut ArrayVec<[Hash; 64]>,
+    final_len: u64,
+    new_subtree: Hash,
+) -> Hash {
+    subtrees.push(new_subtree);
+    loop {
+        let right_child = subtrees.pop().expect("called with too few nodes");
+        let left_child = subtrees.pop().expect("called with too few nodes");
+        if subtrees.is_empty() {
+            return hash_parent(&left_child, &right_child, Some(final_len));
+        }
+        subtrees.push(hash_parent(&left_child, &right_child, None));
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct State {
     chunk_state: blake2b::State,
     count: u64,
-    nodes: ArrayVec<[::Digest; 64]>,
+    subtrees: ArrayVec<[Hash; 64]>,
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
-            chunk_state: blake2b::State::new(::DIGEST_SIZE),
+            chunk_state: blake2b::State::new(DIGEST_SIZE),
             count: 0,
-            nodes: ArrayVec::new(),
+            subtrees: ArrayVec::new(),
         }
     }
 
     pub fn update(&mut self, mut input: &[u8]) {
         while !input.is_empty() {
-            // If we've completed a chunk, add it to the nodes list. We only do
-            // this when we know there's more input to come, so we know we
-            // don't need the final node flag or the root suffix.
-            if self.count > 0 && self.count % ::CHUNK_SIZE as u64 == 0 {
-                let chunk_hash = ::finalize_node(&mut self.chunk_state);
-                self.nodes.push(chunk_hash);
-                self.chunk_state = blake2b::State::new(::DIGEST_SIZE);
-                // When two nodes in the stack have the same size (only ever
-                // the last two), they need to be hashed together into a parent
-                // node. A cute hack to avoid needing to store the size:
-                // Combining nodes is metaphorically similar to adding with a
-                // carry bit. The length of the stack should be the same as the
-                // number of 1's in the binary representation of the current
-                // chunk count.
-                while self.nodes.len() > (self.count / ::CHUNK_SIZE as u64).count_ones() as usize {
-                    let right = self.nodes.pop().unwrap();
-                    let left = self.nodes.pop().unwrap();
-                    let mut parent_digest = blake2b::State::new(::DIGEST_SIZE);
-                    parent_digest.update(&left);
-                    parent_digest.update(&right);
-                    let parent_hash = ::finalize_node(&mut parent_digest);
-                    self.nodes.push(parent_hash);
-                }
+            // If we've completed a chunk, merge it into the subtrees list. We
+            // only do this when we know there's more input to come, otherwise
+            // we have to wait and see if we need to finalize.
+            if self.count > 0 && self.count % CHUNK_SIZE as u64 == 0 {
+                let chunk_hash = finalize_hash(&mut self.chunk_state, None);
+                self.chunk_state = blake2b::State::new(DIGEST_SIZE);
+                rollup_subtree(&mut self.subtrees, self.count, chunk_hash);
             }
             // Take as many bytes as we can, to fill the next chunk.
-            let take = input.len().min(::CHUNK_SIZE);
+            let current_chunk_len = (self.count % CHUNK_SIZE as u64) as usize;
+            let take = min(input.len(), CHUNK_SIZE - current_chunk_len);
             self.chunk_state.update(&input[..take]);
             input = &input[take..];
             self.count += take as u64;
@@ -58,32 +162,16 @@ impl State {
     }
 
     /// It's a logic error to call finalize more than once on the same instance.
-    pub fn finalize(&mut self) -> ::Digest {
-        // Hash the final block (possibly empty, if the whole input is empty).
-        // If this is the only block, we need to suffix it and set the final
-        // node flag. Note that if we instead used a prefix, or any of the
-        // other Blake2 parameters, we wouldn't be able to store only the
-        // Blake2 state as we're doing here -- we would've had to buffer the
-        // whole chunk.
-        if self.count <= ::CHUNK_SIZE as u64 {
-            return ::finalize_root(&mut self.chunk_state, self.count);
+    pub fn finalize(&mut self) -> Hash {
+        // If the tree is a single chunk, give that chunk the root flag and
+        // return its hash.
+        if self.count <= CHUNK_SIZE as u64 {
+            return finalize_hash(&mut self.chunk_state, Some(self.count as u64));
         }
-        self.nodes.push(::finalize_node(&mut self.chunk_state));
-        // Like the loop above, combine nodes into parents along the right
-        // edge. But this time do it regardless of their length.
-        while self.nodes.len() >= 2 {
-            let right = self.nodes.pop().unwrap();
-            let left = self.nodes.pop().unwrap();
-            let mut parent_digest = blake2b::State::new(::DIGEST_SIZE);
-            parent_digest.update(&left);
-            parent_digest.update(&right);
-            if self.nodes.is_empty() {
-                return ::finalize_root(&mut parent_digest, self.count);
-            }
-            self.nodes.push(::finalize_node(&mut parent_digest));
-        }
-        // TODO: unreachable?
-        self.nodes[0]
+        // Otherwise we need to hash the chunk as usual and do a rollup that
+        // flags the root parent node.
+        let chunk_hash = finalize_hash(&mut self.chunk_state, None);
+        rollup_final(&mut self.subtrees, self.count, chunk_hash)
     }
 }
 
@@ -111,28 +199,30 @@ mod test {
     }
 
     #[test]
-    fn test_compare_simple() {
+    fn test_state() {
         for &case in ::TEST_CASES {
             println!("case {}", case);
             let input = vec![0x42; case];
-            let state_hash = hash(&input);
-            let simple_hash = ::simple::encode(&input).1;
-            assert_eq!(state_hash, simple_hash, "hashes don't match");
+            let hash_at_once = hash(&input);
+            let mut state = State::new();
+            // Use chunks that don't evenly divide 4096, to check the buffering
+            // logic.
+            for chunk in input.chunks(1000) {
+                state.update(chunk);
+            }
+            let hash_state = state.finalize();
+            assert_eq!(hash_at_once, hash_state, "hashes don't match");
         }
     }
 
     #[test]
-    fn test_compare_simple_byte_at_a_time() {
+    fn test_parallel() {
         for &case in ::TEST_CASES {
             println!("case {}", case);
             let input = vec![0x42; case];
-            let mut state = State::new();
-            for i in 0..input.len() {
-                state.update(&input[i..i + 1]);
-            }
-            let state_hash = state.finalize();
-            let simple_hash = ::simple::encode(&input).1;
-            assert_eq!(state_hash, simple_hash, "hashes don't match");
+            let hash_serial = hash(&input);
+            let hash_parallel = hash_parallel(&input);
+            assert_eq!(hash_serial, hash_parallel, "hashes don't match");
         }
     }
 }

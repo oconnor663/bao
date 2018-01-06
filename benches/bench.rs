@@ -6,77 +6,103 @@ extern crate test;
 
 use test::Bencher;
 
-const SHORT: &[u8] = b"hello world";
-const LONG: &[u8] = &[0; 1_000_000];
+const ZERO: &[u8] = b"";
+const ONECHUNK: &[u8] = &[0; bao::CHUNK_SIZE];
+const ONECHUNKPLUS: &[u8] = &[0; bao::CHUNK_SIZE + 1];
+const MEGABYTE: &[u8] = &[0; 1_000_000];
 
 #[bench]
-fn bench_blake2b_short(b: &mut Bencher) {
-    b.iter(|| { blake2_c::blake2b_256(SHORT); });
+fn bench_blake2b_zero(b: &mut Bencher) {
+    b.iter(|| { blake2_c::blake2b_256(ZERO); });
 }
 
 #[bench]
-fn bench_blake2b_long(b: &mut Bencher) {
-    b.iter(|| { blake2_c::blake2b_256(LONG); });
+fn bench_blake2b_one_chunk(b: &mut Bencher) {
+    b.iter(|| { blake2_c::blake2b_256(ONECHUNK); });
 }
 
 #[bench]
-fn bench_bao_hash_short(b: &mut Bencher) {
-    b.iter(|| { bao::hash::hash(SHORT); });
+fn bench_blake2b_one_chunk_plus(b: &mut Bencher) {
+    b.iter(|| { blake2_c::blake2b_256(ONECHUNKPLUS); });
 }
 
 #[bench]
-fn bench_bao_hash_long(b: &mut Bencher) {
-    b.iter(|| { bao::hash::hash(LONG); });
+fn bench_blake2b_megabyte(b: &mut Bencher) {
+    b.iter(|| { blake2_c::blake2b_256(MEGABYTE); });
 }
 
 #[bench]
-fn bench_bao_hash_parallel1_short(b: &mut Bencher) {
-    b.iter(|| { bao::hash_parallel1::hash(SHORT); });
+fn bench_bao_recursive_zero(b: &mut Bencher) {
+    b.iter(|| { bao::hash::hash(ZERO); });
 }
 
 #[bench]
-fn bench_bao_hash_parallel1_long(b: &mut Bencher) {
-    b.iter(|| { bao::hash_parallel1::hash(LONG); });
+fn bench_bao_recursive_one_chunk(b: &mut Bencher) {
+    b.iter(|| { bao::hash::hash(ONECHUNK); });
 }
 
 #[bench]
-fn bench_bao_hash_parallel2_short(b: &mut Bencher) {
-    b.iter(|| { bao::hash_parallel2::hash(SHORT); });
+fn bench_bao_recursive_one_chunk_plus(b: &mut Bencher) {
+    b.iter(|| { bao::hash::hash(ONECHUNKPLUS); });
 }
 
 #[bench]
-fn bench_bao_hash_parallel2_long(b: &mut Bencher) {
-    b.iter(|| { bao::hash_parallel2::hash(LONG); });
+fn bench_bao_recursive_megabyes(b: &mut Bencher) {
+    b.iter(|| { bao::hash::hash(MEGABYTE); });
 }
 
 #[bench]
-fn bench_bao_hash_parallel3_short(b: &mut Bencher) {
-    b.iter(|| { bao::hash_parallel3::hash(SHORT); });
+fn bench_bao_parallel_zero(b: &mut Bencher) {
+    b.iter(|| { bao::hash::hash_parallel(ZERO); });
 }
 
 #[bench]
-fn bench_bao_hash_parallel3_long(b: &mut Bencher) {
-    b.iter(|| { bao::hash_parallel3::hash(LONG); });
+fn bench_bao_parallel_one_chunk(b: &mut Bencher) {
+    b.iter(|| { bao::hash::hash_parallel(ONECHUNK); });
 }
 
 #[bench]
-fn bench_bao_encode_simple_short(b: &mut Bencher) {
-    b.iter(|| { bao::simple::encode(SHORT); });
+fn bench_bao_parallel_one_chunk_plus(b: &mut Bencher) {
+    b.iter(|| { bao::hash::hash_parallel(ONECHUNKPLUS); });
 }
 
 #[bench]
-fn bench_bao_encode_simple_long(b: &mut Bencher) {
-    b.iter(|| { bao::simple::encode(LONG); });
+fn bench_bao_parallel_megabyes(b: &mut Bencher) {
+    b.iter(|| { bao::hash::hash_parallel(MEGABYTE); });
 }
 
 #[bench]
-fn bench_bao_decode_simple_short(b: &mut Bencher) {
-    let (encoded, hash) = bao::simple::encode(SHORT);
-    b.iter(|| { bao::simple::decode(&encoded, &hash).unwrap(); });
+fn bench_bao_state_zero(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::State::new();
+        // No update with zero bytes of input.
+        state.finalize();
+    });
 }
 
 #[bench]
-fn bench_bao_decode_simple_long(b: &mut Bencher) {
-    let (encoded, hash) = bao::simple::encode(LONG);
-    b.iter(|| { bao::simple::decode(&encoded, &hash).unwrap(); });
+fn bench_bao_state_one_chunk(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::State::new();
+        state.update(ONECHUNK);
+        state.finalize();
+    });
+}
+
+#[bench]
+fn bench_bao_state_one_chunk_plus(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::State::new();
+        state.update(ONECHUNKPLUS);
+        state.finalize();
+    });
+}
+
+#[bench]
+fn bench_bao_state_megabyes(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::State::new();
+        state.update(MEGABYTE);
+        state.finalize();
+    });
 }
