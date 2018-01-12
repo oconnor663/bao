@@ -1,8 +1,11 @@
 use arrayvec::ArrayVec;
 use blake2_c::blake2b;
-use byteorder::{ByteOrder, LittleEndian};
+use byteorder::{ByteOrder, LittleEndian, NativeEndian};
 use rayon;
 use std::cmp::min;
+use std::mem::size_of;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering::SeqCst;
 use Hash;
 use DIGEST_SIZE;
 use CHUNK_SIZE;
@@ -175,6 +178,24 @@ impl State {
     }
 }
 
+fn write_hash_shared(src: &Hash, dst: &[AtomicUsize]) {
+    debug_assert_eq!(size_of::<Hash>(), dst.len() * size_of::<AtomicUsize>());
+    for (i, chunk) in src.chunks(size_of::<AtomicUsize>()).enumerate() {
+        let parsed = NativeEndian::read_uint(chunk, size_of::<usize>()) as usize;
+        dst[i].store(parsed, SeqCst);
+    }
+}
+
+fn read_hash_shared(src: &[AtomicUsize]) -> Hash {
+    debug_assert_eq!(size_of::<Hash>(), src.len() * size_of::<AtomicUsize>());
+    let mut ret = [0; DIGEST_SIZE];
+    for (i, chunk) in ret.chunks_mut(size_of::<AtomicUsize>()).enumerate() {
+        let loaded = src[i].load(SeqCst) as u64;
+        NativeEndian::write_uint(chunk, loaded, size_of::<usize>());
+    }
+    ret
+}
+
 #[cfg(test)]
 mod test {
     use hex::ToHex;
@@ -224,5 +245,30 @@ mod test {
             let hash_parallel = hash_parallel(&input);
             assert_eq!(hash_serial, hash_parallel, "hashes don't match");
         }
+    }
+
+    #[test]
+    fn test_hash_read_write_shared() {
+        // Initialize the hash to something non-constant, so that we can detect
+        // any reordering bugs.
+        let mut myhash = [0; DIGEST_SIZE];
+        for i in 0..DIGEST_SIZE {
+            myhash[i] = i as u8;
+        }
+        let myatomics: [AtomicUsize; 4] = [
+            AtomicUsize::new(0),
+            AtomicUsize::new(0),
+            AtomicUsize::new(0),
+            AtomicUsize::new(0),
+        ];
+        // Write and then read back out the hash.
+        write_hash_shared(&myhash, &myatomics);
+        let newhash = read_hash_shared(&myatomics);
+        // Make sure all the atomics got set to something nonzero, and that the
+        // resulting hash is the same.
+        for x in myatomics.iter() {
+            assert!(x.load(SeqCst) != 0);
+        }
+        assert_eq!(myhash, newhash);
     }
 }
