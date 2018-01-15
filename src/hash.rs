@@ -1,11 +1,8 @@
 use arrayvec::ArrayVec;
 use blake2_c::blake2b;
-use byteorder::{ByteOrder, LittleEndian, NativeEndian};
+use byteorder::{ByteOrder, LittleEndian};
 use rayon;
 use std::cmp::min;
-use std::mem::size_of;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::SeqCst;
 use Hash;
 use DIGEST_SIZE;
 use CHUNK_SIZE;
@@ -179,22 +176,57 @@ impl State {
     }
 }
 
-fn write_hash_shared(src: &Hash, dst: &[AtomicUsize]) {
-    debug_assert_eq!(size_of::<Hash>(), dst.len() * size_of::<AtomicUsize>());
-    for (i, chunk) in src.chunks(size_of::<AtomicUsize>()).enumerate() {
-        let parsed = NativeEndian::read_uint(chunk, size_of::<usize>()) as usize;
-        dst[i].store(parsed, SeqCst);
-    }
+// A little more than one megabyte.
+const PARALLEL_BUFFER_SIZE: usize = 256 * CHUNK_SIZE;
+
+pub struct StateParallel {
+    buffer: Vec<u8>,
+    count: u64,
+    subtrees: ArrayVec<[Hash; 64]>,
 }
 
-fn read_hash_shared(src: &[AtomicUsize]) -> Hash {
-    debug_assert_eq!(size_of::<Hash>(), src.len() * size_of::<AtomicUsize>());
-    let mut ret = [0; DIGEST_SIZE];
-    for (i, chunk) in ret.chunks_mut(size_of::<AtomicUsize>()).enumerate() {
-        let loaded = src[i].load(SeqCst) as u64;
-        NativeEndian::write_uint(chunk, loaded, size_of::<usize>());
+impl StateParallel {
+    pub fn new() -> Self {
+        debug_assert_eq!(
+            0,
+            PARALLEL_BUFFER_SIZE % CHUNK_SIZE,
+            "buffer must be a multiple of chunk size"
+        );
+        debug_assert_eq!(
+            1,
+            (PARALLEL_BUFFER_SIZE / CHUNK_SIZE).count_ones(),
+            "buffer must be a power of two multiple of the chunk_size",
+        );
+        Self {
+            buffer: Vec::new(),
+            count: 0,
+            subtrees: ArrayVec::new(),
+        }
     }
-    ret
+
+    pub fn update(&mut self, mut input: &[u8]) {
+        while !input.is_empty() {
+            if self.buffer.len() == PARALLEL_BUFFER_SIZE {
+                let subtree = hash_recurse_parallel(&self.buffer, None);
+                self.buffer.clear();
+                rollup_subtree(&mut self.subtrees, self.count, subtree);
+            }
+            // Take as many bytes as we can, to fill the next chunk.
+            let take = min(input.len(), PARALLEL_BUFFER_SIZE - self.buffer.len());
+            self.buffer.extend_from_slice(&input[..take]);
+            input = &input[take..];
+            self.count += take as u64;
+        }
+    }
+
+    /// It's a logic error to call finalize more than once on the same instance.
+    pub fn finalize(&mut self) -> Hash {
+        if self.count <= PARALLEL_BUFFER_SIZE as u64 {
+            return hash_parallel(&self.buffer);
+        }
+        let subtree = hash_recurse_parallel(&self.buffer, None);
+        rollup_final(&mut self.subtrees, self.count, subtree)
+    }
 }
 
 #[cfg(test)]
@@ -222,18 +254,23 @@ mod test {
 
     #[test]
     fn test_state() {
+        // Cover both serial and parallel here.
         for &case in ::TEST_CASES {
             println!("case {}", case);
             let input = vec![0x42; case];
             let hash_at_once = hash(&input);
-            let mut state = State::new();
+            let mut state_serial = State::new();
+            let mut state_parallel = StateParallel::new();
             // Use chunks that don't evenly divide 4096, to check the buffering
             // logic.
             for chunk in input.chunks(1000) {
-                state.update(chunk);
+                state_serial.update(chunk);
+                state_parallel.update(chunk);
             }
-            let hash_state = state.finalize();
-            assert_eq!(hash_at_once, hash_state, "hashes don't match");
+            let hash_state_serial = state_serial.finalize();
+            let hash_state_parallel = state_parallel.finalize();
+            assert_eq!(hash_at_once, hash_state_serial, "hashes don't match");
+            assert_eq!(hash_at_once, hash_state_parallel, "hashes don't match");
         }
     }
 
@@ -249,27 +286,14 @@ mod test {
     }
 
     #[test]
-    fn test_hash_read_write_shared() {
-        // Initialize the hash to something non-constant, so that we can detect
-        // any reordering bugs.
-        let mut myhash = [0; DIGEST_SIZE];
-        for i in 0..DIGEST_SIZE {
-            myhash[i] = i as u8;
-        }
-        let myatomics: [AtomicUsize; 4] = [
-            AtomicUsize::new(0),
-            AtomicUsize::new(0),
-            AtomicUsize::new(0),
-            AtomicUsize::new(0),
-        ];
-        // Write and then read back out the hash.
-        write_hash_shared(&myhash, &myatomics);
-        let newhash = read_hash_shared(&myatomics);
-        // Make sure all the atomics got set to something nonzero, and that the
-        // resulting hash is the same.
-        for x in myatomics.iter() {
-            assert!(x.load(SeqCst) != 0);
-        }
-        assert_eq!(myhash, newhash);
+    fn test_state_parallel_10mb() {
+        // The internal buffer is about a megabyte, so make sure to test a case
+        // that fills it up multiple times.
+        let input = &[0; 10_000_000];
+        let hash_at_once = hash(input);
+        let mut state = StateParallel::new();
+        state.update(input);
+        let hash_parallel = state.finalize();
+        assert_eq!(hash_at_once, hash_parallel, "hashes don't match");
     }
 }

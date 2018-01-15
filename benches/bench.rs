@@ -40,63 +40,63 @@ fn bench_blake2b_megabyte(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_recursive_zero(b: &mut Bencher) {
+fn bench_bao_recursive_serial_zero(b: &mut Bencher) {
     b.iter(|| {
         bao::hash::hash(ZERO);
     });
 }
 
 #[bench]
-fn bench_bao_recursive_one_chunk(b: &mut Bencher) {
+fn bench_bao_recursive_serial_one_chunk(b: &mut Bencher) {
     b.iter(|| {
         bao::hash::hash(ONECHUNK);
     });
 }
 
 #[bench]
-fn bench_bao_recursive_one_chunk_plus(b: &mut Bencher) {
+fn bench_bao_recursive_serial_one_chunk_plus(b: &mut Bencher) {
     b.iter(|| {
         bao::hash::hash(ONECHUNKPLUS);
     });
 }
 
 #[bench]
-fn bench_bao_recursive_megabyes(b: &mut Bencher) {
+fn bench_bao_recursive_serial_megabyes(b: &mut Bencher) {
     b.iter(|| {
         bao::hash::hash(MEGABYTE);
     });
 }
 
 #[bench]
-fn bench_bao_parallel_zero(b: &mut Bencher) {
+fn bench_bao_recursive_parallel_zero(b: &mut Bencher) {
     b.iter(|| {
         bao::hash::hash_parallel(ZERO);
     });
 }
 
 #[bench]
-fn bench_bao_parallel_one_chunk(b: &mut Bencher) {
+fn bench_bao_recursive_parallel_one_chunk(b: &mut Bencher) {
     b.iter(|| {
         bao::hash::hash_parallel(ONECHUNK);
     });
 }
 
 #[bench]
-fn bench_bao_parallel_one_chunk_plus(b: &mut Bencher) {
+fn bench_bao_recursive_parallel_one_chunk_plus(b: &mut Bencher) {
     b.iter(|| {
         bao::hash::hash_parallel(ONECHUNKPLUS);
     });
 }
 
 #[bench]
-fn bench_bao_parallel_megabyes(b: &mut Bencher) {
+fn bench_bao_recursive_parallel_megabyes(b: &mut Bencher) {
     b.iter(|| {
         bao::hash::hash_parallel(MEGABYTE);
     });
 }
 
 #[bench]
-fn bench_bao_state_zero(b: &mut Bencher) {
+fn bench_bao_state_serial_zero(b: &mut Bencher) {
     b.iter(|| {
         let mut state = bao::hash::State::new();
         // No update with zero bytes of input.
@@ -105,7 +105,7 @@ fn bench_bao_state_zero(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_state_one_chunk(b: &mut Bencher) {
+fn bench_bao_state_serial_one_chunk(b: &mut Bencher) {
     b.iter(|| {
         let mut state = bao::hash::State::new();
         state.update(ONECHUNK);
@@ -114,7 +114,7 @@ fn bench_bao_state_one_chunk(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_state_one_chunk_plus(b: &mut Bencher) {
+fn bench_bao_state_serial_one_chunk_plus(b: &mut Bencher) {
     b.iter(|| {
         let mut state = bao::hash::State::new();
         state.update(ONECHUNKPLUS);
@@ -123,9 +123,45 @@ fn bench_bao_state_one_chunk_plus(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_state_megabyes(b: &mut Bencher) {
+fn bench_bao_state_serial_megabyes(b: &mut Bencher) {
     b.iter(|| {
         let mut state = bao::hash::State::new();
+        state.update(MEGABYTE);
+        state.finalize();
+    });
+}
+
+#[bench]
+fn bench_bao_state_parallel_zero(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::StateParallel::new();
+        // No update with zero bytes of input.
+        state.finalize();
+    });
+}
+
+#[bench]
+fn bench_bao_state_parallel_one_chunk(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::StateParallel::new();
+        state.update(ONECHUNK);
+        state.finalize();
+    });
+}
+
+#[bench]
+fn bench_bao_state_parallel_one_chunk_plus(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::StateParallel::new();
+        state.update(ONECHUNKPLUS);
+        state.finalize();
+    });
+}
+
+#[bench]
+fn bench_bao_state_parallel_megabyes(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::StateParallel::new();
         state.update(MEGABYTE);
         state.finalize();
     });
