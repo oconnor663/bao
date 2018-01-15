@@ -79,9 +79,10 @@ pub(crate) fn hash_recurse_parallel(input: &[u8], root_len: Option<u64>) -> Hash
         return hash_chunk(input, root_len);
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
-    let (left_hash, right_hash) = rayon::join(|| hash_recurse_parallel(left, None), || {
-        hash_recurse_parallel(right, None)
-    });
+    let (left_hash, right_hash) = rayon::join(
+        || hash_recurse_parallel(left, None),
+        || hash_recurse_parallel(right, None),
+    );
     hash_parent(&left_hash, &right_hash, root_len)
 }
 
