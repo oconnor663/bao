@@ -84,7 +84,13 @@ pub(crate) fn hash_recurse_parallel(input: &[u8], root_len: Option<u64>) -> Hash
 }
 
 pub fn hash_parallel(input: &[u8]) -> Hash {
-    hash_recurse_parallel(input, Some(input.len() as u64))
+    // By my measurements on an i5-4590, the overhead of parallel hashing
+    // doesn't pay for itself until you have more than two chunks.
+    if input.len() <= 2 * CHUNK_SIZE {
+        hash_recurse(input, Some(input.len() as u64))
+    } else {
+        hash_recurse_parallel(input, Some(input.len() as u64))
+    }
 }
 
 // This is a cute algorithm for merging partially completed trees. We keep only

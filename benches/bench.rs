@@ -7,8 +7,8 @@ extern crate test;
 use test::Bencher;
 
 const ZERO: &[u8] = b"";
-const ONECHUNK: &[u8] = &[0; bao::CHUNK_SIZE];
-const ONECHUNKPLUS: &[u8] = &[0; bao::CHUNK_SIZE + 1];
+const TWOCHUNKS: &[u8] = &[0; 2 * bao::CHUNK_SIZE];
+const TWOCHUNKSPLUS: &[u8] = &[0; 2 * bao::CHUNK_SIZE + 1];
 const MEGABYTE: &[u8] = &[0; 1_000_000];
 
 #[bench]
@@ -19,16 +19,16 @@ fn bench_blake2b_zero(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_blake2b_one_chunk(b: &mut Bencher) {
+fn bench_blake2b_two_chunk(b: &mut Bencher) {
     b.iter(|| {
-        blake2_c::blake2b_256(ONECHUNK);
+        blake2_c::blake2b_256(TWOCHUNKS);
     });
 }
 
 #[bench]
-fn bench_blake2b_one_chunk_plus(b: &mut Bencher) {
+fn bench_blake2b_two_chunk_plus(b: &mut Bencher) {
     b.iter(|| {
-        blake2_c::blake2b_256(ONECHUNKPLUS);
+        blake2_c::blake2b_256(TWOCHUNKSPLUS);
     });
 }
 
@@ -47,16 +47,16 @@ fn bench_bao_recursive_serial_zero(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_recursive_serial_one_chunk(b: &mut Bencher) {
+fn bench_bao_recursive_serial_two_chunk(b: &mut Bencher) {
     b.iter(|| {
-        bao::hash::hash(ONECHUNK);
+        bao::hash::hash(TWOCHUNKS);
     });
 }
 
 #[bench]
-fn bench_bao_recursive_serial_one_chunk_plus(b: &mut Bencher) {
+fn bench_bao_recursive_serial_two_chunk_plus(b: &mut Bencher) {
     b.iter(|| {
-        bao::hash::hash(ONECHUNKPLUS);
+        bao::hash::hash(TWOCHUNKSPLUS);
     });
 }
 
@@ -75,16 +75,16 @@ fn bench_bao_recursive_parallel_zero(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_recursive_parallel_one_chunk(b: &mut Bencher) {
+fn bench_bao_recursive_parallel_two_chunk(b: &mut Bencher) {
     b.iter(|| {
-        bao::hash::hash_parallel(ONECHUNK);
+        bao::hash::hash_parallel(TWOCHUNKS);
     });
 }
 
 #[bench]
-fn bench_bao_recursive_parallel_one_chunk_plus(b: &mut Bencher) {
+fn bench_bao_recursive_parallel_two_chunk_plus(b: &mut Bencher) {
     b.iter(|| {
-        bao::hash::hash_parallel(ONECHUNKPLUS);
+        bao::hash::hash_parallel(TWOCHUNKSPLUS);
     });
 }
 
@@ -105,19 +105,19 @@ fn bench_bao_state_serial_zero(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_state_serial_one_chunk(b: &mut Bencher) {
+fn bench_bao_state_serial_two_chunk(b: &mut Bencher) {
     b.iter(|| {
         let mut state = bao::hash::State::new();
-        state.update(ONECHUNK);
+        state.update(TWOCHUNKS);
         state.finalize();
     });
 }
 
 #[bench]
-fn bench_bao_state_serial_one_chunk_plus(b: &mut Bencher) {
+fn bench_bao_state_serial_two_chunk_plus(b: &mut Bencher) {
     b.iter(|| {
         let mut state = bao::hash::State::new();
-        state.update(ONECHUNKPLUS);
+        state.update(TWOCHUNKSPLUS);
         state.finalize();
     });
 }
@@ -141,19 +141,19 @@ fn bench_bao_state_parallel_zero(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_state_parallel_one_chunk(b: &mut Bencher) {
+fn bench_bao_state_parallel_two_chunk(b: &mut Bencher) {
     b.iter(|| {
         let mut state = bao::hash::StateParallel::new();
-        state.update(ONECHUNK);
+        state.update(TWOCHUNKS);
         state.finalize();
     });
 }
 
 #[bench]
-fn bench_bao_state_parallel_one_chunk_plus(b: &mut Bencher) {
+fn bench_bao_state_parallel_two_chunk_plus(b: &mut Bencher) {
     b.iter(|| {
         let mut state = bao::hash::StateParallel::new();
-        state.update(ONECHUNKPLUS);
+        state.update(TWOCHUNKSPLUS);
         state.finalize();
     });
 }
