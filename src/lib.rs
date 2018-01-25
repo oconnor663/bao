@@ -3,6 +3,7 @@ extern crate arrayref;
 extern crate arrayvec;
 extern crate blake2_c;
 extern crate byteorder;
+extern crate crossbeam;
 extern crate rayon;
 extern crate ring;
 

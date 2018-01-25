@@ -1,8 +1,12 @@
 use arrayvec::ArrayVec;
 use blake2_c::blake2b;
 use byteorder::{ByteOrder, LittleEndian};
+use crossbeam::sync::MsQueue;
 use rayon;
 use std::cmp::min;
+use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::sync::Arc;
 use Hash;
 use DIGEST_SIZE;
 use CHUNK_SIZE;
@@ -93,12 +97,19 @@ pub fn hash_parallel(input: &[u8]) -> Hash {
     }
 }
 
-// This is a cute algorithm for merging partially completed trees. We keep only
-// the hash of each subtree assembled so far, ordered from largest to smallest
-// in an ArrayVec. Because all subtrees (prior to the finalization step) are a
-// power of two times the chunk size, adding a new subtree to the small end is
-// conceptually very similar to adding two binary numbers and propagating the
-// carry bit.
+// This is a cute algorithm for incrementally merging subtrees. We keep only
+// the hash of each subtree assembled so far, ordered from left to right and
+// also largest to smallest in a list. Because all subtrees (prior to the
+// finalization step) are a power of two times the chunk size, adding a new
+// subtree to the right/small end is a lot like adding two binary numbers and
+// propagating the carry bit. Each carry represents a place where two subtrees
+// need to be merged, and the final number of 1 bits is the same as the final
+// number of subtrees.
+//
+// NB: To preserve the left-to-right and largest-to-smallest ordering, the new
+// subtree must not be larger than the smallest/rightmost subtree currently in
+// the list. Typically we merge subtrees of a constant size, so we don't have
+// to worry about this.
 pub(crate) fn rollup_subtree(
     subtrees: &mut ArrayVec<[Hash; 64]>,
     new_total_len: u64,
@@ -114,9 +125,10 @@ pub(crate) fn rollup_subtree(
 }
 
 // Similar to rollup_subtree, but for the finalization step, where we allow
-// imperfect subtrees on the right edge. From smallest to largest, every pair
-// of subtrees gets merged into a parent node, regardless of their length. The
-// rule that all left subtrees are perfect is still preserved.
+// imperfect subtrees on the right edge. From smallest to largest (right to
+// left), each pair of subtrees gets merged, regardless of their length. This
+// can result in a perfect tree, if the final length is a power of two times
+// the smallest subtree size, but generally it doesn't.
 pub(crate) fn rollup_final(
     subtrees: &mut ArrayVec<[Hash; 64]>,
     final_len: u64,
@@ -235,6 +247,165 @@ impl StateParallel {
     }
 }
 
+const WORKER_BUFFER: usize = CHUNK_SIZE;
+const MAX_ITEMS: usize = 8;
+
+struct ParallelItem {
+    buffer: Vec<u8>,
+    hash: Hash,
+    index: u64,
+}
+
+impl ParallelItem {
+    fn new() -> Self {
+        Self {
+            buffer: Vec::with_capacity(WORKER_BUFFER),
+            hash: [0; DIGEST_SIZE],
+            index: 0,
+        }
+    }
+}
+
+pub struct StateParallel2 {
+    free_items: VecDeque<ParallelItem>,
+    finished_queue: Arc<MsQueue<ParallelItem>>,
+    finished_map: HashMap<u64, ParallelItem>,
+    item_count: usize,
+    start_index: u64,
+    finish_index: u64,
+    subtrees: ArrayVec<[Hash; 64]>,
+}
+
+impl StateParallel2 {
+    pub fn new() -> Self {
+        Self {
+            free_items: VecDeque::new(),
+            finished_queue: Arc::new(MsQueue::new()),
+            finished_map: HashMap::new(),
+            item_count: 0,
+            start_index: 0,
+            finish_index: 0,
+            subtrees: ArrayVec::new(),
+        }
+    }
+
+    fn send_item_to_workers(&mut self, mut item: ParallelItem) {
+        item.index = self.start_index;
+        self.start_index += 1;
+        let queue_arc = self.finished_queue.clone();
+        // Hash this item in the background.
+        rayon::spawn(move || {
+            item.hash = hash_recurse(&item.buffer, None);
+            // After hashing is done, stick it on the finish queue.
+            queue_arc.push(item);
+        });
+    }
+
+    // This applies to all items but the very last one.
+    fn finish_item(&mut self, mut item: ParallelItem) {
+        debug_assert_eq!(self.finish_index, item.index, "oops out of order");
+        self.finish_index += 1;
+        let new_total = WORKER_BUFFER as u64 * self.finish_index;
+        rollup_subtree(&mut self.subtrees, new_total, item.hash);
+        // Clear the item buffer so that it's ready for new input.
+        item.buffer.clear();
+        self.free_items.push_back(item);
+    }
+
+    fn blocking_pop_until_index(&mut self, index: u64) {
+        while !self.finished_map.contains_key(&index) {
+            // This blocks.
+            let item = self.finished_queue.pop();
+            self.finished_map.insert(item.index, item);
+        }
+    }
+
+    pub fn update(&mut self, mut input: &[u8]) {
+        // The order of operations in this loop is:
+        // 1. If the current item is full *and* there's more input (so we know
+        //    we don't need to set the finalization flag), send it to a worker.
+        // 2. If we don't have a current item, create one or wait for one.
+        // 3. Fill the current item with more data.
+        while !input.is_empty() {
+            // If the current item (the first item in the free list) is full,
+            // send it to the workers.
+            if self.free_items
+                .front()
+                .map(|item| item.buffer.len() == WORKER_BUFFER)
+                .unwrap_or(false)
+            {
+                let item = self.free_items.pop_front().unwrap();
+                self.send_item_to_workers(item);
+            }
+
+            // Make sure there's a free item.
+            if self.free_items.is_empty() {
+                // If we haven't reached the item limit yet, just create one.
+                if self.item_count < MAX_ITEMS {
+                    self.free_items.push_back(ParallelItem::new());
+                    self.item_count += 1;
+                } else {
+                    // Otherwise we need to do a blocking wait on the finish
+                    // queue, roll up a finished item, and then add it back to
+                    // the free list. Note that items might not come out of the
+                    // finish queue in order, so we might have to pop more than
+                    // one before we get the next one we can process.
+                    {
+                        let finish_index = self.finish_index; // borrowck workaround
+                        self.blocking_pop_until_index(finish_index);
+                    }
+
+                    // Roll up as many items as we can, and then add them back
+                    // to the free list.
+                    while let Some(item) = self.finished_map.remove(&self.finish_index) {
+                        self.finish_item(item);
+                    }
+                }
+            }
+
+            // Fill up the first free item with as many bytes as we can. Note
+            // that we always push_back on the free items queue above, so that
+            // the first item remains stable.
+            let want = WORKER_BUFFER - self.free_items[0].buffer.len();
+            let take = min(want, input.len());
+            self.free_items[0].buffer.extend_from_slice(&input[..take]);
+            input = &input[take..];
+        }
+    }
+
+    pub fn finalize(&mut self) -> Hash {
+        // If we never sent any items to workers, we need to hash the current
+        // (possibly empty or nonexistent) item with the finalization flag.
+        if self.start_index == 0 {
+            if let Some(item) = self.free_items.pop_front() {
+                return hash(&item.buffer);
+            } else {
+                return hash(b"");
+            }
+        }
+
+        // Otherwise we need to send the current item to the workers.
+        let item = self.free_items.pop_front().unwrap();
+        self.send_item_to_workers(item);
+
+        // Await all the items. Roll them up the usual way, until the very last
+        // one, which gets the finalization flag.
+        loop {
+            {
+                let finish_index = self.finish_index; // borrowck workaround
+                self.blocking_pop_until_index(finish_index);
+            }
+            let item = self.finished_map.remove(&self.finish_index).unwrap();
+            let total_len = self.finish_index * WORKER_BUFFER as u64 + item.buffer.len() as u64;
+            if self.finish_index == self.start_index - 1 {
+                return rollup_final(&mut self.subtrees, total_len, item.hash);
+            }
+            rollup_subtree(&mut self.subtrees, total_len, item.hash);
+            self.finish_index += 1;
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use hex::ToHex;
@@ -267,16 +438,20 @@ mod test {
             let hash_at_once = hash(&input);
             let mut state_serial = State::new();
             let mut state_parallel = StateParallel::new();
+            let mut state_parallel2 = StateParallel2::new();
             // Use chunks that don't evenly divide 4096, to check the buffering
             // logic.
             for chunk in input.chunks(1000) {
                 state_serial.update(chunk);
                 state_parallel.update(chunk);
+                state_parallel2.update(chunk);
             }
             let hash_state_serial = state_serial.finalize();
             let hash_state_parallel = state_parallel.finalize();
+            let hash_state_parallel2 = state_parallel2.finalize();
             assert_eq!(hash_at_once, hash_state_serial, "hashes don't match");
             assert_eq!(hash_at_once, hash_state_parallel, "hashes don't match");
+            assert_eq!(hash_at_once, hash_state_parallel2, "hashes don't match");
         }
     }
 

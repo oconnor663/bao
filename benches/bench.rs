@@ -166,3 +166,39 @@ fn bench_bao_state_parallel_megabyes(b: &mut Bencher) {
         state.finalize();
     });
 }
+
+#[bench]
+fn bench_bao_state_parallel2_zero(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::StateParallel2::new();
+        // No update with zero bytes of input.
+        state.finalize();
+    });
+}
+
+#[bench]
+fn bench_bao_state_parallel2_two_chunk(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::StateParallel2::new();
+        state.update(TWOCHUNKS);
+        state.finalize();
+    });
+}
+
+#[bench]
+fn bench_bao_state_parallel2_two_chunk_plus(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::StateParallel2::new();
+        state.update(TWOCHUNKSPLUS);
+        state.finalize();
+    });
+}
+
+#[bench]
+fn bench_bao_state_parallel2_megabyes(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::StateParallel2::new();
+        state.update(MEGABYTE);
+        state.finalize();
+    });
+}
