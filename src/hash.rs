@@ -2,6 +2,7 @@ use arrayvec::ArrayVec;
 use blake2_c::blake2b;
 use byteorder::{ByteOrder, LittleEndian};
 use crossbeam::sync::MsQueue;
+use num_cpus;
 use rayon;
 use std::cmp::min;
 use std::collections::HashMap;
@@ -247,8 +248,10 @@ impl StateParallel {
     }
 }
 
-const WORKER_BUFFER: usize = CHUNK_SIZE;
-const MAX_ITEMS: usize = 8;
+const WORKER_BUFFER: usize = 64 * CHUNK_SIZE;
+lazy_static! {
+    static ref MAX_ITEMS: usize = 4 * num_cpus::get();
+}
 
 struct ParallelItem {
     buffer: Vec<u8>,
@@ -341,7 +344,7 @@ impl StateParallel2 {
             // Make sure there's a free item.
             if self.free_items.is_empty() {
                 // If we haven't reached the item limit yet, just create one.
-                if self.item_count < MAX_ITEMS {
+                if self.item_count < *MAX_ITEMS {
                     self.free_items.push_back(ParallelItem::new());
                     self.item_count += 1;
                 } else {

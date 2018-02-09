@@ -4,6 +4,9 @@ extern crate arrayvec;
 extern crate blake2_c;
 extern crate byteorder;
 extern crate crossbeam;
+#[macro_use]
+extern crate lazy_static;
+extern crate num_cpus;
 extern crate rayon;
 extern crate ring;
 
