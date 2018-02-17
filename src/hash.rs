@@ -34,9 +34,7 @@ pub(crate) fn hash_chunk(chunk: &[u8], root_len: Option<u64>) -> Hash {
     finalize_hash(&mut state, root_len)
 }
 
-pub(crate) fn hash_parent(left_hash: &[u8], right_hash: &[u8], root_len: Option<u64>) -> Hash {
-    debug_assert_eq!(left_hash.len(), DIGEST_SIZE);
-    debug_assert_eq!(right_hash.len(), DIGEST_SIZE);
+pub(crate) fn hash_parent(left_hash: &Hash, right_hash: &Hash, root_len: Option<u64>) -> Hash {
     let mut state = blake2b::State::new(DIGEST_SIZE);
     state.update(left_hash);
     state.update(right_hash);
@@ -77,8 +75,10 @@ pub fn hash(input: &[u8]) -> Hash {
 }
 
 pub(crate) fn hash_recurse_parallel(input: &[u8], root_len: Option<u64>) -> Hash {
-    if input.len() <= CHUNK_SIZE {
-        return hash_chunk(input, root_len);
+    // By my measurements on an i5-4590, the overhead of parallel hashing
+    // doesn't pay for itself until you have more than two chunks.
+    if input.len() <= 2 * CHUNK_SIZE {
+        return hash_recurse(input, root_len);
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
     let (left_hash, right_hash) = rayon::join(
@@ -89,13 +89,7 @@ pub(crate) fn hash_recurse_parallel(input: &[u8], root_len: Option<u64>) -> Hash
 }
 
 pub fn hash_parallel(input: &[u8]) -> Hash {
-    // By my measurements on an i5-4590, the overhead of parallel hashing
-    // doesn't pay for itself until you have more than two chunks.
-    if input.len() <= 2 * CHUNK_SIZE {
-        hash_recurse(input, Some(input.len() as u64))
-    } else {
-        hash_recurse_parallel(input, Some(input.len() as u64))
-    }
+    hash_recurse_parallel(input, Some(input.len() as u64))
 }
 
 // This is a cute algorithm for incrementally merging subtrees. We keep only
