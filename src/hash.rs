@@ -189,59 +189,6 @@ impl State {
     }
 }
 
-// A little more than one megabyte.
-const PARALLEL_BUFFER_SIZE: usize = 256 * CHUNK_SIZE;
-
-pub struct StateParallel {
-    buffer: Vec<u8>,
-    count: u64,
-    subtrees: ArrayVec<[Hash; 64]>,
-}
-
-impl StateParallel {
-    pub fn new() -> Self {
-        debug_assert_eq!(
-            0,
-            PARALLEL_BUFFER_SIZE % CHUNK_SIZE,
-            "buffer must be a multiple of chunk size"
-        );
-        debug_assert_eq!(
-            1,
-            (PARALLEL_BUFFER_SIZE / CHUNK_SIZE).count_ones(),
-            "buffer must be a power of two multiple of the chunk_size",
-        );
-        Self {
-            buffer: Vec::new(),
-            count: 0,
-            subtrees: ArrayVec::new(),
-        }
-    }
-
-    pub fn update(&mut self, mut input: &[u8]) {
-        while !input.is_empty() {
-            if self.buffer.len() == PARALLEL_BUFFER_SIZE {
-                let subtree = hash_recurse_parallel(&self.buffer, None);
-                self.buffer.clear();
-                rollup_subtree(&mut self.subtrees, self.count, subtree);
-            }
-            // Take as many bytes as we can, to fill the next chunk.
-            let take = min(input.len(), PARALLEL_BUFFER_SIZE - self.buffer.len());
-            self.buffer.extend_from_slice(&input[..take]);
-            input = &input[take..];
-            self.count += take as u64;
-        }
-    }
-
-    /// It's a logic error to call finalize more than once on the same instance.
-    pub fn finalize(&mut self) -> Hash {
-        if self.count <= PARALLEL_BUFFER_SIZE as u64 {
-            return hash_parallel(&self.buffer);
-        }
-        let subtree = hash_recurse_parallel(&self.buffer, None);
-        rollup_final(&mut self.subtrees, self.count, subtree)
-    }
-}
-
 const WORKER_BUFFER: usize = 64 * CHUNK_SIZE;
 lazy_static! {
     static ref MAX_ITEMS: usize = 4 * num_cpus::get();
@@ -263,7 +210,21 @@ impl ParallelItem {
     }
 }
 
-pub struct StateParallel2 {
+/// This is an example parallel implementation that accepts incremental writes.
+/// Rayon's join() primitive is exceptionally easy to use when we have the
+/// entire input in memory (either as a large buffer, or as a memory mapped
+/// file). However, because join shouldn't block on IO, it's trickier to
+/// parallelize reading from a pipe or a socket. This implementation uses a
+/// collection of reusable buffers, and it spawns tasks into the Rayon thread
+/// pool whenever a buffer is ready.
+///
+/// Reusing buffers means that we don't have to allocate much for each task,
+/// however both Rayon's spawn() and crossbeam's MsQueue do make small
+/// allocations internally, so this implementation isn't as efficient as it
+/// could be. We use fairly large buffer sizes to spread out that overhead, but
+/// another implementation with dedicated threads might be able to get rid of
+/// allocations entirely.
+pub struct StateParallel {
     free_items: VecDeque<ParallelItem>,
     finished_queue: Arc<MsQueue<ParallelItem>>,
     finished_map: HashMap<u64, ParallelItem>,
@@ -273,7 +234,7 @@ pub struct StateParallel2 {
     subtrees: ArrayVec<[Hash; 64]>,
 }
 
-impl StateParallel2 {
+impl StateParallel {
     pub fn new() -> Self {
         Self {
             free_items: VecDeque::new(),
@@ -435,20 +396,16 @@ mod test {
             let hash_at_once = hash(&input);
             let mut state_serial = State::new();
             let mut state_parallel = StateParallel::new();
-            let mut state_parallel2 = StateParallel2::new();
             // Use chunks that don't evenly divide 4096, to check the buffering
             // logic.
             for chunk in input.chunks(1000) {
                 state_serial.update(chunk);
                 state_parallel.update(chunk);
-                state_parallel2.update(chunk);
             }
             let hash_state_serial = state_serial.finalize();
             let hash_state_parallel = state_parallel.finalize();
-            let hash_state_parallel2 = state_parallel2.finalize();
             assert_eq!(hash_at_once, hash_state_serial, "hashes don't match");
             assert_eq!(hash_at_once, hash_state_parallel, "hashes don't match");
-            assert_eq!(hash_at_once, hash_state_parallel2, "hashes don't match");
         }
     }
 

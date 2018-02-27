@@ -40,7 +40,7 @@ fn hash_state_serial() -> bao::Hash {
 fn hash_state_parallel() -> bao::Hash {
     let stdin = io::stdin();
     let mut stdin_lock = stdin.lock();
-    let mut digest = bao::hash::StateParallel2::new();
+    let mut digest = bao::hash::StateParallel::new();
     let mut read_buffer = [0; 65536];
     loop {
         let n = stdin_lock.read(&mut read_buffer).expect("read error");
