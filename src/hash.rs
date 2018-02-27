@@ -344,6 +344,7 @@ impl StateParallel {
 
         // Otherwise we need to send the current item to the workers.
         let item = self.free_items.pop_front().unwrap();
+        debug_assert!(item.buffer.len() > 0, "should always have left over input");
         self.send_item_to_workers(item);
 
         // Await all the items. Roll them up the usual way, until the very last
