@@ -9,7 +9,6 @@ extern crate serde_derive;
 use std::io;
 use std::io::prelude::*;
 use std::fs::{File, OpenOptions};
-use hex::{FromHex, ToHex};
 
 fn encode(args: &Args) -> io::Result<()> {
     let stdin = io::stdin();
@@ -35,7 +34,7 @@ fn encode(args: &Args) -> io::Result<()> {
             io::copy(&mut infile, &mut writer)?;
         }
         let hash = writer.finish()?;
-        println!("{}", hash.to_hex());
+        println!("{}", hex::encode(hash));
     }
     Ok(())
 }
@@ -51,7 +50,7 @@ fn decode(args: &Args) -> io::Result<()> {
         let mut reader = bao::io::Reader::new(chained_reader, &header_hash);
         io::copy(&mut reader, &mut stdout.lock())?;
     } else {
-        let hash_vec = Vec::from_hex(&args.flag_hash).expect("valid hex");
+        let hash_vec = hex::decode(&args.flag_hash).expect("valid hex");
         if hash_vec.len() != bao::DIGEST_SIZE {
             panic!(
                 "hash must be {} bytes, got {}",
@@ -87,7 +86,7 @@ fn hash(_args: &Args) -> io::Result<()> {
         }
     }
     let (hash, _) = digest.finish();
-    println!("{}", hash.to_hex());
+    println!("{}", hex::encode(hash));
     Ok(())
 }
 

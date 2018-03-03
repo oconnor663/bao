@@ -3,6 +3,11 @@ extern crate arrayref;
 extern crate arrayvec;
 extern crate blake2_c;
 extern crate byteorder;
+extern crate crossbeam;
+#[macro_use]
+extern crate lazy_static;
+extern crate num_cpus;
+extern crate rayon;
 extern crate ring;
 
 #[cfg(test)]
@@ -18,9 +23,6 @@ mod unverified;
 pub mod decoder;
 pub mod encoder;
 pub mod hash;
-pub mod hash_parallel1;
-pub mod hash_parallel2;
-pub mod hash_parallel3;
 pub mod io;
 pub mod simple;
 

@@ -8,9 +8,11 @@ use std::cmp::min;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use Hash;
-use DIGEST_SIZE;
-use CHUNK_SIZE;
+
+pub const CHUNK_SIZE: usize = 4096;
+pub const DIGEST_SIZE: usize = 32;
+
+type Hash = [u8; DIGEST_SIZE];
 
 pub(crate) fn finalize_hash(state: &mut blake2b::State, root_len: Option<u64>) -> Hash {
     // For the root node, we hash in the length as a suffix, and we set the
