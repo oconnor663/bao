@@ -38,44 +38,52 @@ fn bench_bao_hash_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_parallel1_short(b: &mut Bencher) {
+fn bench_bao_hash_parallel_short(b: &mut Bencher) {
     b.iter(|| {
-        bao::hash_parallel1::hash(SHORT);
+        bao::hash::hash_parallel(SHORT);
     });
 }
 
 #[bench]
-fn bench_bao_hash_parallel1_long(b: &mut Bencher) {
+fn bench_bao_hash_parallel_long(b: &mut Bencher) {
     b.iter(|| {
-        bao::hash_parallel1::hash(LONG);
+        bao::hash::hash_parallel(LONG);
     });
 }
 
 #[bench]
-fn bench_bao_hash_parallel2_short(b: &mut Bencher) {
+fn bench_bao_hash_state_short(b: &mut Bencher) {
     b.iter(|| {
-        bao::hash_parallel2::hash(SHORT);
+        let mut state = bao::hash::State::new();
+        state.update(SHORT);
+        state.finalize();
     });
 }
 
 #[bench]
-fn bench_bao_hash_parallel2_long(b: &mut Bencher) {
+fn bench_bao_hash_state_long(b: &mut Bencher) {
     b.iter(|| {
-        bao::hash_parallel2::hash(LONG);
+        let mut state = bao::hash::State::new();
+        state.update(LONG);
+        state.finalize();
     });
 }
 
 #[bench]
-fn bench_bao_hash_parallel3_short(b: &mut Bencher) {
+fn bench_bao_hash_state_parallel_short(b: &mut Bencher) {
     b.iter(|| {
-        bao::hash_parallel3::hash(SHORT);
+        let mut state = bao::hash::StateParallel::new();
+        state.update(SHORT);
+        state.finalize();
     });
 }
 
 #[bench]
-fn bench_bao_hash_parallel3_long(b: &mut Bencher) {
+fn bench_bao_hash_state_parallel_long(b: &mut Bencher) {
     b.iter(|| {
-        bao::hash_parallel3::hash(LONG);
+        let mut state = bao::hash::StateParallel::new();
+        state.update(LONG);
+        state.finalize();
     });
 }
 
