@@ -4,6 +4,7 @@ use std::cmp::min;
 
 use encoder::{BackBuffer, PostOrderEncoder, PostToPreFlipper};
 use decoder::Decoder;
+use hash::Hash;
 
 /// We have an output buffer that needs to get written to the sink. It might
 /// take multiple writes, and any one of them might fail, so we need to keep
@@ -43,7 +44,7 @@ impl<T: Read + Write + Seek> Writer<T> {
 
     /// Currently we don't make any attempt to make IO errors recoverable
     /// during finish.
-    pub fn finish(&mut self) -> io::Result<::Digest> {
+    pub fn finish(&mut self) -> io::Result<Hash> {
         self.check_finished()?;
         self.finished = true;
 
@@ -155,7 +156,7 @@ pub struct Reader<T> {
 }
 
 impl<T> Reader<T> {
-    pub fn new(inner_reader: T, hash: &::Digest) -> Self {
+    pub fn new(inner_reader: T, hash: &Hash) -> Self {
         Self {
             inner_reader,
             in_buffer: Vec::new(),
@@ -195,10 +196,11 @@ mod test {
     use super::*;
     use std::io::Cursor;
     use simple;
+    use hash::TEST_CASES;
 
     #[test]
     fn test_writer() {
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("starting case {}", case);
             let input = vec![0xb7; case];
             let mut encoded = Cursor::new(Vec::new());
@@ -217,7 +219,7 @@ mod test {
 
     #[test]
     fn test_reader() {
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("starting case {}", case);
             let input = vec![0xa9; case];
             let (encoded, hash) = simple::encode(&input);

@@ -43,7 +43,7 @@ fn decode(args: &Args) -> io::Result<()> {
     let mut stdin = io::stdin();
     let stdout = io::stdout();
     if args.flag_any {
-        let mut header_bytes = [0; bao::HEADER_SIZE];
+        let mut header_bytes = [0; bao::encoder::HEADER_SIZE];
         stdin.read_exact(&mut header_bytes).unwrap();
         let header_hash = bao::hash(&header_bytes);
         let chained_reader = io::Cursor::new(&header_bytes[..]).chain(stdin.lock());
@@ -51,14 +51,14 @@ fn decode(args: &Args) -> io::Result<()> {
         io::copy(&mut reader, &mut stdout.lock())?;
     } else {
         let hash_vec = hex::decode(&args.flag_hash).expect("valid hex");
-        if hash_vec.len() != bao::DIGEST_SIZE {
+        if hash_vec.len() != bao::hash::DIGEST_SIZE {
             panic!(
                 "hash must be {} bytes, got {}",
-                bao::DIGEST_SIZE,
+                bao::hash::DIGEST_SIZE,
                 hash_vec.len()
             );
         };
-        let hash_array = *array_ref!(&hash_vec, 0, bao::DIGEST_SIZE);
+        let hash_array = *array_ref!(&hash_vec, 0, bao::hash::DIGEST_SIZE);
         let mut reader = bao::io::Reader::new(stdin.lock(), &hash_array);
         io::copy(&mut reader, &mut stdout.lock()).unwrap();
     }

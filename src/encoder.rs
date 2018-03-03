@@ -1,10 +1,15 @@
 use std::ops::Deref;
 use simple::{from_header_bytes, left_subtree_len, to_header_bytes};
 
+use hash::{Hash, CHUNK_SIZE, DIGEST_SIZE};
+
+pub const NODE_SIZE: usize = 2 * DIGEST_SIZE;
+pub const HEADER_SIZE: usize = 8;
+
 #[derive(Debug, Copy, Clone)]
 struct Subtree {
     len: u64,
-    hash: ::Digest,
+    hash: Hash,
 }
 
 impl Subtree {
@@ -16,9 +21,9 @@ impl Subtree {
     }
 
     fn join(&self, rhs: &Self) -> Self {
-        let mut node = [0; ::NODE_SIZE];
-        node[..::DIGEST_SIZE].copy_from_slice(&self.hash);
-        node[::DIGEST_SIZE..].copy_from_slice(&rhs.hash);
+        let mut node = [0; NODE_SIZE];
+        node[..DIGEST_SIZE].copy_from_slice(&self.hash);
+        node[DIGEST_SIZE..].copy_from_slice(&rhs.hash);
         Self {
             len: self.len.checked_add(rhs.len).expect("overflow in encoding"),
             hash: ::hash(&node),
@@ -57,13 +62,13 @@ impl PostOrderEncoder {
         // If the buffer len is >= CHUNK_SIZE, then it was used as output in
         // the last call to feed(), and we need to clear it now. (Note that
         // finish() has the same invariant.)
-        if self.buf.len() >= ::CHUNK_SIZE {
+        if self.buf.len() >= CHUNK_SIZE {
             self.buf.clear()
         }
         // Consume bytes from the caller until the buffer is CHUNK_SIZE. If we
         // don't get there, short circuit and let the caller feed more bytes.
-        let used = extend_up_to(&mut self.buf, ::CHUNK_SIZE, input);
-        if self.buf.len() < ::CHUNK_SIZE {
+        let used = extend_up_to(&mut self.buf, CHUNK_SIZE, input);
+        if self.buf.len() < CHUNK_SIZE {
             return (used, &[]);
         }
         // We have a full chunk in the buffer. Update the node stack, append
@@ -91,11 +96,11 @@ impl PostOrderEncoder {
         (used, &self.buf)
     }
 
-    pub fn finish(&mut self) -> (::Digest, &[u8]) {
+    pub fn finish(&mut self) -> (Hash, &[u8]) {
         // If the buffer len is >= CHUNK_SIZE, then it was used as output in
         // the last call to feed(), and we need to clear it now. (Note that
         // feed() has the same invariant.)
-        if self.buf.len() >= ::CHUNK_SIZE {
+        if self.buf.len() >= CHUNK_SIZE {
             self.buf.clear()
         }
         // If the buffer is nonempty, then there's a final partial chunk that
@@ -210,13 +215,13 @@ impl Deref for BackBuffer {
 // subregion, since that's what we'll need to get back to.
 #[derive(Clone, Copy)]
 struct Node {
-    bytes: [u8; ::NODE_SIZE],
+    bytes: [u8; NODE_SIZE],
     start: u64,
     left_len: u64,
 }
 
 pub struct PostToPreFlipper {
-    header: [u8; ::HEADER_SIZE],
+    header: [u8; HEADER_SIZE],
     region_start: u64,
     region_len: u64,
     stack: Vec<Node>,
@@ -226,7 +231,7 @@ pub struct PostToPreFlipper {
 impl PostToPreFlipper {
     pub fn new() -> Self {
         Self {
-            header: [0; ::HEADER_SIZE],
+            header: [0; HEADER_SIZE],
             region_start: 0,
             region_len: 0,
             stack: Vec::new(),
@@ -245,11 +250,11 @@ impl PostToPreFlipper {
             // The codec is uninitialized. We read the header and then either
             // set region_len to non-zero, or immediately finish (having
             // learned that the encoding has no content).
-            let (filled, used) = self.buf.reinit_fill(::HEADER_SIZE, input);
+            let (filled, used) = self.buf.reinit_fill(HEADER_SIZE, input);
             if !filled {
                 return (used, &[]);
             }
-            self.header = *array_ref!(&self.buf, 0, ::HEADER_SIZE);
+            self.header = *array_ref!(&self.buf, 0, HEADER_SIZE);
             let (len, _) = from_header_bytes(&self.header);
             self.region_start = 0;
             self.region_len = len;
@@ -260,15 +265,15 @@ impl PostToPreFlipper {
             } else {
                 (used, &[])
             }
-        } else if self.region_len > ::CHUNK_SIZE as u64 {
+        } else if self.region_len > CHUNK_SIZE as u64 {
             // We need to read nodes. We'll keep following the right child of
             // the current node until eventually we reach the rightmost chunk.
-            let (filled, used) = self.buf.reinit_fill(::NODE_SIZE, input);
+            let (filled, used) = self.buf.reinit_fill(NODE_SIZE, input);
             if !filled {
                 return (used, &[]);
             }
             let node = Node {
-                bytes: *array_ref!(&self.buf, 0, ::NODE_SIZE),
+                bytes: *array_ref!(&self.buf, 0, NODE_SIZE),
                 start: self.region_start,
                 left_len: left_subtree_len(self.region_len),
             };
@@ -313,33 +318,34 @@ mod test {
     use super::*;
     use unverified::Unverified;
     use simple;
+    use hash::TEST_CASES;
 
     // Very similar to the simple decoder function, but for a post-order tree.
-    fn validate_post_order_encoding(encoded: &[u8], hash: &::Digest) {
+    fn validate_post_order_encoding(encoded: &[u8], hash: &Hash) {
         let mut encoded = Unverified::wrap(encoded);
         let header_bytes = encoded
-            .read_verify_back(::HEADER_SIZE, hash)
+            .read_verify_back(HEADER_SIZE, hash)
             .expect("bad header");
         let (len, hash) = simple::from_header_bytes(header_bytes);
         validate_recurse(&mut encoded, len, &hash);
     }
 
-    fn split_node(content_len: u64, node_bytes: &[u8]) -> (u64, u64, ::Digest, ::Digest) {
+    fn split_node(content_len: u64, node_bytes: &[u8]) -> (u64, u64, Hash, Hash) {
         let left_len = left_subtree_len(content_len);
         let right_len = content_len - left_len;
-        let left_hash = *array_ref!(node_bytes, 0, ::DIGEST_SIZE);
-        let right_hash = *array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE);
+        let left_hash = *array_ref!(node_bytes, 0, DIGEST_SIZE);
+        let right_hash = *array_ref!(node_bytes, DIGEST_SIZE, DIGEST_SIZE);
         (left_len, right_len, left_hash, right_hash)
     }
 
-    fn validate_recurse(encoded: &mut Unverified, region_len: u64, region_hash: &::Digest) {
-        if region_len <= ::CHUNK_SIZE as u64 {
+    fn validate_recurse(encoded: &mut Unverified, region_len: u64, region_hash: &Hash) {
+        if region_len <= CHUNK_SIZE as u64 {
             encoded
                 .read_verify_back(region_len as usize, region_hash)
                 .unwrap();
             return;
         }
-        let node_bytes = encoded.read_verify_back(::NODE_SIZE, region_hash).unwrap();
+        let node_bytes = encoded.read_verify_back(NODE_SIZE, region_hash).unwrap();
         let (left_len, right_len, left_hash, right_hash) = split_node(region_len, node_bytes);
         // Note that we have to validate ***right then left***, because we're
         // reading from the back.
@@ -347,7 +353,7 @@ mod test {
         validate_recurse(encoded, left_len, &left_hash);
     }
 
-    fn post_order_encode_all(mut input: &[u8]) -> (Vec<u8>, ::Digest) {
+    fn post_order_encode_all(mut input: &[u8]) -> (Vec<u8>, Hash) {
         let mut encoder = PostOrderEncoder::new();
         let mut output = Vec::new();
         while input.len() > 0 {
@@ -362,7 +368,7 @@ mod test {
 
     #[test]
     fn test_post_order_encoder() {
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("starting case {}", case);
             let input = vec![0x33; case];
             let (encoded, hash) = post_order_encode_all(&input);
@@ -443,7 +449,7 @@ mod test {
 
     #[test]
     fn test_flipper() {
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("starting case {}", case);
             let input = vec![0x01; case];
             let (mut encoded, hash) = post_order_encode_all(&input);

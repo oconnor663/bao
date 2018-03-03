@@ -1,29 +1,32 @@
 use byteorder::{ByteOrder, LittleEndian};
 use std::mem;
 
+use hash::{Hash, CHUNK_SIZE, DIGEST_SIZE};
+use encoder::{HEADER_SIZE, NODE_SIZE};
+
 /// Given a slice of input bytes, encode the entire thing in memory and return
 /// it as a vector, along with its hash.
 ///
 /// This implementation uses recursion, and it's designed to be as simple as
 /// possible to read.
-pub fn encode(input: &[u8]) -> (Vec<u8>, ::Digest) {
+pub fn encode(input: &[u8]) -> (Vec<u8>, Hash) {
     // Start with the encoded length.
-    let mut encoded_len = [0; ::HEADER_SIZE];
+    let mut encoded_len = [0; HEADER_SIZE];
     LittleEndian::write_u64(&mut encoded_len, input.len() as u64);
     let mut output = encoded_len.to_vec();
 
     // Recursively encode all the input, appending to the output vector after
-    // the encoded length. The digest of the root node will add the encoded
+    // the encoded length. The Hash of the root node will add the encoded
     // length as a suffix, and set the final node flag.
     let root_hash = encode_recurse(input, &mut output, &encoded_len[..]);
 
     (output, root_hash)
 }
 
-fn encode_recurse(input: &[u8], output: &mut Vec<u8>, suffix: &[u8]) -> ::Digest {
+fn encode_recurse(input: &[u8], output: &mut Vec<u8>, suffix: &[u8]) -> Hash {
     // If we're down to an individual chunk, write it directly to the ouput, and
     // return its hash. If this chunk is the root node, it'll get suffixed.
-    if input.len() <= ::CHUNK_SIZE {
+    if input.len() <= CHUNK_SIZE {
         output.extend_from_slice(input);
         return ::hash_node(input, suffix);
     }
@@ -33,8 +36,8 @@ fn encode_recurse(input: &[u8], output: &mut Vec<u8>, suffix: &[u8]) -> ::Digest
     // their left and right children, and the leaves are chunks. Reserve space
     // for the current node.
     let node_start = output.len();
-    let node_half = node_start + ::DIGEST_SIZE;
-    let node_end = node_half + ::DIGEST_SIZE;
+    let node_half = node_start + DIGEST_SIZE;
+    let node_end = node_half + DIGEST_SIZE;
     output.resize(node_end, 0);
 
     // Recursively encode the left and right subtrees, appending them to the
@@ -71,14 +74,14 @@ fn encode_recurse(input: &[u8], output: &mut Vec<u8>, suffix: &[u8]) -> ::Digest
 /// an implementation might check for trailing garbage at the end of any block
 /// that it reads, and thus appear to past most tests, but forget the case
 /// where the end of the valid encoding lands precisely on a read boundary.
-pub fn decode(encoded: &[u8], hash: &::Digest) -> ::Result<Vec<u8>> {
+pub fn decode(encoded: &[u8], hash: &Hash) -> ::Result<Vec<u8>> {
     // Read the content length from the front of the encoding. These bytes are
     // unverified, but they'll be included as a suffix for the root node in the
     // recursive portion.
-    if encoded.len() < ::HEADER_SIZE {
+    if encoded.len() < HEADER_SIZE {
         return Err(::Error::ShortInput);
     }
-    let (header, rest) = encoded.split_at(::HEADER_SIZE);
+    let (header, rest) = encoded.split_at(HEADER_SIZE);
     let content_len = LittleEndian::read_u64(header);
 
     // Recursively verify and decode the tree, appending decoded bytes to the
@@ -91,13 +94,13 @@ pub fn decode(encoded: &[u8], hash: &::Digest) -> ::Result<Vec<u8>> {
 fn decode_recurse(
     encoded: &[u8],
     content_len: u64,
-    hash: &::Digest,
+    hash: &Hash,
     suffix: &[u8],
     output: &mut Vec<u8>,
 ) -> ::Result<()> {
     // If we're down to an individual chunk, verify its hash and append it to
     // the output. Skip the prefix if any.
-    if content_len <= ::CHUNK_SIZE as u64 {
+    if content_len <= CHUNK_SIZE as u64 {
         let chunk_bytes = ::verify_node(encoded, as_usize(content_len)?, hash, suffix)?;
         output.extend_from_slice(chunk_bytes);
         return Ok(());
@@ -105,13 +108,13 @@ fn decode_recurse(
 
     // Otherwise we have a node, and we need to decode its left and right
     // subtrees. Verify the node bytes and read the subtree hashes.
-    let node_bytes = ::verify_node(encoded, ::NODE_SIZE, hash, suffix)?;
-    let left_hash = *array_ref!(node_bytes, 0, ::DIGEST_SIZE);
-    let right_hash = *array_ref!(node_bytes, ::DIGEST_SIZE, ::DIGEST_SIZE);
+    let node_bytes = ::verify_node(encoded, NODE_SIZE, hash, suffix)?;
+    let left_hash = *array_ref!(node_bytes, 0, DIGEST_SIZE);
+    let right_hash = *array_ref!(node_bytes, DIGEST_SIZE, DIGEST_SIZE);
     let left_content_len = left_subtree_len(content_len);
     let right_content_len = content_len - left_content_len;
     let left_encoded_len = encoded_len(left_content_len)?;
-    let left_encoded_bytes = &encoded[::NODE_SIZE..];
+    let left_encoded_bytes = &encoded[NODE_SIZE..];
     let right_encoded_bytes = &left_encoded_bytes[as_usize(left_encoded_len)?..];
 
     // Recursively verify and decode the left and right subtrees. Nodes below
@@ -152,10 +155,10 @@ fn decode_recurse(
 /// it efficient to build a tree incrementally, since appending input bytes
 /// only affects nodes on the rightmost edge of the tree.
 pub(crate) fn left_subtree_len(content_len: u64) -> u64 {
-    debug_assert!(content_len > ::CHUNK_SIZE as u64);
+    debug_assert!(content_len > CHUNK_SIZE as u64);
     // Subtract 1 to reserve at least one byte for the right side.
-    let full_chunks = (content_len - 1) / ::CHUNK_SIZE as u64;
-    largest_power_of_two(full_chunks) * ::CHUNK_SIZE as u64
+    let full_chunks = (content_len - 1) / CHUNK_SIZE as u64;
+    largest_power_of_two(full_chunks) * CHUNK_SIZE as u64
 }
 
 /// Compute the largest power of two that's less than or equal to `n`.
@@ -166,14 +169,14 @@ fn largest_power_of_two(n: u64) -> u64 {
     1 << (63 - (n | 1).leading_zeros())
 }
 
-pub(crate) fn from_header_bytes(bytes: &[u8]) -> (u64, ::Digest) {
+pub(crate) fn from_header_bytes(bytes: &[u8]) -> (u64, Hash) {
     let len = LittleEndian::read_u64(&bytes[..8]);
-    let hash = *array_ref!(bytes, 8, ::DIGEST_SIZE);
+    let hash = *array_ref!(bytes, 8, DIGEST_SIZE);
     (len, hash)
 }
 
-pub(crate) fn to_header_bytes(len: u64, hash: &::Digest) -> [u8; ::HEADER_SIZE] {
-    let mut ret = [0; ::HEADER_SIZE];
+pub(crate) fn to_header_bytes(len: u64, hash: &Hash) -> [u8; HEADER_SIZE] {
+    let mut ret = [0; HEADER_SIZE];
     LittleEndian::write_u64(&mut ret[..8], len);
     ret[8..].copy_from_slice(hash);
     ret
@@ -203,13 +206,12 @@ pub fn as_usize(n: u64) -> ::Result<usize> {
 /// for very large inputs. In that case, we return `Err(Overflow)`.
 fn encoded_len(region_len: u64) -> ::Result<u64> {
     // Divide rounding up to get the number of chunks.
-    let num_chunks =
-        (region_len / ::CHUNK_SIZE as u64) + (region_len % ::CHUNK_SIZE as u64 > 0) as u64;
+    let num_chunks = (region_len / CHUNK_SIZE as u64) + (region_len % CHUNK_SIZE as u64 > 0) as u64;
     // The number of nodes is one less, but not less than zero.
     let num_nodes = num_chunks.saturating_sub(1);
     // `all_nodes` can't overflow by itself unless the node size is larger
     // than the chunk size, which would be pathological, but whatever :p
-    checked_add(checked_mul(num_nodes, ::NODE_SIZE as u64)?, region_len)
+    checked_add(checked_mul(num_nodes, NODE_SIZE as u64)?, region_len)
 }
 
 fn checked_add(a: u64, b: u64) -> ::Result<u64> {
@@ -222,9 +224,10 @@ fn checked_mul(a: u64, b: u64) -> ::Result<u64> {
 
 #[cfg(test)]
 mod test {
-    use hex::ToHex;
+    use hex;
 
     use super::*;
+    use hash::TEST_CASES;
 
     #[test]
     fn test_power_of_two() {
@@ -253,7 +256,7 @@ mod test {
 
     #[test]
     fn test_left_subtree_len() {
-        let s = ::CHUNK_SIZE as u64;
+        let s = CHUNK_SIZE as u64;
         let input_output = &[(s + 1, s), (2 * s - 1, s), (2 * s, s), (2 * s + 1, 2 * s)];
         for &(input, output) in input_output {
             println!("testing {} and {}", input, output);
@@ -263,7 +266,7 @@ mod test {
 
     #[test]
     fn test_simple_encode_decode() {
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("starting case {}", case);
             let input = vec![0xab; case];
             let (encoded, hash) = ::simple::encode(&input);
@@ -274,12 +277,12 @@ mod test {
 
     #[test]
     fn test_simple_corrupted() {
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             let input = vec![0xbc; case];
             let (mut encoded, hash) = ::simple::encode(&input[..]);
             // Tweak different bytes of the encoding, and confirm that all
             // tweaks break the result.
-            for &tweak_case in ::TEST_CASES {
+            for &tweak_case in TEST_CASES {
                 if tweak_case < encoded.len() {
                     encoded[tweak_case] ^= 1;
                     println!("testing input len {} tweak {}", case, tweak_case);
@@ -292,10 +295,10 @@ mod test {
 
     #[test]
     fn test_compare_python() {
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("case {}", case);
             let input = vec![0x99; case];
-            let (rust_encoded, rust_digest) = ::simple::encode(&input);
+            let (rust_encoded, rust_hash) = ::simple::encode(&input);
 
             // Have the Python implementation encode the same input, and make
             // sure the result is identical.
@@ -313,7 +316,7 @@ mod test {
                 "./python/bao.py",
                 "decode",
                 "--hash",
-                rust_digest.to_hex()
+                hex::encode(rust_hash)
             ).input(python_encoded)
                 .stdout_capture()
                 .run()

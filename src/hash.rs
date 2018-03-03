@@ -12,7 +12,7 @@ use std::sync::Arc;
 pub const CHUNK_SIZE: usize = 4096;
 pub const DIGEST_SIZE: usize = 32;
 
-type Hash = [u8; DIGEST_SIZE];
+pub type Hash = [u8; DIGEST_SIZE];
 
 pub(crate) fn finalize_hash(state: &mut blake2b::State, root_len: Option<u64>) -> Hash {
     // For the root node, we hash in the length as a suffix, and we set the
@@ -366,18 +366,74 @@ impl StateParallel {
     }
 }
 
+// Interesting input lengths to run tests on.
+#[cfg(test)]
+pub(crate) const TEST_CASES: &[usize] = &[
+    0,
+    1,
+    10,
+    CHUNK_SIZE - 1,
+    CHUNK_SIZE,
+    CHUNK_SIZE + 1,
+    2 * CHUNK_SIZE - 1,
+    2 * CHUNK_SIZE,
+    2 * CHUNK_SIZE + 1,
+    3 * CHUNK_SIZE - 1,
+    3 * CHUNK_SIZE,
+    3 * CHUNK_SIZE + 1,
+    4 * CHUNK_SIZE - 1,
+    4 * CHUNK_SIZE,
+    4 * CHUNK_SIZE + 1,
+    16 * CHUNK_SIZE - 1,
+    16 * CHUNK_SIZE,
+    16 * CHUNK_SIZE + 1,
+];
+
 #[cfg(test)]
 mod test {
-    use hex::ToHex;
-
     use super::*;
+    use hex;
+
+    #[test]
+    fn test_power_of_two() {
+        let input_output = &[
+            (1, 1),
+            (2, 2),
+            (3, 2),
+            (4, 4),
+            (5, 4),
+            (6, 4),
+            (7, 4),
+            (8, 8),
+            // the largest possible u64
+            (0xffffffffffffffff, 0x8000000000000000),
+        ];
+        for &(input, output) in input_output {
+            assert_eq!(
+                output,
+                largest_power_of_two(input),
+                "wrong output for n={}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_left_subtree_len() {
+        let s = CHUNK_SIZE as u64;
+        let input_output = &[(s + 1, s), (2 * s - 1, s), (2 * s, s), (2 * s + 1, 2 * s)];
+        for &(input, output) in input_output {
+            println!("testing {} and {}", input, output);
+            assert_eq!(left_len(input), output);
+        }
+    }
 
     #[test]
     fn test_compare_python() {
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("case {}", case);
             let input = vec![0x42; case];
-            let hash_hex = hash(&input).to_hex();
+            let hash_hex = hex::encode(hash(&input));
 
             // Have the Python implementation hash the same input, and make
             // sure the result is identical.
@@ -392,7 +448,7 @@ mod test {
     #[test]
     fn test_state() {
         // Cover both serial and parallel here.
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("case {}", case);
             let input = vec![0x42; case];
             let hash_at_once = hash(&input);
@@ -413,7 +469,7 @@ mod test {
 
     #[test]
     fn test_parallel() {
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("case {}", case);
             let input = vec![0x42; case];
             let hash_serial = hash(&input);

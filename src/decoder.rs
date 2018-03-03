@@ -1,6 +1,9 @@
 use simple::{from_header_bytes, left_subtree_len};
 use unverified::Unverified;
 
+use hash::{Hash, CHUNK_SIZE, DIGEST_SIZE};
+use encoder::{HEADER_SIZE, NODE_SIZE};
+
 #[derive(Debug, Clone, Copy)]
 enum State {
     NoHeader,
@@ -11,14 +14,14 @@ enum State {
 
 #[derive(Debug, Clone)]
 pub struct Decoder {
-    header_hash: ::Digest,
+    header_hash: Hash,
     header: Option<Region>,
     position: u64,
     stack: Vec<Node>,
 }
 
 impl Decoder {
-    pub fn new(header_hash: &::Digest) -> Self {
+    pub fn new(header_hash: &Hash) -> Self {
         Self {
             header_hash: *header_hash,
             header: None,
@@ -50,7 +53,7 @@ impl Decoder {
         } else {
             header
         };
-        if current_region.len() <= ::CHUNK_SIZE as u64 {
+        if current_region.len() <= CHUNK_SIZE as u64 {
             State::Chunk(current_region)
         } else {
             State::Node(current_region)
@@ -83,10 +86,10 @@ impl Decoder {
     // size of zero means EOF.
     pub fn needed(&self) -> (u64, usize) {
         match self.state() {
-            State::NoHeader => (0, ::HEADER_SIZE),
+            State::NoHeader => (0, HEADER_SIZE),
             State::Eof => (0, 0),
             State::Chunk(r) => (r.encoded_offset, r.len() as usize),
-            State::Node(r) => (r.encoded_offset, ::NODE_SIZE),
+            State::Node(r) => (r.encoded_offset, NODE_SIZE),
         }
     }
 
@@ -106,10 +109,10 @@ impl Decoder {
     }
 
     fn feed_header<'a>(&mut self, input: &mut Unverified<'a>) -> ::Result<(usize, &'a [u8])> {
-        let header_bytes = input.read_verify(::HEADER_SIZE, &self.header_hash)?;
-        let header_array = array_ref!(header_bytes, 0, ::HEADER_SIZE);
+        let header_bytes = input.read_verify(HEADER_SIZE, &self.header_hash)?;
+        let header_array = array_ref!(header_bytes, 0, HEADER_SIZE);
         self.header = Some(Region::from_header_bytes(header_array));
-        Ok((::HEADER_SIZE, &[]))
+        Ok((HEADER_SIZE, &[]))
     }
 
     fn feed_chunk<'a>(
@@ -141,10 +144,10 @@ impl Decoder {
         input: &mut Unverified<'a>,
         region: Region,
     ) -> ::Result<(usize, &'a [u8])> {
-        let node_bytes = input.read_verify(::NODE_SIZE, &region.hash)?;
+        let node_bytes = input.read_verify(NODE_SIZE, &region.hash)?;
         let node = region.parse_node(node_bytes)?;
         self.stack.push(node);
-        Ok((::NODE_SIZE, &[]))
+        Ok((NODE_SIZE, &[]))
     }
 }
 
@@ -162,7 +165,7 @@ struct Region {
     start: u64,
     end: u64,
     encoded_offset: u64,
-    hash: ::Digest,
+    hash: Hash,
 }
 
 impl Region {
@@ -179,7 +182,7 @@ impl Region {
         Region {
             start: 0,
             end: len,
-            encoded_offset: ::HEADER_SIZE as u64,
+            encoded_offset: HEADER_SIZE as u64,
             hash: hash,
         }
     }
@@ -191,14 +194,14 @@ impl Region {
         let left = Region {
             start: self.start,
             end: self.start + left_subtree_len(self.len()),
-            encoded_offset: checked_add(self.encoded_offset, ::NODE_SIZE as u64)?,
-            hash: *array_ref!(bytes, 0, ::DIGEST_SIZE),
+            encoded_offset: checked_add(self.encoded_offset, NODE_SIZE as u64)?,
+            hash: *array_ref!(bytes, 0, DIGEST_SIZE),
         };
         let right = Region {
             start: left.end,
             end: self.end,
             encoded_offset: checked_add(left.encoded_offset, encoded_len(left.len())?)?,
-            hash: *array_ref!(bytes, ::DIGEST_SIZE, ::DIGEST_SIZE),
+            hash: *array_ref!(bytes, DIGEST_SIZE, DIGEST_SIZE),
         };
         Ok(Node { left, right })
     }
@@ -230,13 +233,12 @@ impl Node {
 /// for very large inputs. In that case, we return `Err(Overflow)`.
 fn encoded_len(region_len: u64) -> ::Result<u64> {
     // Divide rounding up to get the number of chunks.
-    let num_chunks =
-        (region_len / ::CHUNK_SIZE as u64) + (region_len % ::CHUNK_SIZE as u64 > 0) as u64;
+    let num_chunks = (region_len / CHUNK_SIZE as u64) + (region_len % CHUNK_SIZE as u64 > 0) as u64;
     // The number of nodes is one less, but not less than zero.
     let num_nodes = num_chunks.saturating_sub(1);
     // `all_nodes` can't overflow by itself unless the node size is larger
     // than the chunk size, which would be pathological, but whatever :p
-    checked_add(checked_mul(num_nodes, ::NODE_SIZE as u64)?, region_len)
+    checked_add(checked_mul(num_nodes, NODE_SIZE as u64)?, region_len)
 }
 
 fn checked_add(a: u64, b: u64) -> ::Result<u64> {
@@ -254,12 +256,13 @@ mod test {
 
     use super::*;
     use simple::encode;
+    use hash::TEST_CASES;
 
     #[test]
     fn test_encoded_len() {
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             let found_len = encode(&vec![0; case]).0.len() as u64;
-            let computed_len = encoded_len(case as u64).unwrap() + ::HEADER_SIZE as u64;
+            let computed_len = encoded_len(case as u64).unwrap() + HEADER_SIZE as u64;
             assert_eq!(found_len, computed_len, "wrong length in case {}", case);
         }
     }
@@ -268,7 +271,7 @@ mod test {
     fn test_decoder() {
         // This simulates a writer who supplies exactly what's asked for by
         // needed(), until EOF.
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("\n>>>>> starting case {}", case);
             let input = vec![0x72; case];
             let (encoded, hash) = encode(&input);
@@ -291,7 +294,7 @@ mod test {
         }
     }
 
-    fn decode_all(mut encoded: &[u8], hash: &::Digest) -> ::Result<Vec<u8>> {
+    fn decode_all(mut encoded: &[u8], hash: &Hash) -> ::Result<Vec<u8>> {
         let mut decoder = Decoder::new(&hash);
         let mut output = Vec::new();
         loop {
@@ -309,12 +312,12 @@ mod test {
     fn test_decoder_corrupted() {
         // Similar to test_simple_corrupted. We flip bits and make things stop
         // working.
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("\n>>>>> starting case {}", case);
             let input = vec![0x72; case];
             let (encoded, hash) = encode(&input);
             println!("encoded lenth {}", encoded.len());
-            for &tweak_case in ::TEST_CASES {
+            for &tweak_case in TEST_CASES {
                 if tweak_case >= encoded.len() {
                     continue;
                 }
@@ -336,7 +339,7 @@ mod test {
         // This simulates a writer who doesn't even call needed(), and instead
         // just feeds everything into every call to seek(), bumping the start
         // forward as bytes are consumed.
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             let input = vec![0x72; case];
             let (encoded, hash) = encode(&input);
             let mut decoder = Decoder::new(&hash);
@@ -358,7 +361,7 @@ mod test {
     fn test_decoder_feed_by_ones() {
         // This simulates a writer who tries to feed small amounts, making the
         // amount larger with each failure until things succeed.
-        let input = vec![0; 4 * ::CHUNK_SIZE + 1];
+        let input = vec![0; 4 * CHUNK_SIZE + 1];
         let (encoded, hash) = encode(&input);
         let mut decoder = Decoder::new(&hash);
         let mut encoded_slice = &encoded[..];
@@ -389,7 +392,7 @@ mod test {
 
     #[test]
     fn test_decoder_seek() {
-        for &case in ::TEST_CASES {
+        for &case in TEST_CASES {
             println!("\n>>>>> case {}", case);
             // Use pseudorandom input, so that slices from different places are
             // very likely not to match.
@@ -398,7 +401,7 @@ mod test {
                 .take(case)
                 .collect();
             let (encoded, hash) = encode(&input);
-            for &seek_case in ::TEST_CASES {
+            for &seek_case in TEST_CASES {
                 if seek_case > case {
                     continue;
                 }

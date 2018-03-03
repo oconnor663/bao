@@ -26,8 +26,6 @@ pub mod hash;
 pub mod io;
 pub mod simple;
 
-pub type Digest = [u8; DIGEST_SIZE];
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     HashMismatch,
@@ -37,11 +35,6 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub const CHUNK_SIZE: usize = 4096;
-pub const DIGEST_SIZE: usize = 32;
-pub const NODE_SIZE: usize = 2 * DIGEST_SIZE;
-pub const HEADER_SIZE: usize = 8;
-
 fn suffix_root(state: &mut blake2_c::blake2b::State, len: u64) {
     let mut len_bytes = [0; 8];
     LittleEndian::write_u64(&mut len_bytes, len);
@@ -49,57 +42,57 @@ fn suffix_root(state: &mut blake2_c::blake2b::State, len: u64) {
     state.set_last_node(true);
 }
 
-fn finalize_node(state: &mut blake2_c::blake2b::State) -> Digest {
+fn finalize_node(state: &mut blake2_c::blake2b::State) -> hash::Hash {
     let blake_digest = state.finalize().bytes;
-    *array_ref!(blake_digest, 0, ::DIGEST_SIZE)
+    *array_ref!(blake_digest, 0, hash::DIGEST_SIZE)
 }
 
-fn finalize_root(state: &mut blake2_c::blake2b::State, len: u64) -> Digest {
+fn finalize_root(state: &mut blake2_c::blake2b::State, len: u64) -> hash::Hash {
     suffix_root(state, len);
     finalize_node(state)
 }
 
-pub fn hash_root(node: &[u8], len: u64) -> Digest {
-    let mut state = blake2_c::blake2b::State::new(DIGEST_SIZE);
+pub fn hash_root(node: &[u8], len: u64) -> hash::Hash {
+    let mut state = blake2_c::blake2b::State::new(hash::DIGEST_SIZE);
     state.update(node);
     finalize_root(&mut state, len)
 }
 
 // Currently we use blake2b-256, though this will get parametrized.
-pub fn hash(input: &[u8]) -> Digest {
-    let digest = blake2_c::blake2b_256(input);
-    let mut array = [0; DIGEST_SIZE];
-    array[..].copy_from_slice(&digest.bytes);
+pub fn hash(input: &[u8]) -> hash::Hash {
+    let hash = blake2_c::blake2b_256(input);
+    let mut array = [0; hash::DIGEST_SIZE];
+    array[..].copy_from_slice(&hash.bytes);
     array
 }
 
-pub fn hash_two(input1: &[u8], input2: &[u8]) -> Digest {
-    let mut state = blake2_c::blake2b::State::new(DIGEST_SIZE);
+pub fn hash_two(input1: &[u8], input2: &[u8]) -> hash::Hash {
+    let mut state = blake2_c::blake2b::State::new(hash::DIGEST_SIZE);
     state.update(input1);
     state.update(input2);
-    let digest = state.finalize();
-    let mut array = [0; DIGEST_SIZE];
-    array[..].copy_from_slice(&digest.bytes);
+    let hash = state.finalize();
+    let mut array = [0; hash::DIGEST_SIZE];
+    array[..].copy_from_slice(&hash.bytes);
     array
 }
 
-fn hash_node(node: &[u8], suffix: &[u8]) -> Digest {
-    let mut state = blake2_c::blake2b::State::new(DIGEST_SIZE);
+fn hash_node(node: &[u8], suffix: &[u8]) -> hash::Hash {
+    let mut state = blake2_c::blake2b::State::new(hash::DIGEST_SIZE);
     state.update(node);
     if !suffix.is_empty() {
         state.update(suffix);
         state.set_last_node(true);
     }
     let finalized = state.finalize();
-    let mut digest = [0; DIGEST_SIZE];
-    digest.copy_from_slice(&finalized.bytes);
-    digest
+    let mut hash = [0; hash::DIGEST_SIZE];
+    hash.copy_from_slice(&finalized.bytes);
+    hash
 }
 
 fn verify_node<'a>(
     input: &'a [u8],
     len: usize,
-    digest: &Digest,
+    hash: &hash::Hash,
     suffix: &[u8],
 ) -> Result<&'a [u8]> {
     if input.len() < len {
@@ -107,41 +100,18 @@ fn verify_node<'a>(
     }
     let bytes = &input[..len];
     let computed = hash_node(bytes, suffix);
-    if constant_time::verify_slices_are_equal(digest, &computed).is_ok() {
+    if constant_time::verify_slices_are_equal(hash, &computed).is_ok() {
         Ok(bytes)
     } else {
         Err(Error::HashMismatch)
     }
 }
 
-fn verify(input: &[u8], digest: &Digest) -> Result<()> {
+fn verify(input: &[u8], hash_: &hash::Hash) -> Result<()> {
     let computed = hash(input);
-    constant_time::verify_slices_are_equal(&digest[..], &computed[..])
+    constant_time::verify_slices_are_equal(&hash_[..], &computed[..])
         .map_err(|_| Error::HashMismatch)
 }
-
-// Interesting input lengths to run tests on.
-#[cfg(test)]
-const TEST_CASES: &[usize] = &[
-    0,
-    1,
-    10,
-    CHUNK_SIZE - 1,
-    CHUNK_SIZE,
-    CHUNK_SIZE + 1,
-    2 * CHUNK_SIZE - 1,
-    2 * CHUNK_SIZE,
-    2 * CHUNK_SIZE + 1,
-    3 * CHUNK_SIZE - 1,
-    3 * CHUNK_SIZE,
-    3 * CHUNK_SIZE + 1,
-    4 * CHUNK_SIZE - 1,
-    4 * CHUNK_SIZE,
-    4 * CHUNK_SIZE + 1,
-    16 * CHUNK_SIZE - 1,
-    16 * CHUNK_SIZE,
-    16 * CHUNK_SIZE + 1,
-];
 
 #[cfg(test)]
 mod test {
@@ -151,10 +121,10 @@ mod test {
     fn test_hash_works_at_all() {
         let inputs: &[&[u8]] = &[b"", b"f", b"foo"];
         for input in inputs {
-            let mut digest = hash(input);
-            verify(input, &digest).unwrap();
-            digest[0] ^= 1;
-            verify(input, &digest).unwrap_err();
+            let mut hash = hash(input);
+            verify(input, &hash).unwrap();
+            hash[0] ^= 1;
+            verify(input, &hash).unwrap_err();
         }
     }
 
