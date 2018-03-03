@@ -230,8 +230,8 @@ impl Node {
 /// for very large inputs. In that case, we return `Err(Overflow)`.
 fn encoded_len(region_len: u64) -> ::Result<u64> {
     // Divide rounding up to get the number of chunks.
-    let num_chunks = (region_len / ::CHUNK_SIZE as u64) +
-        (region_len % ::CHUNK_SIZE as u64 > 0) as u64;
+    let num_chunks =
+        (region_len / ::CHUNK_SIZE as u64) + (region_len % ::CHUNK_SIZE as u64 > 0) as u64;
     // The number of nodes is one less, but not less than zero.
     let num_nodes = num_chunks.saturating_sub(1);
     // `all_nodes` can't overflow by itself unless the node size is larger

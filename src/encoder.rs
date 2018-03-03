@@ -1,5 +1,5 @@
 use std::ops::Deref;
-use simple::{left_subtree_len, to_header_bytes, from_header_bytes};
+use simple::{from_header_bytes, left_subtree_len, to_header_bytes};
 
 #[derive(Debug, Copy, Clone)]
 struct Subtree {
@@ -317,9 +317,9 @@ mod test {
     // Very similar to the simple decoder function, but for a post-order tree.
     fn validate_post_order_encoding(encoded: &[u8], hash: &::Digest) {
         let mut encoded = Unverified::wrap(encoded);
-        let header_bytes = encoded.read_verify_back(::HEADER_SIZE, hash).expect(
-            "bad header",
-        );
+        let header_bytes = encoded
+            .read_verify_back(::HEADER_SIZE, hash)
+            .expect("bad header");
         let (len, hash) = simple::from_header_bytes(header_bytes);
         validate_recurse(&mut encoded, len, &hash);
     }
@@ -373,8 +373,7 @@ mod test {
             // the same.
             let (_, regular_hash) = ::simple::encode(&input);
             assert_eq!(
-                regular_hash,
-                hash,
+                regular_hash, hash,
                 "post order hash doesn't match the standard encoding"
             );
         }

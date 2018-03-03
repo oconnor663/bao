@@ -2,7 +2,7 @@ use std::io::prelude::*;
 use std::io;
 use std::cmp::min;
 
-use encoder::{PostOrderEncoder, PostToPreFlipper, BackBuffer};
+use encoder::{BackBuffer, PostOrderEncoder, PostToPreFlipper};
 use decoder::Decoder;
 
 /// We have an output buffer that needs to get written to the sink. It might

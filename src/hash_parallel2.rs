@@ -15,9 +15,10 @@ pub fn hash_recurse(input: &[u8], suffix: &[u8]) -> ::Digest {
         state.update(input);
     } else {
         let left_len = ::simple::left_subtree_len(input.len() as u64) as usize;
-        let (left, right) = rayon::join(|| hash_recurse(&input[..left_len], &[]), || {
-            hash_recurse(&input[left_len..], &[])
-        });
+        let (left, right) = rayon::join(
+            || hash_recurse(&input[..left_len], &[]),
+            || hash_recurse(&input[left_len..], &[]),
+        );
         state.update(&left);
         state.update(&right);
     }

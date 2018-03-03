@@ -1,6 +1,6 @@
-extern crate arrayvec;
 #[macro_use]
 extern crate arrayref;
+extern crate arrayvec;
 extern crate blake2_c;
 extern crate byteorder;
 extern crate ring;

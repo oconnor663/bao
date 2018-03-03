@@ -1,8 +1,8 @@
-extern crate bao;
-extern crate hex;
 #[macro_use]
 extern crate arrayref;
+extern crate bao;
 extern crate docopt;
+extern crate hex;
 #[macro_use]
 extern crate serde_derive;
 
