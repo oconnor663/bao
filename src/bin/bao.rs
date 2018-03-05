@@ -45,7 +45,8 @@ fn decode(args: &Args) -> io::Result<()> {
     if args.flag_any {
         let mut header_bytes = [0; bao::encoder::HEADER_SIZE];
         stdin.read_exact(&mut header_bytes).unwrap();
-        let header_hash = bao::hash(&header_bytes);
+        // TODO: THIS IS NOT CORRECT
+        let header_hash = bao::hash::hash(&header_bytes);
         let chained_reader = io::Cursor::new(&header_bytes[..]).chain(stdin.lock());
         let mut reader = bao::io::Reader::new(chained_reader, &header_hash);
         io::copy(&mut reader, &mut stdout.lock())?;

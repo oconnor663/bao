@@ -1,4 +1,17 @@
-use hash::Hash;
+extern crate constant_time_eq;
+
+use constant_time_eq::constant_time_eq;
+use hash::{self, Hash};
+use decoder::{Error, Result};
+
+fn verify(input: &[u8], hash: &Hash) -> Result<()> {
+    let computed = hash::hash(input);
+    if constant_time_eq(hash, &computed) {
+        Ok(())
+    } else {
+        Err(Error::HashMismatch)
+    }
+}
 
 /// A tiny wrapper around bytes that guarantees we check their hash before we
 /// use them.
@@ -11,12 +24,12 @@ impl<'a> Unverified<'a> {
 
     /// Take a slice from the unverified input, but only if its length and hash
     /// match what we expect. On success, move the input forward.
-    pub fn read_verify(&mut self, len: usize, hash: &Hash) -> ::Result<&'a [u8]> {
+    pub fn read_verify(&mut self, len: usize, hash: &Hash) -> Result<&'a [u8]> {
         if self.0.len() < len {
-            return Err(::Error::ShortInput);
+            return Err(Error::ShortInput);
         }
         let ret = &self.0[..len];
-        ::verify(ret, hash)?;
+        verify(ret, hash)?;
         self.0 = &self.0[len..];
         Ok(ret)
     }
@@ -24,13 +37,13 @@ impl<'a> Unverified<'a> {
     /// As with read_verify, but slice off the end of the array instead of the
     /// front. Only used in testing.
     #[cfg(test)]
-    pub fn read_verify_back(&mut self, len: usize, hash: &Hash) -> ::Result<&'a [u8]> {
+    pub fn read_verify_back(&mut self, len: usize, hash: &Hash) -> Result<&'a [u8]> {
         if self.0.len() < len {
-            return Err(::Error::ShortInput);
+            return Err(Error::ShortInput);
         }
         let start = self.0.len() - len;
         let ret = &self.0[start..];
-        ::verify(ret, hash)?;
+        verify(ret, hash)?;
         self.0 = &self.0[..start];
         Ok(ret)
     }

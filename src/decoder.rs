@@ -1,8 +1,17 @@
-use simple::{from_header_bytes, left_subtree_len};
 use unverified::Unverified;
 
-use hash::{Hash, CHUNK_SIZE, DIGEST_SIZE};
+use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE};
 use encoder::{HEADER_SIZE, NODE_SIZE};
+use std;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Error {
+    HashMismatch,
+    ShortInput,
+    Overflow,
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone, Copy)]
 enum State {
@@ -95,7 +104,7 @@ impl Decoder {
 
     // Returns (consumed, output), where output is Some() when a chunk was
     // consumed.
-    pub fn feed<'a>(&mut self, input: &'a [u8]) -> ::Result<(usize, &'a [u8])> {
+    pub fn feed<'a>(&mut self, input: &'a [u8]) -> Result<(usize, &'a [u8])> {
         // Immediately shadow input with a wrapper type that only gives us
         // bytes when the hash is correct.
         let mut input = Unverified::wrap(input);
@@ -108,10 +117,13 @@ impl Decoder {
         }
     }
 
-    fn feed_header<'a>(&mut self, input: &mut Unverified<'a>) -> ::Result<(usize, &'a [u8])> {
+    fn feed_header<'a>(&mut self, input: &mut Unverified<'a>) -> Result<(usize, &'a [u8])> {
+        // TODO: THIS IS INCORRECT (ALSO TODO IN make_root ABOVE)
         let header_bytes = input.read_verify(HEADER_SIZE, &self.header_hash)?;
-        let header_array = array_ref!(header_bytes, 0, HEADER_SIZE);
-        self.header = Some(Region::from_header_bytes(header_array));
+        self.header = Some(Region::make_root(
+            &self.header_hash,
+            hash::decode_len(header_bytes),
+        ));
         Ok((HEADER_SIZE, &[]))
     }
 
@@ -119,7 +131,7 @@ impl Decoder {
         &mut self,
         input: &mut Unverified<'a>,
         region: Region,
-    ) -> ::Result<(usize, &'a [u8])> {
+    ) -> Result<(usize, &'a [u8])> {
         let chunk_bytes = input.read_verify(region.len() as usize, &region.hash)?;
         // We pay attention to the `chunk_offset` for cases where a previous
         // seek() put us in the middle of the chunk. In that case, we still
@@ -143,7 +155,7 @@ impl Decoder {
         &mut self,
         input: &mut Unverified<'a>,
         region: Region,
-    ) -> ::Result<(usize, &'a [u8])> {
+    ) -> Result<(usize, &'a [u8])> {
         let node_bytes = input.read_verify(NODE_SIZE, &region.hash)?;
         let node = region.parse_node(node_bytes)?;
         self.stack.push(node);
@@ -177,23 +189,23 @@ impl Region {
         self.start <= position && position < self.end
     }
 
-    fn from_header_bytes(bytes: &[u8]) -> Region {
-        let (len, hash) = from_header_bytes(bytes);
+    // TODO: HANDLE THE ROOT NODE'S HASH DIFFERENCES
+    fn make_root(hash: &Hash, len: u64) -> Region {
         Region {
             start: 0,
             end: len,
             encoded_offset: HEADER_SIZE as u64,
-            hash: hash,
+            hash: *hash,
         }
     }
 
     /// Splits the current region into two subregions, with the key logic
-    /// happening in `left_subtree_len`. If calculating the new
-    /// `encoded_offset` overflows, return `None`.
-    fn parse_node(&self, bytes: &[u8]) -> ::Result<Node> {
+    /// happening in `hash::left_len`. If calculating the new `encoded_offset`
+    /// overflows, return `None`.
+    fn parse_node(&self, bytes: &[u8]) -> Result<Node> {
         let left = Region {
             start: self.start,
-            end: self.start + left_subtree_len(self.len()),
+            end: self.start + hash::left_len(self.len()),
             encoded_offset: checked_add(self.encoded_offset, NODE_SIZE as u64)?,
             hash: *array_ref!(bytes, 0, DIGEST_SIZE),
         };
@@ -231,7 +243,7 @@ impl Node {
 ///
 /// Because the encoded len is longer than the input length, it can overflow
 /// for very large inputs. In that case, we return `Err(Overflow)`.
-fn encoded_len(region_len: u64) -> ::Result<u64> {
+fn encoded_len(region_len: u64) -> Result<u64> {
     // Divide rounding up to get the number of chunks.
     let num_chunks = (region_len / CHUNK_SIZE as u64) + (region_len % CHUNK_SIZE as u64 > 0) as u64;
     // The number of nodes is one less, but not less than zero.
@@ -241,12 +253,12 @@ fn encoded_len(region_len: u64) -> ::Result<u64> {
     checked_add(checked_mul(num_nodes, NODE_SIZE as u64)?, region_len)
 }
 
-fn checked_add(a: u64, b: u64) -> ::Result<u64> {
-    a.checked_add(b).ok_or(::Error::Overflow)
+fn checked_add(a: u64, b: u64) -> Result<u64> {
+    a.checked_add(b).ok_or(Error::Overflow)
 }
 
-fn checked_mul(a: u64, b: u64) -> ::Result<u64> {
-    a.checked_mul(b).ok_or(::Error::Overflow)
+fn checked_mul(a: u64, b: u64) -> Result<u64> {
+    a.checked_mul(b).ok_or(Error::Overflow)
 }
 
 #[cfg(test)]
@@ -294,7 +306,7 @@ mod test {
         }
     }
 
-    fn decode_all(mut encoded: &[u8], hash: &Hash) -> ::Result<Vec<u8>> {
+    fn decode_all(mut encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
         let mut decoder = Decoder::new(&hash);
         let mut output = Vec::new();
         loop {
@@ -326,7 +338,7 @@ mod test {
                 corrupted[tweak_case] ^= 1;
                 assert_eq!(
                     decode_all(&corrupted, &hash).unwrap_err(),
-                    ::Error::HashMismatch
+                    Error::HashMismatch
                 );
                 // But make sure it does work without the tweak.
                 decode_all(&encoded, &hash).unwrap();
@@ -381,7 +393,7 @@ mod test {
                     encoded_slice = &encoded_slice[consumed..];
                     feed_len = 0;
                 }
-                Err(::Error::ShortInput) => {
+                Err(Error::ShortInput) => {
                     // Keep bumping the feed length until we succeed.
                     feed_len += 1;
                 }
@@ -435,9 +447,6 @@ mod test {
         // crucial that a given input has a unique hash.
         let encoded = vec![0; 7];
         let hash = ::hash(&encoded);
-        assert_eq!(
-            decode_all(&encoded, &hash).unwrap_err(),
-            ::Error::ShortInput
-        );
+        assert_eq!(decode_all(&encoded, &hash).unwrap_err(), Error::ShortInput);
     }
 }

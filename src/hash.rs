@@ -14,15 +14,23 @@ pub const DIGEST_SIZE: usize = 32;
 
 pub type Hash = [u8; DIGEST_SIZE];
 
+pub(crate) fn encode_len(len: u64) -> [u8; 8] {
+    let mut len_bytes = [0; 8];
+    LittleEndian::write_u64(&mut len_bytes, len);
+    len_bytes
+}
+
+pub(crate) fn decode_len(bytes: &[u8]) -> u64 {
+    LittleEndian::read_u64(bytes)
+}
+
 pub(crate) fn finalize_hash(state: &mut blake2b::State, root_len: Option<u64>) -> Hash {
     // For the root node, we hash in the length as a suffix, and we set the
     // Blake2 last node flag. One of the reasons for this design is that we
     // don't need to know a given node is the root until the very end, so we
     // don't always need a chunk buffer.
     if let Some(len) = root_len {
-        let mut len_bytes = [0; 8];
-        LittleEndian::write_u64(&mut len_bytes, len);
-        state.update(&len_bytes);
+        state.update(&encode_len(len));
         state.set_last_node(true);
     }
     let blake_digest = state.finalize();

@@ -1,7 +1,7 @@
 use std::ops::Deref;
-use simple::{from_header_bytes, left_subtree_len, to_header_bytes};
+use hash::left_len;
 
-use hash::{Hash, CHUNK_SIZE, DIGEST_SIZE};
+use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE};
 
 pub const NODE_SIZE: usize = 2 * DIGEST_SIZE;
 pub const HEADER_SIZE: usize = 8;
@@ -16,7 +16,7 @@ impl Subtree {
     fn from_chunk(chunk: &[u8]) -> Self {
         Self {
             len: chunk.len() as u64,
-            hash: ::hash(chunk),
+            hash: hash::hash(chunk),
         }
     }
 
@@ -26,7 +26,7 @@ impl Subtree {
         node[DIGEST_SIZE..].copy_from_slice(&rhs.hash);
         Self {
             len: self.len.checked_add(rhs.len).expect("overflow in encoding"),
-            hash: ::hash(&node),
+            hash: hash::hash(&node),
         }
     }
 }
@@ -126,9 +126,9 @@ impl PostOrderEncoder {
         // Take the the final remaining subtree, or the empty subtree if there
         // was never any input, and turn it into the header.
         let root = self.stack.pop().unwrap_or(Subtree::from_chunk(&[]));
-        let header_bytes = to_header_bytes(root.len, &root.hash);
-        self.buf.extend_from_slice(&header_bytes);
-        (::hash(&header_bytes), &self.buf)
+        self.buf.extend_from_slice(&hash::encode_len(root.len));
+        // TODO: THIS IS NOT CORRECT YET
+        (hash::hash(&[]), &self.buf)
     }
 }
 
@@ -255,7 +255,7 @@ impl PostToPreFlipper {
                 return (used, &[]);
             }
             self.header = *array_ref!(&self.buf, 0, HEADER_SIZE);
-            let (len, _) = from_header_bytes(&self.header);
+            let len = hash::decode_len(&self.header);
             self.region_start = 0;
             self.region_len = len;
             // If the header length field is zero, then we're already done,
@@ -275,7 +275,7 @@ impl PostToPreFlipper {
             let node = Node {
                 bytes: *array_ref!(&self.buf, 0, NODE_SIZE),
                 start: self.region_start,
-                left_len: left_subtree_len(self.region_len),
+                left_len: left_len(self.region_len),
             };
             self.stack.push(node);
             self.region_start += node.left_len;
@@ -317,10 +317,10 @@ impl PostToPreFlipper {
 mod test {
     use super::*;
     use unverified::Unverified;
-    use simple;
     use hash::TEST_CASES;
 
-    // Very similar to the simple decoder function, but for a post-order tree.
+    // A recursive decoder function for a post-order encoded tree. This is for
+    // directly unit testing the intermediate output, before the reversal step.
     fn validate_post_order_encoding(encoded: &[u8], hash: &Hash) {
         let mut encoded = Unverified::wrap(encoded);
         let header_bytes = encoded
@@ -331,7 +331,7 @@ mod test {
     }
 
     fn split_node(content_len: u64, node_bytes: &[u8]) -> (u64, u64, Hash, Hash) {
-        let left_len = left_subtree_len(content_len);
+        let left_len = left_len(content_len);
         let right_len = content_len - left_len;
         let left_hash = *array_ref!(node_bytes, 0, DIGEST_SIZE);
         let right_hash = *array_ref!(node_bytes, DIGEST_SIZE, DIGEST_SIZE);
