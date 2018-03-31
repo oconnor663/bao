@@ -16,6 +16,9 @@ CHUNK_SIZE = 4096
 DIGEST_SIZE = 32
 HEADER_SIZE = 8
 
+# A sentinel value for when we'll accept any hash.
+ANY = object()
+
 def encode_len(root_len):
     return root_len.to_bytes(HEADER_SIZE, "little")
 
@@ -45,9 +48,9 @@ def verify_node(buf, node_size, root_len, expected_hash):
     assert node_size <= len(buf), "not enough bytes"
     node_bytes = buf[:node_size]
     found_hash = hash_node(node_bytes, root_len)
-    # Compare digests in constant time. It might matter to some callers.
-    assert hmac.compare_digest(expected_hash, found_hash), "hash mismatch"
-    return node_bytes
+    if expected_hash is not ANY:
+        # Compare digests in constant time. It might matter to some callers.
+        assert hmac.compare_digest(expected_hash, found_hash), "hash mismatch"
 
 # Left subtrees contain the largest possible power of two chunks, with at least
 # one byte left for the right subtree.
@@ -75,36 +78,24 @@ def bao_encode(buf):
     # The final output prefixes the 8 byte encoded length.
     return hash_, encode_len(root_len) + encoded
 
-def bao_decode(buf, hash_):
-    # decode_recurse will bump buf forward. Use a memoryview so that that
-    # doesn't make a copy every time.
-    view = memoryview(buf)
-    ret = bytearray()
+def bao_decode(in_stream, out_stream, hash_):
     def decode_recurse(hash_, content_len, root_len):
-        nonlocal view, ret
         if content_len <= CHUNK_SIZE:
-            chunk = verify_node(view, content_len, root_len, hash_)
-            view = view[content_len:]
-            ret.extend(chunk)
-            return
-        parent = verify_node(view, 2*DIGEST_SIZE, root_len, hash_)
-        view = view[2*DIGEST_SIZE:]
-        left_hash, right_hash = parent[:DIGEST_SIZE], parent[DIGEST_SIZE:]
-        llen = left_len(content_len)
-        # Interior nodes have no len suffix.
-        decode_recurse(left_hash, llen, None)
-        decode_recurse(right_hash, content_len - llen, None)
+            chunk = in_stream.read(content_len)
+            verify_node(chunk, content_len, root_len, hash_)
+            out_stream.write(chunk)
+        else:
+            parent = in_stream.read(2*DIGEST_SIZE)
+            verify_node(parent, 2*DIGEST_SIZE, root_len, hash_)
+            left_hash, right_hash = parent[:DIGEST_SIZE], parent[DIGEST_SIZE:]
+            llen = left_len(content_len)
+            # Interior nodes have no len suffix.
+            decode_recurse(left_hash, llen, None)
+            decode_recurse(right_hash, content_len - llen, None)
 
     # The first 8 bytes are the encoded content len.
-    content_len = int.from_bytes(view[:HEADER_SIZE], "little")
-    view = view[HEADER_SIZE:]
+    content_len = decode_len(in_stream.read(HEADER_SIZE))
     decode_recurse(hash_, content_len, content_len)
-
-    # Note that the encoding might have extra garbage bytes at the end. A
-    # streaming decoder would never read those, so we ignore them here too.
-    # While there's a unique "minimal" encoded file for a given input, trailing
-    # garbage means there's not a unique "valid" encoded file.
-    return ret
 
 def bao_hash_encoded(buf):
     assert len(buf) >= HEADER_SIZE, "not enough bytes"
@@ -122,13 +113,11 @@ def main():
         _, encoded = bao_encode(sys.stdin.buffer.read())
         sys.stdout.buffer.write(encoded)
     elif args["decode"]:
-        buf = sys.stdin.buffer.read()
         if args["--any"]:
-            bao_hash = bao_hash_encoded(buf)
+            bao_hash = ANY
         else:
             bao_hash = binascii.unhexlify(args["--hash"])
-        decoded = bao_decode(buf, bao_hash)
-        sys.stdout.buffer.write(decoded)
+        bao_decode(sys.stdin.buffer, sys.stdout.buffer, bao_hash)
     elif args["hash"]:
         buf = sys.stdin.buffer.read()
         if args["--encoded"]:
