@@ -9,89 +9,112 @@ Usage: bao.py encode --memory
 import binascii
 import docopt
 import hashlib
+import hmac
 import sys
 
 CHUNK_SIZE = 4096
 DIGEST_SIZE = 32
 HEADER_SIZE = 8
 
-# The root node (whether it's a chunk or a parent) is hashed with the Blake2
-# "last node" flag set, and with the content length as a suffix.
-def hash_node(node, suffix=None):
-    return hashlib.blake2b(
-        node + (suffix or b""),
-        last_node=bool(suffix),
-        digest_size=DIGEST_SIZE
-    ).digest()
+def encode_len(root_len):
+    return root_len.to_bytes(HEADER_SIZE, "little")
 
 # Python is very permissive with reads and slices, and can silently return
-# fewer bytes than requested. Hashing a chunk that's not as long as the header
-# said it should be, or parsing a length that's not actually 8 bytes, can
-# incorrectly validate malicious input and lead to multiple hashes for the same
-# content. Thus the explicit length asserts here.
-def verify_bytes(buf, start, length, expected_hash, suffix=None):
-    assert start + length <= len(buf), "not enough bytes"
-    if suffix is not None:
-        assert len(suffix) == HEADER_SIZE, "header is the wrong length"
-    verified = buf[start:start+length]
-    assert expected_hash == hash_node(verified, suffix), "hash mismatch"
-    return verified
+# fewer bytes than requested, so we explicitly check the expected length here.
+# Parsing a header that's shorter than 8 bytes could trick us into accepting an
+# invalid encoding.
+def decode_len(len_bytes):
+    assert len(len_bytes) == HEADER_SIZE, "not enough bytes"
+    return int.from_bytes(len_bytes, "little")
+
+# The root node (whether it's a chunk or a parent) is hashed with the Blake2
+# "last node" flag set, and with the total content length as a suffix. All
+# interior nodes set root_len=None.
+def hash_node(node, root_len):
+    state = hashlib.blake2b(
+        last_node=(root_len is not None),
+        digest_size=DIGEST_SIZE)
+    state.update(node)
+    if root_len is not None:
+        state.update(encode_len(root_len))
+    return state.digest()
+
+# As with decode len, we explicitly assert the expected length here, to avoid
+# accepting a chunk that's shorter than the header said it should be.
+def verify_node(buf, node_size, root_len, expected_hash):
+    assert node_size <= len(buf), "not enough bytes"
+    node_bytes = buf[:node_size]
+    found_hash = hash_node(node_bytes, root_len)
+    # Compare digests in constant time. It might matter to some callers.
+    assert hmac.compare_digest(expected_hash, found_hash), "hash mismatch"
+    return node_bytes
 
 # Left subtrees contain the largest possible power of two chunks, with at least
 # one byte left for the right subtree.
-def left_len(total_len):
-    available_chunks = (total_len - 1) // CHUNK_SIZE
+def left_len(parent_len):
+    available_chunks = (parent_len - 1) // CHUNK_SIZE
     power_of_two_chunks = 2 ** (available_chunks.bit_length() - 1)
     return CHUNK_SIZE * power_of_two_chunks
 
 # This function does double duty as encode and hash.
 def bao_encode(buf):
-    def encode_recurse(buf, hash_suffix):
+    def encode_recurse(buf, root_len):
         if len(buf) <= CHUNK_SIZE:
-            return hash_node(buf, suffix=hash_suffix), buf
+            return hash_node(buf, root_len), buf
         llen = left_len(len(buf))
-        # Nodes below the root have no hash suffix.
+        # Interior nodes have no len suffix.
         left_hash, left_encoded = encode_recurse(buf[:llen], None)
         right_hash, right_encoded = encode_recurse(buf[llen:], None)
         node = left_hash + right_hash
         encoded = node + left_encoded + right_encoded
-        return hash_node(node, suffix=hash_suffix), encoded
+        return hash_node(node, root_len), encoded
 
-    # The 8-byte little endian content length is used as a hash suffix for the
-    # root node, and as a prefix for the final encoding.
-    length_bytes = len(buf).to_bytes(HEADER_SIZE, "little")
-    hash, encoded = encode_recurse(buf, length_bytes)
-    return hash, length_bytes + encoded
+    # Only this topmost call sets a non-None root_len.
+    root_len = len(buf)
+    hash_, encoded = encode_recurse(buf, root_len)
+    # The final output prefixes the 8 byte encoded length.
+    return hash_, encode_len(root_len) + encoded
 
-def bao_decode(buf, digest):
-    def decode_recurse(buf, digest, encoded_offset, content_len, hash_suffix):
+def bao_decode(buf, hash_):
+    # decode_recurse will bump buf forward. Use a memoryview so that that
+    # doesn't make a copy every time.
+    view = memoryview(buf)
+    ret = bytearray()
+    def decode_recurse(hash_, content_len, root_len):
+        nonlocal view, ret
         if content_len <= CHUNK_SIZE:
-            verified = verify_bytes(buf, encoded_offset, content_len, digest, hash_suffix)
-            new_offset = encoded_offset + content_len
-            return new_offset, verified
-        verified = verify_bytes(buf, encoded_offset, 2*DIGEST_SIZE, digest, hash_suffix)
-        new_offset = encoded_offset + 2*DIGEST_SIZE
-        left_hash, right_hash = verified[:DIGEST_SIZE], verified[DIGEST_SIZE:]
+            chunk = verify_node(view, content_len, root_len, hash_)
+            view = view[content_len:]
+            ret.extend(chunk)
+            return
+        parent = verify_node(view, 2*DIGEST_SIZE, root_len, hash_)
+        view = view[2*DIGEST_SIZE:]
+        left_hash, right_hash = parent[:DIGEST_SIZE], parent[DIGEST_SIZE:]
         llen = left_len(content_len)
-        new_offset, left_decoded = decode_recurse(
-            buf, left_hash, new_offset, llen, None)
-        new_offset, right_decoded = decode_recurse(
-            buf, right_hash, new_offset, content_len - llen, None)
-        return new_offset, left_decoded + right_decoded
+        # Interior nodes have no len suffix.
+        decode_recurse(left_hash, llen, None)
+        decode_recurse(right_hash, content_len - llen, None)
 
-    content_len = int.from_bytes(buf[:HEADER_SIZE], "little")
-    _, decoded = decode_recurse(buf, digest, HEADER_SIZE, content_len, buf[:HEADER_SIZE])
-    return decoded
+    # The first 8 bytes are the encoded content len.
+    content_len = int.from_bytes(view[:HEADER_SIZE], "little")
+    view = view[HEADER_SIZE:]
+    decode_recurse(hash_, content_len, content_len)
+
+    # Note that the encoding might have extra garbage bytes at the end. A
+    # streaming decoder would never read those, so we ignore them here too.
+    # While there's a unique "minimal" encoded file for a given input, trailing
+    # garbage means there's not a unique "valid" encoded file.
+    return ret
 
 def bao_hash_encoded(buf):
     assert len(buf) >= HEADER_SIZE, "not enough bytes"
     length_bytes = buf[:HEADER_SIZE]
-    length = int.from_bytes(length_bytes, "little")
-    if length > CHUNK_SIZE:
+    root_len = decode_len(length_bytes)
+    if root_len > CHUNK_SIZE:
         root_node = buf[HEADER_SIZE:HEADER_SIZE+2*DIGEST_SIZE]
     else:
-        root_node = buf[HEADER_SIZE:HEADER_SIZE+length]
-    return hash_node(root_node, suffix=length_bytes)
+        root_node = buf[HEADER_SIZE:HEADER_SIZE+root_len]
+    return hash_node(root_node, root_len)
 
 def main():
     args = docopt.docopt(__doc__)
