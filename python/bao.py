@@ -59,7 +59,15 @@ def left_len(parent_len):
     power_of_two_chunks = 2 ** (available_chunks.bit_length() - 1)
     return CHUNK_SIZE * power_of_two_chunks
 
-# This function does double duty as encode and hash.
+# Unlike bao_hash and bao_decode, bao_encode isn't streaming. (We require the
+# --memory flag on the command line, to highlight that.) The difficulty is that
+# we have to lay out the encoded tree in pre-order, with each parent node
+# coming before all the child bytes it depends on, optimized for decoding. This
+# example implementation just assembles everything in memory, to keep it
+# simple. The Rust implementation takes a more complicated approach, first
+# laying out the tree on disk in post-order, and then making a second pass
+# back-to-front to flip it in place. That keeps the memory footprint
+# logarithmic, but requires some very involved bookkeeping.
 def bao_encode(buf):
     def encode_recurse(buf, root_len):
         if len(buf) <= CHUNK_SIZE:
@@ -94,17 +102,17 @@ def bao_decode(in_stream, out_stream, hash_):
             decode_recurse(right_hash, content_len - llen, None)
 
     # The first 8 bytes are the encoded content len.
-    content_len = decode_len(in_stream.read(HEADER_SIZE))
-    decode_recurse(hash_, content_len, content_len)
+    root_len = decode_len(in_stream.read(HEADER_SIZE))
+    decode_recurse(hash_, root_len, root_len)
 
-def bao_hash_encoded(buf):
-    assert len(buf) >= HEADER_SIZE, "not enough bytes"
-    length_bytes = buf[:HEADER_SIZE]
-    root_len = decode_len(length_bytes)
+def bao_hash_encoded(in_stream):
+    root_len = decode_len(in_stream.read(HEADER_SIZE))
     if root_len > CHUNK_SIZE:
-        root_node = buf[HEADER_SIZE:HEADER_SIZE+2*DIGEST_SIZE]
+        root_node = in_stream.read(2*DIGEST_SIZE)
+        assert len(root_node) == 2*DIGEST_SIZE
     else:
-        root_node = buf[HEADER_SIZE:HEADER_SIZE+root_len]
+        root_node = in_stream.read(root_len)
+        assert len(root_node) == root_len
     return hash_node(root_node, root_len)
 
 def main():
@@ -119,10 +127,10 @@ def main():
             bao_hash = binascii.unhexlify(args["--hash"])
         bao_decode(sys.stdin.buffer, sys.stdout.buffer, bao_hash)
     elif args["hash"]:
-        buf = sys.stdin.buffer.read()
         if args["--encoded"]:
-            bao_hash = bao_hash_encoded(buf)
+            bao_hash = bao_hash_encoded(sys.stdin.buffer)
         else:
+            buf = sys.stdin.buffer.read()
             bao_hash, _ = bao_encode(buf)
         print(bao_hash.hex())
 
