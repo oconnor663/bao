@@ -16,25 +16,25 @@ cases = [
 ]
 
 bao_path = os.path.join(os.path.dirname(__file__), "bao.py")
-def bao(*args, input):
+def bao(*args, input_):
     return subprocess.run(
         [bao_path, *args],
-        input=input,
+        input=input_,
         stdout=subprocess.PIPE,
     ).stdout
 
-for (name, input, hash) in cases:
+for (name, input_, hash_) in cases:
     print("case:", name)
 
-    computed_hash = bao("hash", input=input).decode().strip()
-    assert computed_hash == hash
+    computed_hash = bao("hash", input_=input_).decode().strip()
+    assert computed_hash == hash_
 
-    encoded = bao("encode", "--memory", input=input)
-    computed_hash_encoded = bao("hash", "--encoded", input=encoded).decode().strip()
-    assert computed_hash_encoded == hash
+    encoded = bao("encode", "--memory", input_=input_)
+    computed_hash_encoded = bao("hash", "--encoded", input_=encoded).decode().strip()
+    assert computed_hash_encoded == hash_
 
-    decoded = bao("decode", "--hash", hash, input=encoded)
-    assert decoded == input
+    decoded = bao("decode", "--hash", hash_, input_=encoded)
+    assert decoded == input_
 
-    decoded_any = bao("decode", "--any", input=encoded)
-    assert decoded_any == input
+    decoded_any = bao("decode", "--any", input_=encoded)
+    assert decoded_any == input_

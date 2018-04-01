@@ -105,6 +105,34 @@ def bao_decode(in_stream, out_stream, hash_):
     root_len = decode_len(in_stream.read(HEADER_SIZE))
     decode_recurse(hash_, root_len, root_len)
 
+# If we knew the length of the input in advance, we could use a recursive
+# approach very similar to bao_encode. But without knowing the length in
+# advance, we need to use this iterative approach with a subtree stack.
+def bao_hash(in_stream):
+    buf = b""
+    chunks = 0
+    subtrees = []
+    while True:
+        # We ask for CHUNK_SIZE bytes, but be careful, we can always get fewer.
+        read = in_stream.read(CHUNK_SIZE)
+        if not read:
+            if chunks == 0:
+                return hash_node(buf, len(buf))
+            new_subtree = hash_node(buf, None)
+            while len(subtrees) > 1:
+                new_subtree = hash_node(subtrees.pop() + new_subtree, None)
+            root_len = chunks * CHUNK_SIZE + len(buf)
+            return hash_node(subtrees[0] + new_subtree, root_len)
+        if len(buf) >= CHUNK_SIZE:
+            chunks += 1
+            new_subtree = hash_node(buf[:CHUNK_SIZE], None)
+            total_after_merging = bin(chunks).count('1')
+            while len(subtrees) + 1 > total_after_merging:
+                new_subtree = hash_node(subtrees.pop() + new_subtree, None)
+            subtrees.append(new_subtree)
+            buf = buf[CHUNK_SIZE:]
+        buf = buf + read
+
 def bao_hash_encoded(in_stream):
     root_len = decode_len(in_stream.read(HEADER_SIZE))
     if root_len > CHUNK_SIZE:
@@ -122,17 +150,16 @@ def main():
         sys.stdout.buffer.write(encoded)
     elif args["decode"]:
         if args["--any"]:
-            bao_hash = ANY
+            hash_ = ANY
         else:
-            bao_hash = binascii.unhexlify(args["--hash"])
-        bao_decode(sys.stdin.buffer, sys.stdout.buffer, bao_hash)
+            hash_ = binascii.unhexlify(args["--hash"])
+        bao_decode(sys.stdin.buffer, sys.stdout.buffer, hash_)
     elif args["hash"]:
         if args["--encoded"]:
-            bao_hash = bao_hash_encoded(sys.stdin.buffer)
+            hash_ = bao_hash_encoded(sys.stdin.buffer)
         else:
-            buf = sys.stdin.buffer.read()
-            bao_hash, _ = bao_encode(buf)
-        print(bao_hash.hex())
+            hash_ = bao_hash(sys.stdin.buffer)
+        print(hash_.hex())
 
 if __name__ == "__main__":
     main()
