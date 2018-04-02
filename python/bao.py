@@ -32,7 +32,7 @@
 # of the input.) That two-pass-tree-flipping strategy is pretty complicated,
 # and this example doesn't try to reproduce it. Note that in any
 # implementation, if the ouput doesn't support seeking (like a Unix pipe), the
-# only options are to either use a temporary file or buffer the whole input.
+# only options are to either use a temporary file or to buffer the whole input.
 
 __doc__ = """\
 Usage: bao.py encode --memory
@@ -53,8 +53,10 @@ HEADER_SIZE = 8
 # A sentinel value for when we'll accept any hash.
 ANY = object()
 
+
 def encode_len(root_len):
     return root_len.to_bytes(HEADER_SIZE, "little")
+
 
 # Python is very permissive with reads and slices, and can silently return
 # fewer bytes than requested, so we explicitly check the expected length here.
@@ -64,17 +66,18 @@ def decode_len(len_bytes):
     assert len(len_bytes) == HEADER_SIZE, "not enough bytes"
     return int.from_bytes(len_bytes, "little")
 
+
 # The root node (whether it's a chunk or a parent) is hashed with the Blake2
 # "last node" flag set, and with the total content length as a suffix. All
 # interior nodes set root_len=None.
 def hash_node(node, root_len):
     state = hashlib.blake2b(
-        last_node=(root_len is not None),
-        digest_size=DIGEST_SIZE)
+        last_node=(root_len is not None), digest_size=DIGEST_SIZE)
     state.update(node)
     if root_len is not None:
         state.update(encode_len(root_len))
     return state.digest()
+
 
 # As with decode len, we explicitly assert the expected length here, to avoid
 # accepting a chunk that's shorter than the header said it should be.
@@ -86,12 +89,14 @@ def verify_node(buf, node_size, root_len, expected_hash):
         # Compare digests in constant time. It might matter to some callers.
         assert hmac.compare_digest(expected_hash, found_hash), "hash mismatch"
 
+
 # Left subtrees contain the largest possible power of two chunks, with at least
 # one byte left for the right subtree.
 def left_len(parent_len):
     available_chunks = (parent_len - 1) // CHUNK_SIZE
-    power_of_two_chunks = 2 ** (available_chunks.bit_length() - 1)
+    power_of_two_chunks = 2**(available_chunks.bit_length() - 1)
     return CHUNK_SIZE * power_of_two_chunks
+
 
 def bao_encode(buf):
     def encode_recurse(buf, root_len):
@@ -111,6 +116,7 @@ def bao_encode(buf):
     # The final output prefixes the 8 byte encoded length.
     return encode_len(root_len) + encoded
 
+
 def bao_decode(in_stream, out_stream, hash_):
     def decode_recurse(hash_, content_len, root_len):
         if content_len <= CHUNK_SIZE:
@@ -118,8 +124,8 @@ def bao_decode(in_stream, out_stream, hash_):
             verify_node(chunk, content_len, root_len, hash_)
             out_stream.write(chunk)
         else:
-            parent = in_stream.read(2*DIGEST_SIZE)
-            verify_node(parent, 2*DIGEST_SIZE, root_len, hash_)
+            parent = in_stream.read(2 * DIGEST_SIZE)
+            verify_node(parent, 2 * DIGEST_SIZE, root_len, hash_)
             left_hash, right_hash = parent[:DIGEST_SIZE], parent[DIGEST_SIZE:]
             llen = left_len(content_len)
             # Interior nodes have no len suffix.
@@ -130,9 +136,7 @@ def bao_decode(in_stream, out_stream, hash_):
     root_len = decode_len(in_stream.read(HEADER_SIZE))
     decode_recurse(hash_, root_len, root_len)
 
-# If we knew the length of the input in advance, we could use a recursive
-# approach very similar to bao_encode. But without knowing the length in
-# advance, we need to use this iterative approach with a subtree stack.
+
 def bao_hash(in_stream):
     buf = b""
     chunks = 0
@@ -164,15 +168,17 @@ def bao_hash(in_stream):
             buf = buf[CHUNK_SIZE:]
         buf = buf + read
 
+
 def bao_hash_encoded(in_stream):
     root_len = decode_len(in_stream.read(HEADER_SIZE))
     if root_len > CHUNK_SIZE:
-        root_node = in_stream.read(2*DIGEST_SIZE)
-        assert len(root_node) == 2*DIGEST_SIZE
+        root_node = in_stream.read(2 * DIGEST_SIZE)
+        assert len(root_node) == 2 * DIGEST_SIZE
     else:
         root_node = in_stream.read(root_len)
         assert len(root_node) == root_len
     return hash_node(root_node, root_len)
+
 
 def main():
     args = docopt.docopt(__doc__)
@@ -191,6 +197,7 @@ def main():
         else:
             hash_ = bao_hash(sys.stdin.buffer)
         print(hash_.hex())
+
 
 if __name__ == "__main__":
     main()
