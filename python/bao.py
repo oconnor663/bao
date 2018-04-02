@@ -1,5 +1,39 @@
 #! /usr/bin/env python3
 
+# This is an example implementation of bao, with the goal of being as readable
+# as possible and a reference for tests. Some comments on how the three main
+# operations are implemented:
+#
+# *bao_decode* is a recursive streaming implementation. Recursion is easy here
+# because the length header at the start of the encoding tells us how deep the
+# tree is, and we can build up the callstack to match. The pre-order layout of
+# the tree means that no seeking is required, just regular reads.
+#
+# *bao_hash* is an iterative streaming implementation. Recursion doesn't work
+# well here, because we don't know the length of the input file in advance.
+# Instead, we keep a stack of subtrees filled so far, merging them as we go
+# along. There is a very cute trick, where the number of trees that should
+# remain in the stack is the same as the number of 1's in the binary
+# representation of the count of chunks so far. (E.g. If you've read 255 chunks
+# so far, then you have 8 partial subtrees. One of 128 chunks, one of 64
+# chunks, and so on. After you read the 256th chunk, you can merge all of those
+# into a single subtree.) That, plus the fact that merging is always done
+# smallest-to-largest / right-to-left, means that we don't need to track the
+# size of each subtree at all; just the hashes and the size of the stack is
+# enough.
+#
+# *bao_encode* is a recursive implementation, but it's not streaming. Instead
+# it buffers the entire input in memory, and so `bao.py encode` always requires
+# the `--memory` flag. The Rust implementation use a more complicated strategy
+# to avoid hogging memory like this. It writes the output tree first in
+# post-order, and then it does a second pass back-to-front to flip it in place.
+# (A pre-order-first approach suffers from not knowing how much space to leave
+# for parent nodes before the first chunk, until you find out the final length
+# of the input.) That two-pass-tree-flipping strategy is pretty complicated,
+# and this example doesn't try to reproduce it. Note that in any
+# implementation, if the ouput doesn't support seeking (like a Unix pipe), the
+# only options are to either use a temporary file or buffer the whole input.
+
 __doc__ = """\
 Usage: bao.py encode --memory
        bao.py decode (--hash=<hash> | --any)
@@ -59,15 +93,6 @@ def left_len(parent_len):
     power_of_two_chunks = 2 ** (available_chunks.bit_length() - 1)
     return CHUNK_SIZE * power_of_two_chunks
 
-# Unlike bao_hash and bao_decode, bao_encode isn't streaming. (We require the
-# --memory flag on the command line, to highlight that.) The difficulty is that
-# we have to lay out the encoded tree in pre-order, with each parent node
-# coming before all the child bytes it depends on, optimized for decoding. This
-# example implementation just assembles everything in memory, to keep it
-# simple. The Rust implementation takes a more complicated approach, first
-# laying out the tree on disk in post-order, and then making a second pass
-# back-to-front to flip it in place. That keeps the memory footprint
-# logarithmic, but requires some very involved bookkeeping.
 def bao_encode(buf):
     def encode_recurse(buf, root_len):
         if len(buf) <= CHUNK_SIZE:
@@ -84,7 +109,7 @@ def bao_encode(buf):
     root_len = len(buf)
     hash_, encoded = encode_recurse(buf, root_len)
     # The final output prefixes the 8 byte encoded length.
-    return hash_, encode_len(root_len) + encoded
+    return encode_len(root_len) + encoded
 
 def bao_decode(in_stream, out_stream, hash_):
     def decode_recurse(hash_, content_len, root_len):
@@ -115,6 +140,8 @@ def bao_hash(in_stream):
     while True:
         # We ask for CHUNK_SIZE bytes, but be careful, we can always get fewer.
         read = in_stream.read(CHUNK_SIZE)
+        # If the read is EOF, do a final rollup merge of all the subtrees we
+        # have, and pass the root_len flag for hashing the root node.
         if not read:
             if chunks == 0:
                 return hash_node(buf, len(buf))
@@ -123,9 +150,13 @@ def bao_hash(in_stream):
                 new_subtree = hash_node(subtrees.pop() + new_subtree, None)
             root_len = chunks * CHUNK_SIZE + len(buf)
             return hash_node(subtrees[0] + new_subtree, root_len)
+        # Hash a chunk and merge subtrees before adding in bytes from the last
+        # read. That way we know we haven't hit EOF, and these nodes definitely
+        # aren't the root.
         if len(buf) >= CHUNK_SIZE:
             chunks += 1
             new_subtree = hash_node(buf[:CHUNK_SIZE], None)
+            # This is the very cute trick described at the top.
             total_after_merging = bin(chunks).count('1')
             while len(subtrees) + 1 > total_after_merging:
                 new_subtree = hash_node(subtrees.pop() + new_subtree, None)
@@ -146,7 +177,7 @@ def bao_hash_encoded(in_stream):
 def main():
     args = docopt.docopt(__doc__)
     if args["encode"]:
-        _, encoded = bao_encode(sys.stdin.buffer.read())
+        encoded = bao_encode(sys.stdin.buffer.read())
         sys.stdout.buffer.write(encoded)
     elif args["decode"]:
         if args["--any"]:
