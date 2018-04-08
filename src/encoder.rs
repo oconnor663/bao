@@ -1,10 +1,31 @@
 use std::ops::Deref;
 use hash::left_len;
 
-use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE};
+use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE, HEADER_SIZE, NODE_SIZE};
 
-pub const NODE_SIZE: usize = 2 * DIGEST_SIZE;
-pub const HEADER_SIZE: usize = 8;
+/// Encode a given input all at once in memory.
+pub fn encode(mut input: &[u8]) -> (Hash, Vec<u8>) {
+    let mut output = Vec::new();
+    let mut post_encoder = PostOrderEncoder::new();
+    while !input.is_empty() {
+        let (used, out) = post_encoder.feed(input);
+        output.extend_from_slice(out);
+        input = &input[used..];
+    }
+    let (hash, out) = post_encoder.finish();
+    output.extend_from_slice(out);
+    let mut flipper = PostToPreFlipper::new();
+    let mut read_cursor = 0;
+    let mut write_cursor = 0;
+    while read_cursor > 0 {
+        debug_assert!(write_cursor > read_cursor, "wrote over input");
+        let (used, out) = flipper.feed_back(&output[..read_cursor]);
+        read_cursor -= used;
+        output[write_cursor..write_cursor + out.len()].copy_from_slice(out);
+        write_cursor -= out.len();
+    }
+    (hash, output)
+}
 
 #[derive(Debug, Copy, Clone)]
 struct Subtree {
@@ -112,7 +133,7 @@ impl PostOrderEncoder {
         // Joining all the remaining nodes into the final tree is very similar
         // to the feed loop above, except we drop the constraint that the left
         // and right sizes must match. That's another way of saying, nodes
-        // where the left len doesn't equal the right len only exist on the
+        // where the left len doesn't equal the right len only exfn inputfn inputist on the
         // rightmost edge of the tree.
         while self.stack.len() >= 2 {
             let left = self.stack[self.stack.len() - 2];
@@ -316,74 +337,111 @@ impl PostToPreFlipper {
 #[cfg(test)]
 mod test {
     use super::*;
-    use unverified::Unverified;
-    use hash::TEST_CASES;
+    use hex;
 
-    // A recursive decoder function for a post-order encoded tree. This is for
-    // directly unit testing the intermediate output, before the reversal step.
-    fn validate_post_order_encoding(encoded: &[u8], hash: &Hash) {
-        let mut encoded = Unverified::wrap(encoded);
-        let header_bytes = encoded
-            .read_verify_back(HEADER_SIZE, hash)
-            .expect("bad header");
-        let (len, hash) = simple::from_header_bytes(header_bytes);
-        validate_recurse(&mut encoded, len, &hash);
-    }
-
-    fn split_node(content_len: u64, node_bytes: &[u8]) -> (u64, u64, Hash, Hash) {
-        let left_len = left_len(content_len);
-        let right_len = content_len - left_len;
-        let left_hash = *array_ref!(node_bytes, 0, DIGEST_SIZE);
-        let right_hash = *array_ref!(node_bytes, DIGEST_SIZE, DIGEST_SIZE);
-        (left_len, right_len, left_hash, right_hash)
-    }
-
-    fn validate_recurse(encoded: &mut Unverified, region_len: u64, region_hash: &Hash) {
-        if region_len <= CHUNK_SIZE as u64 {
-            encoded
-                .read_verify_back(region_len as usize, region_hash)
-                .unwrap();
-            return;
-        }
-        let node_bytes = encoded.read_verify_back(NODE_SIZE, region_hash).unwrap();
-        let (left_len, right_len, left_hash, right_hash) = split_node(region_len, node_bytes);
-        // Note that we have to validate ***right then left***, because we're
-        // reading from the back.
-        validate_recurse(encoded, right_len, &right_hash);
-        validate_recurse(encoded, left_len, &left_hash);
-    }
-
-    fn post_order_encode_all(mut input: &[u8]) -> (Vec<u8>, Hash) {
-        let mut encoder = PostOrderEncoder::new();
-        let mut output = Vec::new();
-        while input.len() > 0 {
-            let (n, out_slice) = encoder.feed(input);
-            output.extend_from_slice(out_slice);
-            input = &input[n..];
-        }
-        let (hash, out_slice) = encoder.finish();
-        output.extend_from_slice(out_slice);
-        (output, hash)
+    fn python_encode(input: &[u8]) -> (Hash, Vec<u8>) {
+        let hex_hash = cmd!("python3", "./python/bao.py", "hash")
+            .input(input)
+            .read()
+            .expect("is python3 installed?");
+        let hash = hex::decode(&hex_hash).expect("bad hex?");
+        let output = cmd!("python3", "./python/bao.py", "encode", "--memory")
+            .input(input)
+            .stdout_capture()
+            .run()
+            .unwrap();
+        (*array_ref!(hash, 0, DIGEST_SIZE), output.stdout)
     }
 
     #[test]
-    fn test_post_order_encoder() {
-        for &case in TEST_CASES {
+    fn check_hash() {
+        for &case in hash::TEST_CASES {
             println!("starting case {}", case);
-            let input = vec![0x33; case];
-            let (encoded, hash) = post_order_encode_all(&input);
-            validate_post_order_encoding(&encoded, &hash);
-
-            // Also compare against the hash from the standard encoding.
-            // Despite the difference in tree layout, the hashes should all be
-            // the same.
-            let (_, regular_hash) = ::simple::encode(&input);
-            assert_eq!(
-                regular_hash, hash,
-                "post order hash doesn't match the standard encoding"
-            );
+            let input = vec![0; case];
+            let expected_hash = hash::hash(&input);
+            let (encoded_hash, _) = encode(&input);
+            assert_eq!(expected_hash, encoded_hash, "hash mismatch");
         }
     }
+
+    #[test]
+    fn compare_encoded_to_python() {
+        for &case in hash::TEST_CASES {
+            println!("starting case {}", case);
+            let input = vec![0; case];
+            let (_, python_encoded) = python_encode(&input);
+            let (_, encoded) = encode(&input);
+            assert_eq!(python_encoded, encoded, "encoded mismatch");
+        }
+    }
+
+    // fn test_encode_against_python
+
+    //     // A recursive decoder function for a post-order encoded tree. This is for
+    //     // directly unit testing the intermediate output, before the reversal step.
+    //     fn validate_post_order_encoding(encoded: &[u8], hash: &Hash) {
+    //         let mut encoded = Unverified::wrap(encoded);
+    //         let header_bytes = encoded
+    //             .read_verify_back(HEADER_SIZE, hash)
+    //             .expect("bad header");
+    //         let (len, hash) = simple::from_header_bytes(header_bytes);
+    //         validate_recurse(&mut encoded, len, &hash);
+    //     }
+
+    //     fn split_node(content_len: u64, node_bytes: &[u8]) -> (u64, u64, Hash, Hash) {
+    //         let left_len = left_len(content_len);
+    //         let right_len = content_len - left_len;
+    //         let left_hash = *array_ref!(node_bytes, 0, DIGEST_SIZE);
+    //         let right_hash = *array_ref!(node_bytes, DIGEST_SIZE, DIGEST_SIZE);
+    //         (left_len, right_len, left_hash, right_hash)
+    //     }
+
+    //     fn validate_recurse(encoded: &mut Unverified, region_len: u64, region_hash: &Hash) {
+    //         if region_len <= CHUNK_SIZE as u64 {
+    //             encoded
+    //                 .read_verify_back(region_len as usize, region_hash)
+    //                 .unwrap();
+    //             return;
+    //         }
+    //         let node_bytes = encoded.read_verify_back(NODE_SIZE, region_hash).unwrap();
+    //         let (left_len, right_len, left_hash, right_hash) = split_node(region_len, node_bytes);
+    //         // Note that we have to validate ***right then left***, because we're
+    //         // reading from the back.
+    //         validate_recurse(encoded, right_len, &right_hash);
+    //         validate_recurse(encoded, left_len, &left_hash);
+    //     }
+
+    //     fn post_order_encode_all(mut input: &[u8]) -> (Vec<u8>, Hash) {
+    //         let mut encoder = PostOrderEncoder::new();
+    //         let mut output = Vec::new();
+    //         while input.len() > 0 {
+    //             let (n, out_slice) = encoder.feed(input);
+    //             output.extend_from_slice(out_slice);
+    //             input = &input[n..];
+    //         }
+    //         let (hash, out_slice) = encoder.finish();
+    //         output.extend_from_slice(out_slice);
+    //         (output, hash)
+    //     }
+
+    //     #[test]
+    //     fn test_post_order_encoder() {
+    //         for &case in TEST_CASES {
+    //             println!("starting case {}", case);
+    //             let input = vec![0x33; case];
+    //             let (encoded, hash) = post_order_encode_all(&input);
+    //             validate_post_order_encoding(&encoded, &hash);
+
+    //             // Also compare against the hash from the standard encoding.
+    //             // Despite the difference in tree layout, the hashes should all be
+    //             // the same.
+    //             let (_, regular_hash) = ::simple::encode(&input);
+    //             assert_eq!(
+    //                 regular_hash, hash,
+    //                 "post order hash doesn't match the standard encoding"
+    //             );
+    //         }
+    //     }
 
     #[test]
     fn test_back_buffer() {
@@ -430,34 +488,34 @@ mod test {
         assert_eq!(buf.len(), 1);
     }
 
-    // Run the PostToPreFlipper across the encoded buffer, flipping it in place.
-    fn flip_in_place(buf: &mut [u8]) {
-        let mut flipper = PostToPreFlipper::new();
-        let mut read_end = buf.len();
-        let mut write_start = buf.len();
-        while read_end > 0 {
-            let (used, output) = flipper.feed_back(&buf[..read_end]);
-            read_end -= used;
-            let write_end = write_start;
-            write_start -= output.len();
-            assert!(write_start >= read_end, "mustn't write over unread bytes");
-            buf[write_start..write_end].copy_from_slice(output);
-        }
-        assert_eq!(read_end, 0);
-        assert_eq!(write_start, 0);
-    }
+    //     // Run the PostToPreFlipper across the encoded buffer, flipping it in place.
+    //     fn flip_in_place(buf: &mut [u8]) {
+    //         let mut flipper = PostToPreFlipper::new();
+    //         let mut read_end = buf.len();
+    //         let mut write_start = buf.len();
+    //         while read_end > 0 {
+    //             let (used, output) = flipper.feed_back(&buf[..read_end]);
+    //             read_end -= used;
+    //             let write_end = write_start;
+    //             write_start -= output.len();
+    //             assert!(write_start >= read_end, "mustn't write over unread bytes");
+    //             buf[write_start..write_end].copy_from_slice(output);
+    //         }
+    //         assert_eq!(read_end, 0);
+    //         assert_eq!(write_start, 0);
+    //     }
 
-    #[test]
-    fn test_flipper() {
-        for &case in TEST_CASES {
-            println!("starting case {}", case);
-            let input = vec![0x01; case];
-            let (mut encoded, hash) = post_order_encode_all(&input);
-            flip_in_place(&mut encoded);
-            // Now that the encoding is pre-order, we can test decoding it with
-            // the regular simple decoder.
-            let decoded = simple::decode(&encoded, &hash).unwrap();
-            assert_eq!(input, decoded);
-        }
-    }
+    //     #[test]
+    //     fn test_flipper() {
+    //         for &case in TEST_CASES {
+    //             println!("starting case {}", case);
+    //             let input = vec![0x01; case];
+    //             let (mut encoded, hash) = post_order_encode_all(&input);
+    //             flip_in_place(&mut encoded);
+    //             // Now that the encoding is pre-order, we can test decoding it with
+    //             // the regular simple decoder.
+    //             let decoded = simple::decode(&encoded, &hash).unwrap();
+    //             assert_eq!(input, decoded);
+    //         }
+    //     }
 }

@@ -7,15 +7,19 @@ use rayon;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::mem;
 use std::sync::Arc;
 
-pub const CHUNK_SIZE: usize = 4096;
 pub const DIGEST_SIZE: usize = 32;
+pub(crate) const HEADER_SIZE: usize = 8;
+pub(crate) const CHUNK_SIZE: usize = 4096;
+pub(crate) const NODE_SIZE: usize = 2 * DIGEST_SIZE;
 
 pub type Hash = [u8; DIGEST_SIZE];
 
-pub(crate) fn encode_len(len: u64) -> [u8; 8] {
-    let mut len_bytes = [0; 8];
+pub(crate) fn encode_len(len: u64) -> [u8; HEADER_SIZE] {
+    debug_assert_eq!(mem::size_of_val(&len), HEADER_SIZE);
+    let mut len_bytes = [0; HEADER_SIZE];
     LittleEndian::write_u64(&mut len_bytes, len);
     len_bytes
 }

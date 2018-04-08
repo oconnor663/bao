@@ -1,7 +1,6 @@
 use unverified::Unverified;
 
-use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE};
-use encoder::{HEADER_SIZE, NODE_SIZE};
+use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE, HEADER_SIZE, NODE_SIZE};
 use std;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -261,192 +260,192 @@ fn checked_mul(a: u64, b: u64) -> Result<u64> {
     a.checked_mul(b).ok_or(Error::Overflow)
 }
 
-#[cfg(test)]
-mod test {
-    extern crate rand;
-    use self::rand::Rng;
+// #[cfg(test)]
+// mod test {
+//     extern crate rand;
+//     use self::rand::Rng;
 
-    use super::*;
-    use simple::encode;
-    use hash::TEST_CASES;
+//     use super::*;
+//     use simple::encode;
+//     use hash::TEST_CASES;
 
-    #[test]
-    fn test_encoded_len() {
-        for &case in TEST_CASES {
-            let found_len = encode(&vec![0; case]).0.len() as u64;
-            let computed_len = encoded_len(case as u64).unwrap() + HEADER_SIZE as u64;
-            assert_eq!(found_len, computed_len, "wrong length in case {}", case);
-        }
-    }
+//     #[test]
+//     fn test_encoded_len() {
+//         for &case in TEST_CASES {
+//             let found_len = encode(&vec![0; case]).0.len() as u64;
+//             let computed_len = encoded_len(case as u64).unwrap() + HEADER_SIZE as u64;
+//             assert_eq!(found_len, computed_len, "wrong length in case {}", case);
+//         }
+//     }
 
-    #[test]
-    fn test_decoder() {
-        // This simulates a writer who supplies exactly what's asked for by
-        // needed(), until EOF.
-        for &case in TEST_CASES {
-            println!("\n>>>>> starting case {}", case);
-            let input = vec![0x72; case];
-            let (encoded, hash) = encode(&input);
-            println!("encoded.len() {}", encoded.len());
-            let mut decoder = Decoder::new(&hash);
-            let mut output = Vec::new();
-            loop {
-                let (offset, len) = decoder.needed();
-                println!("needed: {}, {}", offset, len);
-                if len == 0 {
-                    break;
-                }
-                let encoded_input = &encoded[offset as usize..offset as usize + len];
-                let (consumed, out_slice) = decoder.feed(encoded_input).unwrap();
-                println!("consumed: {} (gave output: {})", consumed, output.len());
-                assert_eq!(consumed, len);
-                output.extend_from_slice(out_slice);
-            }
-            assert_eq!(input, output);
-        }
-    }
+//     #[test]
+//     fn test_decoder() {
+//         // This simulates a writer who supplies exactly what's asked for by
+//         // needed(), until EOF.
+//         for &case in TEST_CASES {
+//             println!("\n>>>>> starting case {}", case);
+//             let input = vec![0x72; case];
+//             let (encoded, hash) = encode(&input);
+//             println!("encoded.len() {}", encoded.len());
+//             let mut decoder = Decoder::new(&hash);
+//             let mut output = Vec::new();
+//             loop {
+//                 let (offset, len) = decoder.needed();
+//                 println!("needed: {}, {}", offset, len);
+//                 if len == 0 {
+//                     break;
+//                 }
+//                 let encoded_input = &encoded[offset as usize..offset as usize + len];
+//                 let (consumed, out_slice) = decoder.feed(encoded_input).unwrap();
+//                 println!("consumed: {} (gave output: {})", consumed, output.len());
+//                 assert_eq!(consumed, len);
+//                 output.extend_from_slice(out_slice);
+//             }
+//             assert_eq!(input, output);
+//         }
+//     }
 
-    fn decode_all(mut encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
-        let mut decoder = Decoder::new(&hash);
-        let mut output = Vec::new();
-        loop {
-            let (_, len) = decoder.needed();
-            if len == 0 {
-                return Ok(output);
-            }
-            let (consumed, out_slice) = decoder.feed(encoded)?;
-            output.extend_from_slice(out_slice);
-            encoded = &encoded[consumed..];
-        }
-    }
+//     fn decode_all(mut encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
+//         let mut decoder = Decoder::new(&hash);
+//         let mut output = Vec::new();
+//         loop {
+//             let (_, len) = decoder.needed();
+//             if len == 0 {
+//                 return Ok(output);
+//             }
+//             let (consumed, out_slice) = decoder.feed(encoded)?;
+//             output.extend_from_slice(out_slice);
+//             encoded = &encoded[consumed..];
+//         }
+//     }
 
-    #[test]
-    fn test_decoder_corrupted() {
-        // Similar to test_simple_corrupted. We flip bits and make things stop
-        // working.
-        for &case in TEST_CASES {
-            println!("\n>>>>> starting case {}", case);
-            let input = vec![0x72; case];
-            let (encoded, hash) = encode(&input);
-            println!("encoded lenth {}", encoded.len());
-            for &tweak_case in TEST_CASES {
-                if tweak_case >= encoded.len() {
-                    continue;
-                }
-                println!("tweak case {}", tweak_case);
-                let mut corrupted = encoded.clone();
-                corrupted[tweak_case] ^= 1;
-                assert_eq!(
-                    decode_all(&corrupted, &hash).unwrap_err(),
-                    Error::HashMismatch
-                );
-                // But make sure it does work without the tweak.
-                decode_all(&encoded, &hash).unwrap();
-            }
-        }
-    }
+//     #[test]
+//     fn test_decoder_corrupted() {
+//         // Similar to test_simple_corrupted. We flip bits and make things stop
+//         // working.
+//         for &case in TEST_CASES {
+//             println!("\n>>>>> starting case {}", case);
+//             let input = vec![0x72; case];
+//             let (encoded, hash) = encode(&input);
+//             println!("encoded lenth {}", encoded.len());
+//             for &tweak_case in TEST_CASES {
+//                 if tweak_case >= encoded.len() {
+//                     continue;
+//                 }
+//                 println!("tweak case {}", tweak_case);
+//                 let mut corrupted = encoded.clone();
+//                 corrupted[tweak_case] ^= 1;
+//                 assert_eq!(
+//                     decode_all(&corrupted, &hash).unwrap_err(),
+//                     Error::HashMismatch
+//                 );
+//                 // But make sure it does work without the tweak.
+//                 decode_all(&encoded, &hash).unwrap();
+//             }
+//         }
+//     }
 
-    #[test]
-    fn test_decoder_overfeed() {
-        // This simulates a writer who doesn't even call needed(), and instead
-        // just feeds everything into every call to seek(), bumping the start
-        // forward as bytes are consumed.
-        for &case in TEST_CASES {
-            let input = vec![0x72; case];
-            let (encoded, hash) = encode(&input);
-            let mut decoder = Decoder::new(&hash);
-            let mut output = Vec::new();
-            let mut encoded_input = &encoded[..];
-            loop {
-                let (consumed, out_slice) = decoder.feed(encoded_input).unwrap();
-                if consumed == 0 {
-                    break;
-                }
-                output.extend_from_slice(out_slice);
-                encoded_input = &encoded_input[consumed..]
-            }
-            assert_eq!(input, output);
-        }
-    }
+//     #[test]
+//     fn test_decoder_overfeed() {
+//         // This simulates a writer who doesn't even call needed(), and instead
+//         // just feeds everything into every call to seek(), bumping the start
+//         // forward as bytes are consumed.
+//         for &case in TEST_CASES {
+//             let input = vec![0x72; case];
+//             let (encoded, hash) = encode(&input);
+//             let mut decoder = Decoder::new(&hash);
+//             let mut output = Vec::new();
+//             let mut encoded_input = &encoded[..];
+//             loop {
+//                 let (consumed, out_slice) = decoder.feed(encoded_input).unwrap();
+//                 if consumed == 0 {
+//                     break;
+//                 }
+//                 output.extend_from_slice(out_slice);
+//                 encoded_input = &encoded_input[consumed..]
+//             }
+//             assert_eq!(input, output);
+//         }
+//     }
 
-    #[test]
-    fn test_decoder_feed_by_ones() {
-        // This simulates a writer who tries to feed small amounts, making the
-        // amount larger with each failure until things succeed.
-        let input = vec![0; 4 * CHUNK_SIZE + 1];
-        let (encoded, hash) = encode(&input);
-        let mut decoder = Decoder::new(&hash);
-        let mut encoded_slice = &encoded[..];
-        let mut output = Vec::new();
-        let mut feed_len = 0;
-        loop {
-            match decoder.feed(&encoded_slice[..feed_len]) {
-                Ok((consumed, out_slice)) => {
-                    if consumed == 0 {
-                        // Note that this EOF will happen after the last
-                        // successful feed, when we attempt to feed 0 bytes
-                        // again. If we reset feed_len to anything other than
-                        // zero, we'd end up slicing out of bounds.
-                        break;
-                    }
-                    output.extend_from_slice(out_slice);
-                    encoded_slice = &encoded_slice[consumed..];
-                    feed_len = 0;
-                }
-                Err(Error::ShortInput) => {
-                    // Keep bumping the feed length until we succeed.
-                    feed_len += 1;
-                }
-                e => panic!("unexpected error: {:?}", e),
-            }
-        }
-    }
+//     #[test]
+//     fn test_decoder_feed_by_ones() {
+//         // This simulates a writer who tries to feed small amounts, making the
+//         // amount larger with each failure until things succeed.
+//         let input = vec![0; 4 * CHUNK_SIZE + 1];
+//         let (encoded, hash) = encode(&input);
+//         let mut decoder = Decoder::new(&hash);
+//         let mut encoded_slice = &encoded[..];
+//         let mut output = Vec::new();
+//         let mut feed_len = 0;
+//         loop {
+//             match decoder.feed(&encoded_slice[..feed_len]) {
+//                 Ok((consumed, out_slice)) => {
+//                     if consumed == 0 {
+//                         // Note that this EOF will happen after the last
+//                         // successful feed, when we attempt to feed 0 bytes
+//                         // again. If we reset feed_len to anything other than
+//                         // zero, we'd end up slicing out of bounds.
+//                         break;
+//                     }
+//                     output.extend_from_slice(out_slice);
+//                     encoded_slice = &encoded_slice[consumed..];
+//                     feed_len = 0;
+//                 }
+//                 Err(Error::ShortInput) => {
+//                     // Keep bumping the feed length until we succeed.
+//                     feed_len += 1;
+//                 }
+//                 e => panic!("unexpected error: {:?}", e),
+//             }
+//         }
+//     }
 
-    #[test]
-    fn test_decoder_seek() {
-        for &case in TEST_CASES {
-            println!("\n>>>>> case {}", case);
-            // Use pseudorandom input, so that slices from different places are
-            // very likely not to match.
-            let input: Vec<u8> = rand::ChaChaRng::new_unseeded()
-                .gen_iter()
-                .take(case)
-                .collect();
-            let (encoded, hash) = encode(&input);
-            for &seek_case in TEST_CASES {
-                if seek_case > case {
-                    continue;
-                }
-                println!(">>> seek case {}", seek_case);
-                let mut decoder = Decoder::new(&hash);
-                decoder.seek(seek_case as u64);
-                // Read the rest of the output and confirm it matches the input
-                // slice at the same offset.
-                let mut output = Vec::new();
-                loop {
-                    let (offset, len) = decoder.needed();
-                    if len == 0 {
-                        break;
-                    }
-                    let encoded_input = &encoded[offset as usize..offset as usize + len];
-                    let (_, out_slice) = decoder.feed(encoded_input).unwrap();
-                    output.extend_from_slice(out_slice);
-                }
-                let expected = &input[seek_case..];
-                assert_eq!(expected, &output[..]);
-            }
-        }
-    }
+//     #[test]
+//     fn test_decoder_seek() {
+//         for &case in TEST_CASES {
+//             println!("\n>>>>> case {}", case);
+//             // Use pseudorandom input, so that slices from different places are
+//             // very likely not to match.
+//             let input: Vec<u8> = rand::ChaChaRng::new_unseeded()
+//                 .gen_iter()
+//                 .take(case)
+//                 .collect();
+//             let (encoded, hash) = encode(&input);
+//             for &seek_case in TEST_CASES {
+//                 if seek_case > case {
+//                     continue;
+//                 }
+//                 println!(">>> seek case {}", seek_case);
+//                 let mut decoder = Decoder::new(&hash);
+//                 decoder.seek(seek_case as u64);
+//                 // Read the rest of the output and confirm it matches the input
+//                 // slice at the same offset.
+//                 let mut output = Vec::new();
+//                 loop {
+//                     let (offset, len) = decoder.needed();
+//                     if len == 0 {
+//                         break;
+//                     }
+//                     let encoded_input = &encoded[offset as usize..offset as usize + len];
+//                     let (_, out_slice) = decoder.feed(encoded_input).unwrap();
+//                     output.extend_from_slice(out_slice);
+//                 }
+//                 let expected = &input[seek_case..];
+//                 assert_eq!(expected, &output[..]);
+//             }
+//         }
+//     }
 
-    // Tested in both simple.rs and decode.rs.
-    #[test]
-    fn test_short_header_fails() {
-        // A permissive decoder might allow 7 null bytes to be zero just like 8
-        // null bytes would be. That would be a bug, and a security bug at
-        // that. The hash of 7 nulls isn't the same as the hash of 8, and it's
-        // crucial that a given input has a unique hash.
-        let encoded = vec![0; 7];
-        let hash = ::hash(&encoded);
-        assert_eq!(decode_all(&encoded, &hash).unwrap_err(), Error::ShortInput);
-    }
-}
+//     // Tested in both simple.rs and decode.rs.
+//     #[test]
+//     fn test_short_header_fails() {
+//         // A permissive decoder might allow 7 null bytes to be zero just like 8
+//         // null bytes would be. That would be a bug, and a security bug at
+//         // that. The hash of 7 nulls isn't the same as the hash of 8, and it's
+//         // crucial that a given input has a unique hash.
+//         let encoded = vec![0; 7];
+//         let hash = ::hash(&encoded);
+//         assert_eq!(decode_all(&encoded, &hash).unwrap_err(), Error::ShortInput);
+//     }
+// }

@@ -43,7 +43,8 @@ fn decode(args: &Args) -> io::Result<()> {
     let mut stdin = io::stdin();
     let stdout = io::stdout();
     if args.flag_any {
-        let mut header_bytes = [0; bao::encoder::HEADER_SIZE];
+        // TODO: Expose an "any" constructor for the decoder.
+        let mut header_bytes = [0; 8];
         stdin.read_exact(&mut header_bytes).unwrap();
         // TODO: THIS IS NOT CORRECT
         let header_hash = bao::hash::hash(&header_bytes);
