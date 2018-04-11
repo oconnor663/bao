@@ -1,7 +1,6 @@
 use std::ops::Deref;
-use hash::left_len;
-
 use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE, HEADER_SIZE, NODE_SIZE};
+use hash::Finalization::{NotRoot, Root};
 
 /// Encode a given input all at once in memory.
 pub fn encode(mut input: &[u8]) -> (Hash, Vec<u8>) {
@@ -34,10 +33,10 @@ struct Subtree {
 }
 
 impl Subtree {
-    fn from_chunk(chunk: &[u8]) -> Self {
+    fn from_chunk(chunk: &[u8], finalization: hash::Finalization) -> Self {
         Self {
             len: chunk.len() as u64,
-            hash: hash::hash(chunk),
+            hash: hash::hash_chunk(chunk, finalization),
         }
     }
 
@@ -95,7 +94,7 @@ impl PostOrderEncoder {
         // We have a full chunk in the buffer. Update the node stack, append
         // any nodes that are finished, and emit the result as ouput. The next
         // call to feed() will clear the buffer.
-        self.stack.push(Subtree::from_chunk(&self.buf));
+        self.stack.push(Subtree::from_chunk(&self.buf, NotRoot));
         // Fun fact: this loop is metaphorically just like adding one to a
         // binary number and propagating the carry bit :)
         while self.stack.len() >= 2 {
@@ -128,7 +127,7 @@ impl PostOrderEncoder {
         // needs to get added to the node stack. In that case the remaining
         // nodes will get appended to the chunk.
         if self.buf.len() > 0 {
-            self.stack.push(Subtree::from_chunk(&self.buf));
+            self.stack.push(Subtree::from_chunk(&self.buf, NotRoot));
         }
         // Joining all the remaining nodes into the final tree is very similar
         // to the feed loop above, except we drop the constraint that the left
@@ -146,7 +145,9 @@ impl PostOrderEncoder {
         }
         // Take the the final remaining subtree, or the empty subtree if there
         // was never any input, and turn it into the header.
-        let root = self.stack.pop().unwrap_or(Subtree::from_chunk(&[]));
+        let root = self.stack
+            .pop()
+            .unwrap_or(Subtree::from_chunk(&[], Root(0)));
         self.buf.extend_from_slice(&hash::encode_len(root.len));
         // TODO: THIS IS NOT CORRECT YET
         (hash::hash(&[]), &self.buf)
@@ -296,7 +297,7 @@ impl PostToPreFlipper {
             let node = Node {
                 bytes: *array_ref!(&self.buf, 0, NODE_SIZE),
                 start: self.region_start,
-                left_len: left_len(self.region_len),
+                left_len: hash::left_len(self.region_len),
             };
             self.stack.push(node);
             self.region_start += node.left_len;

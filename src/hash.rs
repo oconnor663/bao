@@ -28,31 +28,41 @@ pub(crate) fn decode_len(bytes: &[u8]) -> u64 {
     LittleEndian::read_u64(bytes)
 }
 
-pub(crate) fn finalize_hash(state: &mut blake2b::State, root_len: Option<u64>) -> Hash {
+// The root node is hashed differently from interior nodes. It gets suffixed
+// with the length of the entire input, and we set the Blake2 final node flag.
+// That means that no root hash can ever collide with an interior hash, or with
+// the root of a different size tree.
+pub(crate) enum Finalization {
+    NotRoot,
+    Root(u64),
+}
+use self::Finalization::{NotRoot, Root};
+
+pub(crate) fn finalize_hash(state: &mut blake2b::State, finalization: Finalization) -> Hash {
     // For the root node, we hash in the length as a suffix, and we set the
     // Blake2 last node flag. One of the reasons for this design is that we
     // don't need to know a given node is the root until the very end, so we
     // don't always need a chunk buffer.
-    if let Some(len) = root_len {
-        state.update(&encode_len(len));
+    if let Root(root_len) = finalization {
+        state.update(&encode_len(root_len));
         state.set_last_node(true);
     }
     let blake_digest = state.finalize();
     *array_ref!(blake_digest.bytes, 0, DIGEST_SIZE)
 }
 
-pub(crate) fn hash_chunk(chunk: &[u8], root_len: Option<u64>) -> Hash {
+pub(crate) fn hash_chunk(chunk: &[u8], finalization: Finalization) -> Hash {
     debug_assert!(chunk.len() <= CHUNK_SIZE);
     let mut state = blake2b::State::new(DIGEST_SIZE);
     state.update(chunk);
-    finalize_hash(&mut state, root_len)
+    finalize_hash(&mut state, finalization)
 }
 
-pub(crate) fn hash_parent(left_hash: &Hash, right_hash: &Hash, root_len: Option<u64>) -> Hash {
+pub(crate) fn hash_parent(left_hash: &Hash, right_hash: &Hash, finalization: Finalization) -> Hash {
     let mut state = blake2b::State::new(DIGEST_SIZE);
     state.update(left_hash);
     state.update(right_hash);
-    finalize_hash(&mut state, root_len)
+    finalize_hash(&mut state, finalization)
 }
 
 // Find the largest power of two that's less than or equal to `n`. We use this
@@ -71,39 +81,39 @@ pub(crate) fn left_len(content_len: u64) -> u64 {
     largest_power_of_two(full_chunks) * CHUNK_SIZE as u64
 }
 
-pub(crate) fn hash_recurse(input: &[u8], root_len: Option<u64>) -> Hash {
+pub(crate) fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
-        return hash_chunk(input, root_len);
+        return hash_chunk(input, finalization);
     }
     // If we have more than one chunk of input, recursively hash the left and
     // right sides. The left_len() function determines the shape of the tree.
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
-    // Child nodes are never the root, so their root_len is None.
-    let left_hash = hash_recurse(left, None);
-    let right_hash = hash_recurse(right, None);
-    hash_parent(&left_hash, &right_hash, root_len)
+    // Child nodes are never the root.
+    let left_hash = hash_recurse(left, NotRoot);
+    let right_hash = hash_recurse(right, NotRoot);
+    hash_parent(&left_hash, &right_hash, finalization)
 }
 
 pub fn hash(input: &[u8]) -> Hash {
-    hash_recurse(input, Some(input.len() as u64))
+    hash_recurse(input, Root(input.len() as u64))
 }
 
-pub(crate) fn hash_recurse_parallel(input: &[u8], root_len: Option<u64>) -> Hash {
+pub(crate) fn hash_recurse_parallel(input: &[u8], finalization: Finalization) -> Hash {
     // By my measurements on an i5-4590, the overhead of parallel hashing
     // doesn't pay for itself until you have more than two chunks.
     if input.len() <= 2 * CHUNK_SIZE {
-        return hash_recurse(input, root_len);
+        return hash_recurse(input, finalization);
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
     let (left_hash, right_hash) = rayon::join(
-        || hash_recurse_parallel(left, None),
-        || hash_recurse_parallel(right, None),
+        || hash_recurse_parallel(left, NotRoot),
+        || hash_recurse_parallel(right, NotRoot),
     );
-    hash_parent(&left_hash, &right_hash, root_len)
+    hash_parent(&left_hash, &right_hash, finalization)
 }
 
 pub fn hash_parallel(input: &[u8]) -> Hash {
-    hash_recurse_parallel(input, Some(input.len() as u64))
+    hash_recurse_parallel(input, Root(input.len() as u64))
 }
 
 // This is a cute algorithm for incrementally merging subtrees. We keep only
@@ -129,7 +139,7 @@ pub(crate) fn rollup_subtree(
     while subtrees.len() > final_num_trees as usize {
         let right_child = subtrees.pop().expect("called with too few nodes");
         let left_child = subtrees.pop().expect("called with too few nodes");
-        subtrees.push(hash_parent(&left_child, &right_child, None));
+        subtrees.push(hash_parent(&left_child, &right_child, NotRoot));
     }
 }
 
@@ -148,9 +158,9 @@ pub(crate) fn rollup_final(
         let right_child = subtrees.pop().expect("called with too few nodes");
         let left_child = subtrees.pop().expect("called with too few nodes");
         if subtrees.is_empty() {
-            return hash_parent(&left_child, &right_child, Some(final_len));
+            return hash_parent(&left_child, &right_child, Root(final_len));
         }
-        subtrees.push(hash_parent(&left_child, &right_child, None));
+        subtrees.push(hash_parent(&left_child, &right_child, NotRoot));
     }
 }
 
@@ -176,7 +186,7 @@ impl State {
             // only do this when we know there's more input to come, otherwise
             // we have to wait and see if we need to finalize.
             if self.count > 0 && self.count % CHUNK_SIZE as u64 == 0 {
-                let chunk_hash = finalize_hash(&mut self.chunk_state, None);
+                let chunk_hash = finalize_hash(&mut self.chunk_state, NotRoot);
                 self.chunk_state = blake2b::State::new(DIGEST_SIZE);
                 rollup_subtree(&mut self.subtrees, self.count, chunk_hash);
             }
@@ -194,11 +204,11 @@ impl State {
         // If the tree is a single chunk, give that chunk the root flag and
         // return its hash.
         if self.count <= CHUNK_SIZE as u64 {
-            return finalize_hash(&mut self.chunk_state, Some(self.count as u64));
+            return finalize_hash(&mut self.chunk_state, Root(self.count as u64));
         }
         // Otherwise we need to hash the chunk as usual and do a rollup that
         // flags the root parent node.
-        let chunk_hash = finalize_hash(&mut self.chunk_state, None);
+        let chunk_hash = finalize_hash(&mut self.chunk_state, NotRoot);
         rollup_final(&mut self.subtrees, self.count, chunk_hash)
     }
 }
@@ -267,7 +277,7 @@ impl StateParallel {
         let queue_arc = self.finished_queue.clone();
         // Hash this item in the background.
         rayon::spawn(move || {
-            item.hash = hash_recurse(&item.buffer, None);
+            item.hash = hash_recurse(&item.buffer, NotRoot);
             // After hashing is done, stick it on the finish queue.
             queue_arc.push(item);
         });
