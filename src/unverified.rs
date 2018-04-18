@@ -1,8 +1,8 @@
 extern crate constant_time_eq;
 
 use constant_time_eq::constant_time_eq;
-use hash::{self, Hash};
 use decoder::{Error, Result};
+use hash::{self, Hash};
 
 fn verify(input: &[u8], hash: &Hash) -> Result<()> {
     let computed = hash::hash(input);

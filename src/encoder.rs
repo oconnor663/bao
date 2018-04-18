@@ -1,6 +1,8 @@
-use std::ops::Deref;
-use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE, HEADER_SIZE, NODE_SIZE};
+use blake2_c::blake2b;
 use hash::Finalization::{NotRoot, Root};
+use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE, HEADER_SIZE, NODE_SIZE};
+use std::cmp;
+use std::ops::Deref;
 
 /// Encode a given input all at once in memory.
 pub fn encode(mut input: &[u8]) -> (Hash, Vec<u8>) {
@@ -11,146 +13,139 @@ pub fn encode(mut input: &[u8]) -> (Hash, Vec<u8>) {
         output.extend_from_slice(out);
         input = &input[used..];
     }
-    let (hash, out) = post_encoder.finish();
-    output.extend_from_slice(out);
+    let hash = loop {
+        let (maybe_hash, out) = post_encoder.finish();
+        output.extend_from_slice(out);
+        if let Some(hash) = maybe_hash {
+            break hash;
+        }
+    };
     let mut flipper = PostToPreFlipper::new();
-    let mut read_cursor = 0;
-    let mut write_cursor = 0;
+    let mut read_cursor = output.len();
+    let mut write_cursor = output.len();
     while read_cursor > 0 {
-        debug_assert!(write_cursor > read_cursor, "wrote over input");
         let (used, out) = flipper.feed_back(&output[..read_cursor]);
         read_cursor -= used;
-        output[write_cursor..write_cursor + out.len()].copy_from_slice(out);
+        debug_assert!(write_cursor - out.len() >= read_cursor, "wrote over input");
+        output[write_cursor - out.len()..write_cursor].copy_from_slice(out);
         write_cursor -= out.len();
     }
     (hash, output)
 }
 
-#[derive(Debug, Copy, Clone)]
-struct Subtree {
-    len: u64,
-    hash: Hash,
-}
-
-impl Subtree {
-    fn from_chunk(chunk: &[u8], finalization: hash::Finalization) -> Self {
-        Self {
-            len: chunk.len() as u64,
-            hash: hash::hash_chunk(chunk, finalization),
-        }
-    }
-
-    fn join(&self, rhs: &Self) -> Self {
-        let mut node = [0; NODE_SIZE];
-        node[..DIGEST_SIZE].copy_from_slice(&self.hash);
-        node[DIGEST_SIZE..].copy_from_slice(&rhs.hash);
-        Self {
-            len: self.len.checked_add(rhs.len).expect("overflow in encoding"),
-            hash: hash::hash(&node),
-        }
-    }
-}
-
-// returns number of bytes used
-fn extend_up_to(buf: &mut Vec<u8>, target_len: usize, input: &[u8]) -> usize {
-    let wanted = target_len.saturating_sub(buf.len());
-    let used = input.len().min(wanted);
-    buf.extend_from_slice(&input[..used]);
-    used
-}
-
-/// This encoder produces a *backwards* tree, with parent nodes to the right of
-/// both their children. This is the only flavor of binary tree that we can
-/// write in a streaming way. Our approach will be to encode all the input in
-/// this form first, and then to transform it into a pre-order tree afterwards.
-#[derive(Debug, Clone)]
 pub struct PostOrderEncoder {
-    stack: Vec<Subtree>,
-    buf: Vec<u8>,
+    subtree_stack: Vec<Hash>,
+    total_len: u64,
+    chunk_state: blake2b::State,
+    chunk_len: usize,
+    output_buffer: [u8; NODE_SIZE],
 }
 
 impl PostOrderEncoder {
     pub fn new() -> Self {
         Self {
-            stack: Vec::new(),
-            buf: Vec::new(),
+            subtree_stack: Vec::new(),
+            total_len: 0,
+            chunk_state: blake2b::State::new(DIGEST_SIZE),
+            chunk_len: 0,
+            output_buffer: [0; NODE_SIZE],
         }
     }
 
-    // returns (used, output), where output may be empty
-    pub fn feed(&mut self, input: &[u8]) -> (usize, &[u8]) {
-        // If the buffer len is >= CHUNK_SIZE, then it was used as output in
-        // the last call to feed(), and we need to clear it now. (Note that
-        // finish() has the same invariant.)
-        if self.buf.len() >= CHUNK_SIZE {
-            self.buf.clear()
-        }
-        // Consume bytes from the caller until the buffer is CHUNK_SIZE. If we
-        // don't get there, short circuit and let the caller feed more bytes.
-        let used = extend_up_to(&mut self.buf, CHUNK_SIZE, input);
-        if self.buf.len() < CHUNK_SIZE {
-            return (used, &[]);
-        }
-        // We have a full chunk in the buffer. Update the node stack, append
-        // any nodes that are finished, and emit the result as ouput. The next
-        // call to feed() will clear the buffer.
-        self.stack.push(Subtree::from_chunk(&self.buf, NotRoot));
-        // Fun fact: this loop is metaphorically just like adding one to a
-        // binary number and propagating the carry bit :)
-        while self.stack.len() >= 2 {
-            let left = self.stack[self.stack.len() - 2];
-            let right = self.stack[self.stack.len() - 1];
-            // In the feed loop, we only build full trees, where the left and
-            // right are the same length. All the partial trees (with their
-            // roots on the right edge of the final edge) get constructed
-            // during finish() below.
-            if left.len != right.len {
-                break;
-            }
-            self.buf.extend_from_slice(&left.hash);
-            self.buf.extend_from_slice(&right.hash);
-            self.stack.pop();
-            self.stack.pop();
-            self.stack.push(left.join(&right));
-        }
-        (used, &self.buf)
+    // Whenever we finish with two subtrees of the same size (once every two
+    // chunks, once again every four chunks, etc.), we pop them out of the
+    // subtree stack and merge them into a parent node. That node gets emitted
+    // to the caller as output, and its hash goes back into the stack as a
+    // merged subtree.
+    fn merge_parent_node(&mut self, finalization: hash::Finalization) -> &[u8] {
+        let right_child = self.subtree_stack.pop().expect("called with too few nodes");
+        let left_child = self.subtree_stack.pop().expect("called with too few nodes");
+        let parent_hash = hash::hash_parent(&left_child, &right_child, finalization);
+        // Push the parent hash back into the subtree stack, fill the parent
+        // node buffer, and return it to the caller as a slice of output bytes.
+        self.subtree_stack.push(parent_hash);
+        self.output_buffer[..DIGEST_SIZE].copy_from_slice(&left_child);
+        self.output_buffer[DIGEST_SIZE..].copy_from_slice(&right_child);
+        &self.output_buffer
     }
 
-    pub fn finish(&mut self) -> (Hash, &[u8]) {
-        // If the buffer len is >= CHUNK_SIZE, then it was used as output in
-        // the last call to feed(), and we need to clear it now. (Note that
-        // feed() has the same invariant.)
-        if self.buf.len() >= CHUNK_SIZE {
-            self.buf.clear()
+    /// Returns a tuple of the count of input bytes consumed and a slice of
+    /// output bytes. Some calls will consume no bytes but still produce
+    /// output. The encoder may inspect input bytes beyond what it tells you it
+    /// consumed, and if you "change your mind" about feeding the unconsumed
+    /// bytes again, the result is unspecified.
+    pub fn feed<'a>(&'a mut self, input: &'a [u8]) -> (usize, &'a [u8]) {
+        // If we don't have any new bytes, short circuit. We don't know whether
+        // something might be the root.
+        if input.is_empty() {
+            return (0, &[]);
         }
-        // If the buffer is nonempty, then there's a final partial chunk that
-        // needs to get added to the node stack. In that case the remaining
-        // nodes will get appended to the chunk.
-        if self.buf.len() > 0 {
-            self.stack.push(Subtree::from_chunk(&self.buf, NotRoot));
+        // If we have a full chunk already, finish hashing it. We know it's not
+        // the root now, because we have more bytes coming in.
+        if self.chunk_len == CHUNK_SIZE {
+            let new_subtree = hash::finalize_hash(&mut self.chunk_state, NotRoot);
+            self.subtree_stack.push(new_subtree);
+            self.chunk_len = 0;
+            self.chunk_state = blake2b::State::new(DIGEST_SIZE);
         }
-        // Joining all the remaining nodes into the final tree is very similar
-        // to the feed loop above, except we drop the constraint that the left
-        // and right sizes must match. That's another way of saying, nodes
-        // where the left len doesn't equal the right len only exfn inputfn inputist on the
-        // rightmost edge of the tree.
-        while self.stack.len() >= 2 {
-            let left = self.stack[self.stack.len() - 2];
-            let right = self.stack[self.stack.len() - 1];
-            self.buf.extend_from_slice(&left.hash);
-            self.buf.extend_from_slice(&right.hash);
-            self.stack.pop();
-            self.stack.pop();
-            self.stack.push(left.join(&right));
+        // Now, if we need to emit any parent nodes, do them one by one. This
+        // lets us avoid holding a big buffer. The trees_after_merging trick
+        // here is the same as in hash::rollup_subtree. In this case, in
+        // addition to merging subtrees, we need to emit a parent node.
+        // (Remember, we're building a *post*-order tree here.)
+        let trees_after_merging = (self.total_len / CHUNK_SIZE as u64).count_ones() as usize;
+        if self.subtree_stack.len() > trees_after_merging {
+            return (0, self.merge_parent_node(NotRoot));
         }
-        // Take the the final remaining subtree, or the empty subtree if there
-        // was never any input, and turn it into the header.
-        let root = self.stack
-            .pop()
-            .unwrap_or(Subtree::from_chunk(&[], Root(0)));
-        self.buf.extend_from_slice(&hash::encode_len(root.len));
-        // TODO: THIS IS NOT CORRECT YET
-        (hash::hash(&[]), &self.buf)
+        // Finally, if we didn't stop to emit a node above, consume some more
+        // bytes from the caller. We immediately return those back as output
+        // also.
+        let want = CHUNK_SIZE - self.chunk_len;
+        let take = cmp::min(want, input.len());
+        self.chunk_state.update(&input[..take]);
+        self.chunk_len += take;
+        self.total_len += take as u64;
+        (take, &input[..take])
+    }
+
+    fn length_header(&mut self) -> &[u8] {
+        let buf = array_mut_ref!(&mut self.output_buffer, 0, HEADER_SIZE);
+        *buf = hash::encode_len(self.total_len);
+        buf
+    }
+
+    /// Once all the input has been conusmed by `feed`, the caller must call
+    /// `finish` _in a loop_, until its first return value is `Some`. Each call
+    /// will yield more output bytes. The hash returned by the last call is the
+    /// root hash of the whole tree.
+    pub fn finish(&mut self) -> (Option<Hash>, &[u8]) {
+        // If there was only one chunk, hash it as the root, even if it's empty.
+        if self.total_len <= CHUNK_SIZE as u64 {
+            let root_hash = hash::finalize_hash(&mut self.chunk_state, Root(self.total_len));
+            return (Some(root_hash), self.length_header());
+        }
+        // Because of the contract above (never change your mind about feeding
+        // bytes), the first time we get here, chunk_len will always be
+        // non-zero. Finish hashing that chunk, and then zero it out for
+        // subsequent calls.
+        if self.chunk_len > 0 {
+            self.subtree_stack
+                .push(hash::finalize_hash(&mut self.chunk_state, NotRoot));
+            self.chunk_len = 0;
+        }
+        // Now we need to merge all the subtrees into parent nodes, whether or
+        // not they're full.
+        if self.subtree_stack.len() > 1 {
+            let finalization = if self.subtree_stack.len() == 2 {
+                Root(self.total_len)
+            } else {
+                NotRoot
+            };
+            return (None, self.merge_parent_node(finalization));
+        }
+        // In the final call, all the subtrees have been merged, and the
+        // remaining hash is the root hash.
+        (Some(self.subtree_stack[0]), self.length_header())
     }
 }
 
@@ -358,7 +353,7 @@ mod test {
     fn check_hash() {
         for &case in hash::TEST_CASES {
             println!("starting case {}", case);
-            let input = vec![0; case];
+            let input = vec![9; case];
             let expected_hash = hash::hash(&input);
             let (encoded_hash, _) = encode(&input);
             assert_eq!(expected_hash, encoded_hash, "hash mismatch");
@@ -369,7 +364,7 @@ mod test {
     fn compare_encoded_to_python() {
         for &case in hash::TEST_CASES {
             println!("starting case {}", case);
-            let input = vec![0; case];
+            let input = vec![9; case];
             let (_, python_encoded) = python_encode(&input);
             let (_, encoded) = encode(&input);
             assert_eq!(python_encoded, encoded, "encoded mismatch");

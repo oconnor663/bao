@@ -6,9 +6,9 @@ extern crate hex;
 #[macro_use]
 extern crate serde_derive;
 
+use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::prelude::*;
-use std::fs::{File, OpenOptions};
 
 fn encode(args: &Args) -> io::Result<()> {
     let stdin = io::stdin();
@@ -70,24 +70,16 @@ fn decode(args: &Args) -> io::Result<()> {
 fn hash(_args: &Args) -> io::Result<()> {
     let stdin = io::stdin();
     let mut stdin_lock = stdin.lock();
-    // We use the PostOrderEncoder as a digest, by discarding all its
-    // output except for the hash at the end. This involves more byte
-    // copying than a pure digest would, but my guess is that that overhead
-    // is dominated by the hashing time.
-    let mut digest = bao::encoder::PostOrderEncoder::new();
+    let mut state = bao::hash::StateParallel::new();
     let mut read_buffer = [0; 4096];
     loop {
         let n = stdin_lock.read(&mut read_buffer)?;
         if n == 0 {
             break; // EOF
         }
-        let mut bytes = &read_buffer[..n];
-        while !bytes.is_empty() {
-            let (used, _) = digest.feed(bytes);
-            bytes = &bytes[used..];
-        }
+        state.update(&read_buffer[..n]);
     }
-    let (hash, _) = digest.finish();
+    let hash = state.finalize();
     println!("{}", hex::encode(hash));
     Ok(())
 }

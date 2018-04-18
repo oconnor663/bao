@@ -1,9 +1,9 @@
-use std::io::prelude::*;
-use std::io;
 use std::cmp::min;
+use std::io;
+use std::io::prelude::*;
 
-use encoder::{BackBuffer, PostOrderEncoder, PostToPreFlipper};
 use decoder::Decoder;
+use encoder::{BackBuffer, PostOrderEncoder, PostToPreFlipper};
 use hash::Hash;
 
 /// We have an output buffer that needs to get written to the sink. It might
@@ -52,10 +52,16 @@ impl<T: Read + Write + Seek> Writer<T> {
         // encoder.finish() will have more output.
         self.write_out()?;
 
-        // Call finish on the post-order encoder, which formats the last chunk
-        // + nodes + header.
-        let (hash, final_out) = self.encoder.finish();
-        self.inner.write_all(final_out)?;
+        // Call finish on the post-order encoder in a loop, until we've
+        // collected all the output.
+        let hash = loop {
+            let (maybe_hash, output) = self.encoder.finish();
+            self.out_buffer.extend_from_slice(output);
+            if let Some(hash) = maybe_hash {
+                break hash;
+            }
+        };
+        self.write_out()?;
 
         // Flip everything! This part is honestly a little hard to follow...
         let mut read_array = [0; 4096];
