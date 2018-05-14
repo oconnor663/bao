@@ -27,7 +27,6 @@ pub struct Writer<T: Read + Write + Seek> {
     inner: T,
     out_buffer: Vec<u8>,
     out_position: usize,
-    finished: bool,
     encoder: PostOrderEncoder,
 }
 
@@ -37,7 +36,6 @@ impl<T: Read + Write + Seek> Writer<T> {
             inner,
             out_buffer: Vec::new(),
             out_position: 0,
-            finished: false,
             encoder: PostOrderEncoder::new(),
         }
     }
@@ -45,9 +43,6 @@ impl<T: Read + Write + Seek> Writer<T> {
     /// Currently we don't make any attempt to make IO errors recoverable
     /// during finish.
     pub fn finish(&mut self) -> io::Result<Hash> {
-        self.check_finished()?;
-        self.finished = true;
-
         // Write out the output buffer. Doing this first is important, because
         // encoder.finish() will have more output.
         self.write_out()?;
@@ -105,36 +100,15 @@ impl<T: Read + Write + Seek> Writer<T> {
             &mut self.inner,
         )
     }
-
-    fn check_finished(&self) -> io::Result<()> {
-        if self.finished {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "can't use encoder after finish()",
-            ))
-        } else {
-            Ok(())
-        }
-    }
-}
-
-impl<T: Read + Write + Seek> Drop for Writer<T> {
-    fn drop(&mut self) {
-        // We can't report errors from drop(), but we make a best effort to
-        // finish the encoding.
-        if !self.finished {
-            let _ = self.finish();
-        }
-    }
 }
 
 impl<T: Read + Write + Seek> Write for Writer<T> {
     fn write(&mut self, mut buf: &[u8]) -> io::Result<usize> {
-        self.check_finished()?;
-
         // First write out any existing bytes in the output buffer. Doing this
         // first keeps its size bounded.
         self.write_out()?;
+        // TODO: This recoverability approach makes everything way too
+        // complicated. Get rid of it.
 
         // Write the input into the encoder in a loop, until it's all accepted.
         // TODO: A large argument here will result in a large buffer size.
@@ -150,7 +124,6 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
     /// Flush isn't very useful to callers, since none of the output is
     /// decodable unless `finish` succeeds, and `finish` flushes automatically.
     fn flush(&mut self) -> io::Result<()> {
-        self.check_finished()?;
         self.write_out()?;
         self.inner.flush()
     }

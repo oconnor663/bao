@@ -33,18 +33,4 @@ impl<'a> Unverified<'a> {
         self.0 = &self.0[len..];
         Ok(ret)
     }
-
-    /// As with read_verify, but slice off the end of the array instead of the
-    /// front. Only used in testing.
-    #[cfg(test)]
-    pub fn read_verify_back(&mut self, len: usize, hash: &Hash) -> Result<&'a [u8]> {
-        if self.0.len() < len {
-            return Err(Error::ShortInput);
-        }
-        let start = self.0.len() - len;
-        let ret = &self.0[start..];
-        verify(ret, hash)?;
-        self.0 = &self.0[..start];
-        Ok(ret)
-    }
 }
