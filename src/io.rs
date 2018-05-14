@@ -129,18 +129,22 @@ impl<T: Read + Write + Seek> Drop for Writer<T> {
 }
 
 impl<T: Read + Write + Seek> Write for Writer<T> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, mut buf: &[u8]) -> io::Result<usize> {
         self.check_finished()?;
 
         // First write out any existing bytes in the output buffer. Doing this
         // first keeps its size bounded.
         self.write_out()?;
 
-        // Then write input to the encoder, possibly accepting output into the
-        // output buffer.
-        let (used, output) = self.encoder.feed(buf);
-        self.out_buffer.extend_from_slice(output);
-        Ok(used)
+        // Write the input into the encoder in a loop, until it's all accepted.
+        // TODO: A large argument here will result in a large buffer size.
+        let buf_orig_len = buf.len();
+        while buf.len() > 0 {
+            let (used, output) = self.encoder.feed(buf);
+            self.out_buffer.extend_from_slice(output);
+            buf = &buf[used..]
+        }
+        Ok(buf_orig_len)
     }
 
     /// Flush isn't very useful to callers, since none of the output is
