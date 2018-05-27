@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use unverified::Unverified;
 
 use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE, HEADER_SIZE, NODE_SIZE};
@@ -19,6 +20,50 @@ fn subtree_size_from_rightmost_chunk(chunk_index: u64) -> u64 {
     let changing_bits = chunk_index ^ (chunk_index + 1);
     let new_one_bit_only = changing_bits & (chunk_index + 1);
     new_one_bit_only
+}
+
+// Accumulate bytes up to a target length. When receiving small writes, store
+// them in an internal buffer. When receiving big writes, if the internal
+// buffer is empty, return slices directly from the input, to cut down on
+// unnecessary copies.
+struct Accumulator {
+    buf: [u8; CHUNK_SIZE],
+    buf_len: usize,
+    used: bool,
+}
+
+impl Accumulator {
+    fn new() -> Self {
+        Self {
+            buf: [0; CHUNK_SIZE],
+            buf_len: 0,
+            used: false,
+        }
+    }
+
+    fn accumulate<'a>(&'a mut self, input: &'a [u8], len: usize) -> (usize, Option<&'a [u8]>) {
+        if self.used {
+            self.used = false;
+            self.buf_len = 0;
+        }
+        if self.buf_len == 0 && input.len() >= len {
+            return (len, Some(&input[..len]));
+        }
+        let needed = len.saturating_sub(self.buf_len);
+        let take = std::cmp::min(needed, input.len());
+        self.buf[self.buf_len..][..take].copy_from_slice(&input[..take]);
+        self.buf_len += take;
+        if self.buf_len == len {
+            self.used = true;
+            (take, Some(&self.buf[..len]))
+        } else {
+            (take, None)
+        }
+    }
+
+    fn clear(&mut self) {
+        self.buf_len = 0;
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -329,6 +374,39 @@ mod test {
                 subtree_size_from_rightmost_chunk(chunk_index),
                 "bad size for index {}",
                 chunk_index,
+            );
+        }
+    }
+
+    #[test]
+    fn test_accumulator() {
+        let mut acc = Accumulator::new();
+        {
+            // Writes smaller than the target length return no output.
+            let (used, output) = acc.accumulate(&[0; 50], 100);
+            assert_eq!(50, used);
+            assert_eq!(None, output);
+        }
+        {
+            // A big write takes just enough bytes to fill the buffer, and then
+            // returns the result.
+            let (used, maybe_output) = acc.accumulate(&[0; 999], 100);
+            assert_eq!(50, used);
+            let output = maybe_output.unwrap();
+            assert_eq!(&[0; 100][..], output);
+        }
+        {
+            // A big write when the buffer is empty will return a pointer
+            // directly from the input.
+            let input = &[0; 999];
+            let (used, maybe_output) = acc.accumulate(input, 100);
+            assert_eq!(100, used);
+            let output = maybe_output.unwrap();
+            assert_eq!(&[0; 100][..], output);
+            assert_eq!(
+                input.as_ptr(),
+                output.as_ptr(),
+                "pointer doesn't come from input"
             );
         }
     }
