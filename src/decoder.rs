@@ -1,7 +1,8 @@
 use arrayvec::ArrayVec;
 use unverified::Unverified;
 
-use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE, HEADER_SIZE, NODE_SIZE};
+use hash::Finalization::{self, NotRoot, Root};
+use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
 use std;
 
 // A tree with N chunks in it has a height equal to the ceiling log_2 of N.
@@ -63,6 +64,92 @@ impl Accumulator {
 
     fn clear(&mut self) {
         self.buf_len = 0;
+    }
+}
+
+/// (bytes used, output)
+type Result2<'a> = std::result::Result<(usize, &'a [u8]), ()>;
+
+/// This decoder saves a stack of right children and pops that stack to
+/// traverse, as in a standard depth-first search. For seeking, we always clear
+/// the stack and start from the top. This has a performance penalty compared
+/// to maintaining a complete stack of parent nodes, but 1) it's a lot simpler,
+/// and 2) the complete stack still sometimes has to do full-cost short seeks,
+/// when crossing between large sub-tree boundaries.
+struct Decoder2 {
+    stack: ArrayVec<[Hash; 64]>,
+    acc: Accumulator,
+    position: u64,
+    altitude: u8,
+    len: Option<u64>,
+    hash: Hash,
+}
+
+impl Decoder2 {
+    pub fn new(root_hash: &Hash) -> Self {
+        Self {
+            stack: ArrayVec::new(),
+            acc: Accumulator::new(),
+            position: 0,
+            altitude: 0,
+            len: None,
+            hash: [0; HASH_SIZE],
+        }
+    }
+
+    pub fn feed<'a>(&'a mut self, input: &'a [u8]) -> Result2 {
+        // If we haven't parsed the header, do that.
+        let len = if let Some(len) = self.len {
+            len
+        } else {
+            return self.feed_header(input);
+        };
+        // Short-circuit if we've finished decoding.
+        // XXX: We *must not* short-circuit in the zero length case, because
+        // feed_header doesn't check the header hash. This is an easy mistake
+        // to make. (Source: I made it several times, even after I knew about
+        // it.) If we short-circuit zero, then the decoder will accept zero for
+        // *any* hash, which is effectively a collision.
+        if len > 0 && self.position > len {
+            return Ok((0, &[]));
+        }
+        let finalization = if self.stack.is_empty() {
+            Root(len)
+        } else {
+            NotRoot
+        };
+        // If we need to process more parent nodes, do one of those.
+        if self.altitude > 0 {
+            return self.feed_parent(input, finalization);
+        }
+        // Otherwise do a chunk.
+        self.feed_chunk(input, finalization)
+    }
+
+    fn feed_header(&mut self, input: &[u8]) -> Result2 {
+        let (used, maybe_bytes) = self.acc.accumulate(input, HEADER_SIZE);
+        if let Some(header_bytes) = maybe_bytes {
+            let len = hash::decode_len(header_bytes);
+            self.len = Some(len);
+            let total_chunks = 1 + len.saturating_sub(1) / CHUNK_SIZE as u64;
+            self.altitude = tree_height(total_chunks);
+        }
+        Ok((used, &[]))
+    }
+
+    fn feed_parent(&mut self, input: &[u8], finalization: Finalization) -> Result2 {
+        let (used, maybe_bytes) = self.acc.accumulate(input, PARENT_SIZE);
+        if let Some(parent_bytes) = maybe_bytes {
+            // HASH IT
+            let left_hash = array_ref!(parent_bytes, 0, HASH_SIZE);
+            let right_hash = array_ref!(parent_bytes, HASH_SIZE, HASH_SIZE);
+            unimplemented!();
+        }
+        Ok((used, &[]))
+    }
+
+    fn feed_chunk(&mut self, input: &[u8], finalization: Finalization) -> Result2 {
+        unimplemented!();
     }
 }
 
@@ -160,7 +247,7 @@ impl Decoder {
             State::NoHeader => (0, HEADER_SIZE),
             State::Eof => (0, 0),
             State::Chunk(r) => (r.encoded_offset, r.len() as usize),
-            State::Node(r) => (r.encoded_offset, NODE_SIZE),
+            State::Node(r) => (r.encoded_offset, PARENT_SIZE),
         }
     }
 
@@ -218,10 +305,10 @@ impl Decoder {
         input: &mut Unverified<'a>,
         region: Region,
     ) -> Result<(usize, &'a [u8])> {
-        let node_bytes = input.read_verify(NODE_SIZE, &region.hash)?;
+        let node_bytes = input.read_verify(PARENT_SIZE, &region.hash)?;
         let node = region.parse_node(node_bytes)?;
         self.stack.push(node);
-        Ok((NODE_SIZE, &[]))
+        Ok((PARENT_SIZE, &[]))
     }
 }
 
@@ -268,14 +355,14 @@ impl Region {
         let left = Region {
             start: self.start,
             end: self.start + hash::left_len(self.len()),
-            encoded_offset: checked_add(self.encoded_offset, NODE_SIZE as u64)?,
-            hash: *array_ref!(bytes, 0, DIGEST_SIZE),
+            encoded_offset: checked_add(self.encoded_offset, PARENT_SIZE as u64)?,
+            hash: *array_ref!(bytes, 0, HASH_SIZE),
         };
         let right = Region {
             start: left.end,
             end: self.end,
             encoded_offset: checked_add(left.encoded_offset, encoded_len(left.len())?)?,
-            hash: *array_ref!(bytes, DIGEST_SIZE, DIGEST_SIZE),
+            hash: *array_ref!(bytes, HASH_SIZE, HASH_SIZE),
         };
         Ok(Node { left, right })
     }
@@ -312,7 +399,7 @@ fn encoded_len(region_len: u64) -> Result<u64> {
     let num_nodes = num_chunks.saturating_sub(1);
     // `all_nodes` can't overflow by itself unless the node size is larger
     // than the chunk size, which would be pathological, but whatever :p
-    checked_add(checked_mul(num_nodes, NODE_SIZE as u64)?, region_len)
+    checked_add(checked_mul(num_nodes, PARENT_SIZE as u64)?, region_len)
 }
 
 fn checked_add(a: u64, b: u64) -> Result<u64> {

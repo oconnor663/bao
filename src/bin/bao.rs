@@ -53,14 +53,14 @@ fn decode(args: &Args) -> io::Result<()> {
         io::copy(&mut reader, &mut stdout.lock())?;
     } else {
         let hash_vec = hex::decode(&args.flag_hash).expect("valid hex");
-        if hash_vec.len() != bao::hash::DIGEST_SIZE {
+        if hash_vec.len() != bao::hash::HASH_SIZE {
             panic!(
                 "hash must be {} bytes, got {}",
-                bao::hash::DIGEST_SIZE,
+                bao::hash::HASH_SIZE,
                 hash_vec.len()
             );
         };
-        let hash_array = *array_ref!(&hash_vec, 0, bao::hash::DIGEST_SIZE);
+        let hash_array = *array_ref!(&hash_vec, 0, bao::hash::HASH_SIZE);
         let mut reader = bao::io::Reader::new(stdin.lock(), &hash_array);
         io::copy(&mut reader, &mut stdout.lock()).unwrap();
     }

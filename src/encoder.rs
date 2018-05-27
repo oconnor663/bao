@@ -1,6 +1,6 @@
 use blake2_c::blake2b;
 use hash::Finalization::{NotRoot, Root};
-use hash::{self, Hash, CHUNK_SIZE, DIGEST_SIZE, HEADER_SIZE, NODE_SIZE};
+use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
 use std::cmp;
 use std::ops::Deref;
 
@@ -38,7 +38,7 @@ pub struct PostOrderEncoder {
     total_len: u64,
     chunk_state: blake2b::State,
     chunk_len: usize,
-    output_buffer: [u8; NODE_SIZE],
+    output_buffer: [u8; PARENT_SIZE],
 }
 
 impl PostOrderEncoder {
@@ -46,9 +46,9 @@ impl PostOrderEncoder {
         Self {
             subtree_stack: Vec::new(),
             total_len: 0,
-            chunk_state: blake2b::State::new(DIGEST_SIZE),
+            chunk_state: blake2b::State::new(HASH_SIZE),
             chunk_len: 0,
-            output_buffer: [0; NODE_SIZE],
+            output_buffer: [0; PARENT_SIZE],
         }
     }
 
@@ -64,8 +64,8 @@ impl PostOrderEncoder {
         // Push the parent hash back into the subtree stack, fill the parent
         // node buffer, and return it to the caller as a slice of output bytes.
         self.subtree_stack.push(parent_hash);
-        self.output_buffer[..DIGEST_SIZE].copy_from_slice(&left_child);
-        self.output_buffer[DIGEST_SIZE..].copy_from_slice(&right_child);
+        self.output_buffer[..HASH_SIZE].copy_from_slice(&left_child);
+        self.output_buffer[HASH_SIZE..].copy_from_slice(&right_child);
         &self.output_buffer
     }
 
@@ -86,7 +86,7 @@ impl PostOrderEncoder {
             let new_subtree = hash::finalize_hash(&mut self.chunk_state, NotRoot);
             self.subtree_stack.push(new_subtree);
             self.chunk_len = 0;
-            self.chunk_state = blake2b::State::new(DIGEST_SIZE);
+            self.chunk_state = blake2b::State::new(HASH_SIZE);
         }
         // Now, if we need to emit any parent nodes, do them one by one. This
         // lets us avoid holding a big buffer. The trees_after_merging trick
@@ -232,7 +232,7 @@ impl Deref for BackBuffer {
 // subregion, since that's what we'll need to get back to.
 #[derive(Clone, Copy)]
 struct Node {
-    bytes: [u8; NODE_SIZE],
+    bytes: [u8; PARENT_SIZE],
     start: u64,
     left_len: u64,
 }
@@ -285,12 +285,12 @@ impl PostToPreFlipper {
         } else if self.region_len > CHUNK_SIZE as u64 {
             // We need to read nodes. We'll keep following the right child of
             // the current node until eventually we reach the rightmost chunk.
-            let (filled, used) = self.buf.reinit_fill(NODE_SIZE, input);
+            let (filled, used) = self.buf.reinit_fill(PARENT_SIZE, input);
             if !filled {
                 return (used, &[]);
             }
             let node = Node {
-                bytes: *array_ref!(&self.buf, 0, NODE_SIZE),
+                bytes: *array_ref!(&self.buf, 0, PARENT_SIZE),
                 start: self.region_start,
                 left_len: hash::left_len(self.region_len),
             };
@@ -346,7 +346,7 @@ mod test {
             .stdout_capture()
             .run()
             .unwrap();
-        (*array_ref!(hash, 0, DIGEST_SIZE), output.stdout)
+        (*array_ref!(hash, 0, HASH_SIZE), output.stdout)
     }
 
     #[test]
@@ -387,8 +387,8 @@ mod test {
     //     fn split_node(content_len: u64, node_bytes: &[u8]) -> (u64, u64, Hash, Hash) {
     //         let left_len = left_len(content_len);
     //         let right_len = content_len - left_len;
-    //         let left_hash = *array_ref!(node_bytes, 0, DIGEST_SIZE);
-    //         let right_hash = *array_ref!(node_bytes, DIGEST_SIZE, DIGEST_SIZE);
+    //         let left_hash = *array_ref!(node_bytes, 0, HASH_SIZE);
+    //         let right_hash = *array_ref!(node_bytes, HASH_SIZE, HASH_SIZE);
     //         (left_len, right_len, left_hash, right_hash)
     //     }
 
@@ -399,7 +399,7 @@ mod test {
     //                 .unwrap();
     //             return;
     //         }
-    //         let node_bytes = encoded.read_verify_back(NODE_SIZE, region_hash).unwrap();
+    //         let node_bytes = encoded.read_verify_back(PARENT_SIZE, region_hash).unwrap();
     //         let (left_len, right_len, left_hash, right_hash) = split_node(region_len, node_bytes);
     //         // Note that we have to validate ***right then left***, because we're
     //         // reading from the back.

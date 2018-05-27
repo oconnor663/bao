@@ -10,12 +10,12 @@ use std::collections::VecDeque;
 use std::mem;
 use std::sync::Arc;
 
-pub const DIGEST_SIZE: usize = 32;
+pub const HASH_SIZE: usize = 32;
 pub(crate) const HEADER_SIZE: usize = 8;
 pub(crate) const CHUNK_SIZE: usize = 4096;
-pub(crate) const NODE_SIZE: usize = 2 * DIGEST_SIZE;
+pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
 
-pub type Hash = [u8; DIGEST_SIZE];
+pub type Hash = [u8; HASH_SIZE];
 
 pub(crate) fn encode_len(len: u64) -> [u8; HEADER_SIZE] {
     debug_assert_eq!(mem::size_of_val(&len), HEADER_SIZE);
@@ -48,18 +48,18 @@ pub(crate) fn finalize_hash(state: &mut blake2b::State, finalization: Finalizati
         state.set_last_node(true);
     }
     let blake_digest = state.finalize();
-    *array_ref!(blake_digest.bytes, 0, DIGEST_SIZE)
+    *array_ref!(blake_digest.bytes, 0, HASH_SIZE)
 }
 
 pub(crate) fn hash_chunk(chunk: &[u8], finalization: Finalization) -> Hash {
     debug_assert!(chunk.len() <= CHUNK_SIZE);
-    let mut state = blake2b::State::new(DIGEST_SIZE);
+    let mut state = blake2b::State::new(HASH_SIZE);
     state.update(chunk);
     finalize_hash(&mut state, finalization)
 }
 
 pub(crate) fn hash_parent(left_hash: &Hash, right_hash: &Hash, finalization: Finalization) -> Hash {
-    let mut state = blake2b::State::new(DIGEST_SIZE);
+    let mut state = blake2b::State::new(HASH_SIZE);
     state.update(left_hash);
     state.update(right_hash);
     finalize_hash(&mut state, finalization)
@@ -174,7 +174,7 @@ pub struct State {
 impl State {
     pub fn new() -> Self {
         Self {
-            chunk_state: blake2b::State::new(DIGEST_SIZE),
+            chunk_state: blake2b::State::new(HASH_SIZE),
             count: 0,
             subtrees: ArrayVec::new(),
         }
@@ -187,7 +187,7 @@ impl State {
             // we have to wait and see if we need to finalize.
             if self.count > 0 && self.count % CHUNK_SIZE as u64 == 0 {
                 let chunk_hash = finalize_hash(&mut self.chunk_state, NotRoot);
-                self.chunk_state = blake2b::State::new(DIGEST_SIZE);
+                self.chunk_state = blake2b::State::new(HASH_SIZE);
                 rollup_subtree(&mut self.subtrees, self.count, chunk_hash);
             }
             // Take as many bytes as we can, to fill the next chunk.
@@ -228,7 +228,7 @@ impl ParallelItem {
     fn new() -> Self {
         Self {
             buffer: Vec::with_capacity(WORKER_BUFFER),
-            hash: [0; DIGEST_SIZE],
+            hash: [0; HASH_SIZE],
             index: 0,
         }
     }
