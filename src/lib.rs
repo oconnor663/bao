@@ -3,7 +3,6 @@ extern crate arrayref;
 extern crate arrayvec;
 extern crate blake2_c;
 extern crate byteorder;
-extern crate constant_time_eq;
 extern crate crossbeam;
 #[macro_use]
 extern crate lazy_static;

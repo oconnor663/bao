@@ -1,3 +1,6 @@
+extern crate constant_time_eq;
+
+use self::constant_time_eq::constant_time_eq;
 use arrayvec::ArrayVec;
 use unverified::Unverified;
 
@@ -43,17 +46,23 @@ impl Accumulator {
     }
 
     fn accumulate<'a>(&'a mut self, input: &'a [u8], len: usize) -> (usize, Option<&'a [u8]>) {
+        // Used means the bytes in our buffer were returned by the last call to
+        // accumulate. Clear them.
         if self.used {
             self.used = false;
             self.buf_len = 0;
         }
+        // If we can just return bytes straight from the input, do that.
         if self.buf_len == 0 && input.len() >= len {
             return (len, Some(&input[..len]));
         }
+        // Otherwise fill our buffer with as many bytes as we can, up to the
+        // total that we need.
         let needed = len.saturating_sub(self.buf_len);
         let take = std::cmp::min(needed, input.len());
         self.buf[self.buf_len..][..take].copy_from_slice(&input[..take]);
         self.buf_len += take;
+        // If we managed to fill it all the way, return the bytes.
         if self.buf_len == len {
             self.used = true;
             (take, Some(&self.buf[..len]))
@@ -76,11 +85,11 @@ type Result2<'a> = std::result::Result<(usize, &'a [u8]), ()>;
 /// to maintaining a complete stack of parent nodes, but 1) it's a lot simpler,
 /// and 2) the complete stack still sometimes has to do full-cost short seeks,
 /// when crossing between large sub-tree boundaries.
-struct Decoder2 {
+pub struct Decoder2 {
     stack: ArrayVec<[Hash; 64]>,
     acc: Accumulator,
     position: u64,
-    altitude: u8,
+    parents_before_next_node: u8,
     len: Option<u64>,
     hash: Hash,
 }
@@ -91,7 +100,7 @@ impl Decoder2 {
             stack: ArrayVec::new(),
             acc: Accumulator::new(),
             position: 0,
-            altitude: 0,
+            parents_before_next_node: 0,
             len: None,
             hash: [0; HASH_SIZE],
         }
@@ -119,7 +128,7 @@ impl Decoder2 {
             NotRoot
         };
         // If we need to process more parent nodes, do one of those.
-        if self.altitude > 0 {
+        if self.parents_before_next_node > 0 {
             return self.feed_parent(input, finalization);
         }
         // Otherwise do a chunk.
@@ -132,7 +141,7 @@ impl Decoder2 {
             let len = hash::decode_len(header_bytes);
             self.len = Some(len);
             let total_chunks = 1 + len.saturating_sub(1) / CHUNK_SIZE as u64;
-            self.altitude = tree_height(total_chunks);
+            self.parents_before_next_node = tree_height(total_chunks);
         }
         Ok((used, &[]))
     }
@@ -140,16 +149,48 @@ impl Decoder2 {
     fn feed_parent(&mut self, input: &[u8], finalization: Finalization) -> Result2 {
         let (used, maybe_bytes) = self.acc.accumulate(input, PARENT_SIZE);
         if let Some(parent_bytes) = maybe_bytes {
-            // HASH IT
-            let left_hash = array_ref!(parent_bytes, 0, HASH_SIZE);
-            let right_hash = array_ref!(parent_bytes, HASH_SIZE, HASH_SIZE);
-            unimplemented!();
+            let left = array_ref!(parent_bytes, 0, HASH_SIZE);
+            let right = array_ref!(parent_bytes, HASH_SIZE, HASH_SIZE);
+            let found_hash = hash::hash_parent(left, right, finalization);
+            if !constant_time_eq(&found_hash, &self.hash) {
+                return Err(());
+            }
+            // If the hash was right, we've successfully parsed a node. The
+            // left child becomes the new hash, and the right child goes on the
+            // stack to traverse later.
+            self.hash = *left;
+            self.stack.push(*right);
+            self.parents_before_next_node -= 1;
         }
         Ok((used, &[]))
     }
 
-    fn feed_chunk(&mut self, input: &[u8], finalization: Finalization) -> Result2 {
-        unimplemented!();
+    fn feed_chunk<'a>(&'a mut self, input: &'a [u8], finalization: Finalization) -> Result2 {
+        // The remaining_len can be zero, in the zero length case. Otherwise,
+        // we shouldn't get here.
+        let remaining_len = self.len.unwrap() - self.position;
+        let chunk_len = std::cmp::min(CHUNK_SIZE as u64, remaining_len) as usize;
+        let (used, maybe_bytes) = self.acc.accumulate(input, chunk_len);
+        if let Some(bytes) = maybe_bytes {
+            let found_hash = hash::hash_chunk(bytes, finalization);
+            if !constant_time_eq(&found_hash, &self.hash) {
+                return Err(());
+            }
+            // If the hash was right, we've successfully parsed a chunk. Pop a
+            // new hash off the stack if we can (if not EOF).
+            if let Some(hash) = self.stack.pop() {
+                self.hash = hash;
+                // We know that by popping the stack, we're going to end up at
+                // the top of another tree that's the same height as the one we
+                // just finished. Set parents_before_next_node to reflect that.
+                let current_chunk_index = self.position / CHUNK_SIZE as u64;
+                self.parents_before_next_node =
+                    tree_height(subtree_size_from_rightmost_chunk(current_chunk_index));
+            }
+            Ok((used, bytes))
+        } else {
+            Ok((used, &[]))
+        }
     }
 }
 
