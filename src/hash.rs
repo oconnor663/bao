@@ -32,6 +32,7 @@ pub(crate) fn decode_len(bytes: &[u8]) -> u64 {
 // with the length of the entire input, and we set the Blake2 final node flag.
 // That means that no root hash can ever collide with an interior hash, or with
 // the root of a different size tree.
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum Finalization {
     NotRoot,
     Root(u64),

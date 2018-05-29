@@ -8,6 +8,28 @@ use hash::Finalization::{self, NotRoot, Root};
 use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
 use std;
 
+pub fn decode(mut input: &[u8], hash: &Hash) -> std::result::Result<Vec<u8>, ()> {
+    let mut output = Vec::new();
+    let mut dec = Decoder2::new(hash);
+    loop {
+        let used = {
+            let (used, output_bytes) = dec.feed(input)?;
+            input = &input[used..];
+            output.extend_from_slice(output_bytes);
+            used
+        };
+        // TODO: This is ugly. I don't like that the loop has to be so
+        // complicated. Can header parsing just fall through to chunk parsing?
+        if dec.is_eof() {
+            break;
+        } else if used == 0 {
+            // Incomplete input.
+            return Err(());
+        }
+    }
+    Ok(output)
+}
+
 // A tree with N chunks in it has a height equal to the ceiling log_2 of N.
 fn tree_height(num_chunks: u64) -> u8 {
     64 - (num_chunks - 1).leading_zeros() as u8
@@ -92,6 +114,9 @@ pub struct Decoder2 {
     parents_before_next_node: u8,
     len: Option<u64>,
     hash: Hash,
+    // TODO: too many bools
+    is_eof: bool,
+    is_root: bool,
 }
 
 impl Decoder2 {
@@ -102,8 +127,14 @@ impl Decoder2 {
             position: 0,
             parents_before_next_node: 0,
             len: None,
-            hash: [0; HASH_SIZE],
+            hash: *root_hash,
+            is_eof: false,
+            is_root: true,
         }
+    }
+
+    pub fn is_eof(&self) -> bool {
+        self.is_eof
     }
 
     pub fn feed<'a>(&'a mut self, input: &'a [u8]) -> Result2 {
@@ -122,7 +153,9 @@ impl Decoder2 {
         if len > 0 && self.position > len {
             return Ok((0, &[]));
         }
-        let finalization = if self.stack.is_empty() {
+        let finalization = if self.is_root {
+            // TODO: doesn't handle failure well.
+            self.is_root = false;
             Root(len)
         } else {
             NotRoot
@@ -169,6 +202,7 @@ impl Decoder2 {
         // The remaining_len can be zero, in the zero length case. Otherwise,
         // we shouldn't get here.
         let remaining_len = self.len.unwrap() - self.position;
+        let remaining_chunks = 1 + remaining_len.saturating_sub(1) / CHUNK_SIZE as u64;
         let chunk_len = std::cmp::min(CHUNK_SIZE as u64, remaining_len) as usize;
         let (used, maybe_bytes) = self.acc.accumulate(input, chunk_len);
         if let Some(bytes) = maybe_bytes {
@@ -183,9 +217,16 @@ impl Decoder2 {
                 // We know that by popping the stack, we're going to end up at
                 // the top of another tree that's the same height as the one we
                 // just finished. Set parents_before_next_node to reflect that.
+                // TODO: This section is too complicated.
                 let current_chunk_index = self.position / CHUNK_SIZE as u64;
-                self.parents_before_next_node =
-                    tree_height(subtree_size_from_rightmost_chunk(current_chunk_index));
+                let next_subtree_size = std::cmp::min(
+                    remaining_chunks - 1,
+                    subtree_size_from_rightmost_chunk(current_chunk_index),
+                );
+                self.parents_before_next_node = tree_height(next_subtree_size);
+                self.position += chunk_len as u64;
+            } else {
+                self.is_eof = true;
             }
             Ok((used, bytes))
         } else {
@@ -454,6 +495,7 @@ fn checked_mul(a: u64, b: u64) -> Result<u64> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use encoder::encode;
 
     #[test]
     fn test_tree_height() {
@@ -536,6 +578,17 @@ mod test {
                 output.as_ptr(),
                 "pointer doesn't come from input"
             );
+        }
+    }
+
+    #[test]
+    fn test_decode() {
+        for &case in hash::TEST_CASES {
+            println!("case {}", case);
+            let input = vec![0; case];
+            let (hash, encoded) = encode(&input);
+            let decoded = decode(&encoded, &hash).expect("decode error");
+            assert_eq!(input, decoded, "decoded doesn't match input");
         }
     }
 
