@@ -23,20 +23,20 @@
 # enough.
 #
 # *bao_encode* is a recursive implementation, but it's not streaming. Instead
-# it buffers the entire input in memory, and so `bao.py encode` always requires
-# the `--memory` flag. The Rust implementation use a more complicated strategy
-# to avoid hogging memory like this. It writes the output tree first in
-# post-order, and then it does a second pass back-to-front to flip it in place.
-# (A pre-order-first approach suffers from not knowing how much space to leave
-# for parent nodes before the first chunk, until you find out the final length
-# of the input.) That two-pass-tree-flipping strategy is pretty complicated,
-# and this example doesn't try to reproduce it. Note that in any
-# implementation, if the ouput doesn't support seeking (like a Unix pipe), the
-# only options are to either use a temporary file or to buffer the whole input.
+# it buffers the entire input in memory. The Rust implementation use a more
+# complicated strategy to avoid hogging memory like this. It writes the output
+# tree first in post-order, and then it does a second pass back-to-front to
+# flip it in place. (A pre-order-first approach suffers from not knowing how
+# much space to leave for parent nodes before the first chunk, until you find
+# out the final length of the input.) That two-pass-tree-flipping strategy is
+# pretty complicated, and this example doesn't try to reproduce it. Note that
+# in any implementation, if the ouput doesn't support seeking (like a Unix
+# pipe), the only options are to either use a temporary file or to buffer the
+# whole input.
 
 __doc__ = """\
-Usage: bao.py encode --memory
-       bao.py decode (--hash=<hash> | --any)
+Usage: bao.py encode
+       bao.py decode <hash>
        bao.py hash [--encoded]
 """
 
@@ -49,9 +49,6 @@ import sys
 CHUNK_SIZE = 4096
 DIGEST_SIZE = 32
 HEADER_SIZE = 8
-
-# A sentinel value for when we'll accept any hash.
-ANY = object()
 
 
 def encode_len(root_len):
@@ -85,9 +82,8 @@ def verify_node(buf, node_size, root_len, expected_hash):
     assert node_size <= len(buf), "not enough bytes"
     node_bytes = buf[:node_size]
     found_hash = hash_node(node_bytes, root_len)
-    if expected_hash is not ANY:
-        # Compare digests in constant time. It might matter to some callers.
-        assert hmac.compare_digest(expected_hash, found_hash), "hash mismatch"
+    # Compare digests in constant time. It might matter to some callers.
+    assert hmac.compare_digest(expected_hash, found_hash), "hash mismatch"
 
 
 # Left subtrees contain the largest possible power of two chunks, with at least
@@ -186,10 +182,7 @@ def main():
         encoded = bao_encode(sys.stdin.buffer.read())
         sys.stdout.buffer.write(encoded)
     elif args["decode"]:
-        if args["--any"]:
-            hash_ = ANY
-        else:
-            hash_ = binascii.unhexlify(args["--hash"])
+        hash_ = binascii.unhexlify(args["<hash>"])
         bao_decode(sys.stdin.buffer, sys.stdout.buffer, hash_)
     elif args["hash"]:
         if args["--encoded"]:

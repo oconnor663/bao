@@ -29,13 +29,10 @@ for (name, input_, hash_) in cases:
     computed_hash = bao("hash", input_=input_).decode().strip()
     assert computed_hash == hash_
 
-    encoded = bao("encode", "--memory", input_=input_)
+    encoded = bao("encode", input_=input_)
     computed_hash_encoded = bao(
         "hash", "--encoded", input_=encoded).decode().strip()
     assert computed_hash_encoded == hash_
 
-    decoded = bao("decode", "--hash", hash_, input_=encoded)
+    decoded = bao("decode", hash_, input_=encoded)
     assert decoded == input_
-
-    decoded_any = bao("decode", "--any", input_=encoded)
-    assert decoded_any == input_
