@@ -58,7 +58,8 @@ def encode_len(root_len):
 # Python is very permissive with reads and slices, and can silently return
 # fewer bytes than requested, so we explicitly check the expected length here.
 # Parsing a header that's shorter than 8 bytes could trick us into accepting an
-# invalid encoding.
+# invalid encoding, which would lead to a "reverse collision" (two different
+# hashes that decode to the same input).
 def decode_len(len_bytes):
     assert len(len_bytes) == HEADER_SIZE, "not enough bytes"
     return int.from_bytes(len_bytes, "little")
@@ -79,7 +80,8 @@ def hash_node(node, root_len):
 # As with decode len, we explicitly assert the expected length here, to avoid
 # accepting a chunk that's shorter than the header said it should be.
 def verify_node(buf, node_size, root_len, expected_hash):
-    # As in decode_len, it's crucial to be strict with lengths.
+    # As in decode_len, it's crucial to be strict with lengths, to prevent a
+    # "reverse collision".
     assert node_size <= len(buf), "not enough bytes"
     node_bytes = buf[:node_size]
     found_hash = hash_node(node_bytes, root_len)
