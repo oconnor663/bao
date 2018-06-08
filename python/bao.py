@@ -77,8 +77,6 @@ def hash_node(node, root_len):
     return state.digest()
 
 
-# As with decode len, we explicitly assert the expected length here, to avoid
-# accepting a chunk that's shorter than the header said it should be.
 def verify_node(buf, node_size, root_len, expected_hash):
     # As in decode_len, it's crucial to be strict with lengths, to prevent a
     # "reverse collision".
