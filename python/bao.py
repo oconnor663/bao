@@ -79,6 +79,7 @@ def hash_node(node, root_len):
 # As with decode len, we explicitly assert the expected length here, to avoid
 # accepting a chunk that's shorter than the header said it should be.
 def verify_node(buf, node_size, root_len, expected_hash):
+    # As in decode_len, it's crucial to be strict with lengths.
     assert node_size <= len(buf), "not enough bytes"
     node_bytes = buf[:node_size]
     found_hash = hash_node(node_bytes, root_len)
