@@ -65,11 +65,12 @@ pub struct ParallelChunker {
 
 impl ParallelChunker {
     const MAX_JOBS: usize = 8;
-    const JOB_SIZE: usize = 8 * CHUNK_SIZE; // must be a power of 2
 
     pub fn new() -> Self {
+        let mut free_jobs = VecDeque::new();
+        free_jobs.push_back(Job::new());
         Self {
-            free_jobs: VecDeque::new(),
+            free_jobs,
             receivers: VecDeque::new(),
             first_job: true,
         }
@@ -117,7 +118,8 @@ impl Chunker for ParallelChunker {
         }
 
         // Put as many bytes as we can into the next job.
-        let want = Self::JOB_SIZE - self.free_jobs.front().unwrap().bytes.len();
+        // TODO: More than one chunk per job.
+        let want = CHUNK_SIZE - self.free_jobs.front().unwrap().bytes.len();
         let take = cmp::min(want, input.len());
         self.free_jobs
             .front_mut()
@@ -162,7 +164,68 @@ impl Chunker for ParallelChunker {
 
 #[cfg(test)]
 mod test {
-    fn collect<T: Chunker>(chunker: &mut T, mut input: &[u8]) -> Vec<(Vec<u8>, Hash)> {
-        unimplemented!()
+    use super::*;
+
+    const CASES: &[usize] = &[0, 1, 10, 100, 1_000, 10_000, 100_000];
+
+    fn drive<T: Chunker>(chunker: &mut T, mut input: &[u8]) -> Vec<(Vec<u8>, Hash)> {
+        let mut output = Vec::new();
+        while !input.is_empty() {
+            let used = chunker.feed(input, |bytes, hash| {
+                output.push((bytes.to_vec(), *hash));
+            });
+            input = &input[used..];
+        }
+        loop {
+            let mut last_job = false;
+            chunker.finish(|bytes, hash, last| {
+                output.push((bytes.to_vec(), *hash));
+                last_job = last;
+            });
+            if last_job {
+                break;
+            }
+        }
+        output
+    }
+
+    fn expected_chunks(input: &[u8]) -> Vec<(Vec<u8>, Hash)> {
+        if input.len() <= CHUNK_SIZE {
+            vec![
+                (
+                    input.to_vec(),
+                    hash::hash_chunk(input, Root(input.len() as u64)),
+                ),
+            ]
+        } else {
+            input
+                .chunks(CHUNK_SIZE)
+                .map(|chunk| (chunk.to_vec(), hash::hash_chunk(chunk, NotRoot)))
+                .collect()
+        }
+    }
+
+    #[test]
+    fn test_parallel_chunker() {
+        for &case in CASES.iter() {
+            println!("case {}", case);
+            let input = vec![0; case];
+            let expected = expected_chunks(&input);
+            let mut chunker = ParallelChunker::new();
+            let found = drive(&mut chunker, &input);
+            assert_eq!(expected, found);
+        }
+    }
+
+    #[test]
+    fn test_parallel_chunker_with_reuse() {
+        let mut chunker = ParallelChunker::new();
+        for &case in CASES.iter() {
+            println!("case {}", case);
+            let input = vec![0; case];
+            let expected = expected_chunks(&input);
+            let found = drive(&mut chunker, &input);
+            assert_eq!(expected, found);
+        }
     }
 }
