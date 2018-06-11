@@ -341,7 +341,7 @@ mod test {
             .read()
             .expect("is python3 installed?");
         let hash = hex::decode(&hex_hash).expect("bad hex?");
-        let output = cmd!("python3", "./python/bao.py", "encode", "--memory")
+        let output = cmd!("python3", "./python/bao.py", "encode")
             .input(input)
             .stdout_capture()
             .run()
