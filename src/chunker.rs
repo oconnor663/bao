@@ -28,6 +28,67 @@ trait Chunker {
         F: FnOnce(&[u8], &Hash, bool);
 }
 
+pub struct NoStdChunker {
+    chunk_buf: [u8; CHUNK_SIZE],
+    chunk_len: usize,
+    first_chunk: bool,
+}
+
+impl NoStdChunker {
+    pub fn new() -> Self {
+        Self {
+            chunk_buf: [0; CHUNK_SIZE],
+            chunk_len: 0,
+            first_chunk: true,
+        }
+    }
+
+    fn chunk(&self) -> &[u8] {
+        &self.chunk_buf[..self.chunk_len]
+    }
+}
+
+impl Chunker for NoStdChunker {
+    fn feed<F>(&mut self, input: &[u8], job_callback: F) -> usize
+    where
+        F: FnOnce(&[u8], &Hash),
+    {
+        if input.is_empty() {
+            return 0;
+        }
+
+        if self.chunk_len == CHUNK_SIZE {
+            job_callback(self.chunk(), &hash::hash_chunk(self.chunk(), NotRoot));
+            self.chunk_len = 0;
+            self.first_chunk = false;
+        }
+
+        let want = CHUNK_SIZE - self.chunk_len;
+        let take = cmp::min(want, input.len());
+        self.chunk_buf[self.chunk_len..][..take].copy_from_slice(&input[..take]);
+        self.chunk_len += take;
+        take
+    }
+
+    fn finish<F>(&mut self, job_callback: F)
+    where
+        F: FnOnce(&[u8], &Hash, bool),
+    {
+        let finalization = if self.first_chunk {
+            Root(self.chunk().len() as u64)
+        } else {
+            NotRoot
+        };
+        job_callback(
+            self.chunk(),
+            &hash::hash_chunk(self.chunk(), finalization),
+            true,
+        );
+        self.chunk_len = 0;
+        self.first_chunk = true;
+    }
+}
+
 // A reusable buffer for sending bytes to a worker thread to be hashed.
 struct Job {
     bytes: Vec<u8>,
@@ -220,6 +281,30 @@ mod test {
     #[test]
     fn test_parallel_chunker_with_reuse() {
         let mut chunker = ParallelChunker::new();
+        for &case in CASES.iter() {
+            println!("case {}", case);
+            let input = vec![0; case];
+            let expected = expected_chunks(&input);
+            let found = drive(&mut chunker, &input);
+            assert_eq!(expected, found);
+        }
+    }
+
+    #[test]
+    fn test_nostd_chunker() {
+        for &case in CASES.iter() {
+            println!("case {}", case);
+            let input = vec![0; case];
+            let expected = expected_chunks(&input);
+            let mut chunker = NoStdChunker::new();
+            let found = drive(&mut chunker, &input);
+            assert_eq!(expected, found);
+        }
+    }
+
+    #[test]
+    fn test_nostd_chunker_with_reuse() {
+        let mut chunker = NoStdChunker::new();
         for &case in CASES.iter() {
             println!("case {}", case);
             let input = vec![0; case];
