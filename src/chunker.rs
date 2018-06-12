@@ -227,7 +227,8 @@ impl Chunker for ParallelChunker {
 mod test {
     use super::*;
 
-    const CASES: &[usize] = &[0, 1, 10, 100, 1_000, 10_000, 100_000];
+    // Put a 1 at the end to test resetting the first chunk flag.
+    const CASES: &[usize] = &[0, 1, 10, 100, 1_000, 10_000, 100_000, 1];
 
     fn drive<T: Chunker>(chunker: &mut T, mut input: &[u8]) -> Vec<(Vec<u8>, Hash)> {
         let mut output = Vec::new();
