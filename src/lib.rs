@@ -20,4 +20,5 @@ pub mod decoder;
 pub mod encoder;
 pub mod hash;
 pub mod io;
+mod runner;
 mod unverified;
