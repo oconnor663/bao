@@ -5,21 +5,29 @@ use std::mem;
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::Arc;
 
+pub(crate) trait Runner {
+    type Job;
+
+    fn current(&mut self) -> &mut Self::Job;
+    fn launch(&mut self) -> Option<&mut Self::Job>;
+    fn finish(&mut self) -> Option<&mut Self::Job>;
+}
+
 pub(crate) trait Job: Send {
     fn new() -> Self;
     fn clear(&mut self);
     fn do_work(&mut self);
 }
 
-pub(crate) struct Runner<T: 'static + Job> {
+pub(crate) struct MultiThreadedRunner<T: 'static + Job> {
     current: JobWrapper<T>,
     should_clear: bool,
     receivers: VecDeque<Receiver<JobWrapper<T>>>,
     capacity: usize,
 }
 
-impl<T: Job> Runner<T> {
-    pub fn new() -> Self {
+impl<T: Job> MultiThreadedRunner<T> {
+    fn new() -> Self {
         Self {
             current: JobWrapper::new(),
             should_clear: false,
@@ -28,8 +36,12 @@ impl<T: Job> Runner<T> {
             capacity: 2 * rayon::current_num_threads(),
         }
     }
+}
 
-    pub fn current(&mut self) -> &mut T {
+impl<T: Job> Runner for MultiThreadedRunner<T> {
+    type Job = T;
+
+    fn current(&mut self) -> &mut T {
         if self.should_clear {
             self.current.job.clear();
             self.should_clear = false;
@@ -37,7 +49,7 @@ impl<T: Job> Runner<T> {
         &mut self.current.job
     }
 
-    pub fn launch(&mut self) -> Option<&mut T> {
+    fn launch(&mut self) -> Option<&mut T> {
         let mut current;
         let finished;
         if self.receivers.len() < self.capacity {
@@ -62,7 +74,7 @@ impl<T: Job> Runner<T> {
         finished
     }
 
-    pub fn finish(&mut self) -> Option<&mut T> {
+    fn finish(&mut self) -> Option<&mut T> {
         self.receivers.pop_front().map(move |r| {
             self.current = r.recv().unwrap();
             &mut *self.current.job
@@ -87,6 +99,42 @@ impl<T: Job> JobWrapper<T> {
     }
 }
 
+pub(crate) struct SingleThreadedRunner<T: 'static + Job> {
+    job: T,
+    should_clear: bool,
+}
+
+impl<T: Job> SingleThreadedRunner<T> {
+    fn new() -> Self {
+        Self {
+            job: T::new(),
+            should_clear: false,
+        }
+    }
+}
+
+impl<T: Job> Runner for SingleThreadedRunner<T> {
+    type Job = T;
+
+    fn current(&mut self) -> &mut T {
+        if self.should_clear {
+            self.job.clear();
+            self.should_clear = false;
+        }
+        &mut self.job
+    }
+
+    fn launch(&mut self) -> Option<&mut T> {
+        self.job.do_work();
+        self.should_clear = true;
+        Some(&mut self.job)
+    }
+
+    fn finish(&mut self) -> Option<&mut T> {
+        None
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -108,8 +156,24 @@ mod test {
     }
 
     #[test]
-    fn test_runner() {
-        let mut runner: Runner<DoublerJob> = Runner::new();
+    fn test_multi_runner() {
+        let mut runner: MultiThreadedRunner<DoublerJob> = MultiThreadedRunner::new();
+        let mut total = 0;
+        for x in 1..=100 {
+            runner.current().x = x;
+            if let Some(finished) = runner.launch() {
+                total += finished.x;
+            }
+        }
+        while let Some(finished) = runner.finish() {
+            total += finished.x;
+        }
+        assert_eq!(10100, total);
+    }
+
+    #[test]
+    fn test_single_runner() {
+        let mut runner: SingleThreadedRunner<DoublerJob> = SingleThreadedRunner::new();
         let mut total = 0;
         for x in 1..=100 {
             runner.current().x = x;
