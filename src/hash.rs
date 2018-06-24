@@ -422,7 +422,39 @@ impl Job for HashJob {
     }
 }
 
-struct StateRunner<T: Runner> {
+pub struct SingleHasher(StateRunner<SingleThreadedRunner<HashJob>>);
+
+impl SingleHasher {
+    pub fn new() -> SingleHasher {
+        SingleHasher(StateRunner::new(SingleThreadedRunner::new()))
+    }
+
+    pub fn feed(&mut self, mut input: &[u8]) {
+        self.0.feed(input)
+    }
+
+    pub fn finish(&mut self) -> Hash {
+        self.0.finish()
+    }
+}
+
+pub struct MultiHasher(StateRunner<MultiThreadedRunner<HashJob>>);
+
+impl MultiHasher {
+    pub fn new() -> MultiHasher {
+        MultiHasher(StateRunner::new(MultiThreadedRunner::new()))
+    }
+
+    pub fn feed(&mut self, mut input: &[u8]) {
+        self.0.feed(input)
+    }
+
+    pub fn finish(&mut self) -> Hash {
+        self.0.finish()
+    }
+}
+
+struct StateRunner<T: Runner<Job = HashJob>> {
     runner: T,
     subtrees: ArrayVec<[Hash; 64]>,
     total_len: u64,
@@ -573,8 +605,8 @@ mod test {
             let hash_at_once = hash(&input);
             let mut state_serial = State::new();
             let mut state_parallel = StateParallel::new();
-            let mut state_runner_single = StateRunner::new(SingleThreadedRunner::new());
-            let mut state_runner_multi = StateRunner::new(MultiThreadedRunner::new());
+            let mut state_runner_single = SingleHasher::new();
+            let mut state_runner_multi = MultiHasher::new();
             // Use chunks that don't evenly divide 4096, to check the buffering
             // logic.
             for chunk in input.chunks(1000) {
@@ -612,7 +644,7 @@ mod test {
         let input = &[0; 10_000_000];
         let hash_at_once = hash(input);
         let mut state = StateParallel::new();
-        let mut state_runner_multi = StateRunner::new(MultiThreadedRunner::new());
+        let mut state_runner_multi = MultiHasher::new();
         state.update(input);
         state_runner_multi.feed(input);
         let hash_parallel = state.finalize();

@@ -86,3 +86,39 @@ fn bench_bao_hash_state_parallel_long(b: &mut Bencher) {
         state.finalize();
     });
 }
+
+#[bench]
+fn bench_bao_hash_state_runner_single_short(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::SingleHasher::new();
+        state.feed(SHORT);
+        state.finish();
+    });
+}
+
+#[bench]
+fn bench_bao_hash_state_runner_single_long(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::SingleHasher::new();
+        state.feed(LONG);
+        state.finish();
+    });
+}
+
+#[bench]
+fn bench_bao_hash_state_runner_multi_short(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::MultiHasher::new();
+        state.feed(SHORT);
+        state.finish();
+    });
+}
+
+#[bench]
+fn bench_bao_hash_state_runner_multi_long(b: &mut Bencher) {
+    b.iter(|| {
+        let mut state = bao::hash::MultiHasher::new();
+        state.feed(LONG);
+        state.finish();
+    });
+}
