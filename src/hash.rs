@@ -4,11 +4,13 @@ use byteorder::{ByteOrder, LittleEndian};
 use crossbeam::sync::MsQueue;
 use num_cpus;
 use rayon;
-use std::cmp::min;
+use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::mem;
 use std::sync::Arc;
+
+use runner::{Job, MultiThreadedRunner, Runner, SingleThreadedRunner};
 
 pub const HASH_SIZE: usize = 32;
 pub(crate) const HEADER_SIZE: usize = 8;
@@ -193,7 +195,7 @@ impl State {
             }
             // Take as many bytes as we can, to fill the next chunk.
             let current_chunk_len = (self.count % CHUNK_SIZE as u64) as usize;
-            let take = min(input.len(), CHUNK_SIZE - current_chunk_len);
+            let take = cmp::min(input.len(), CHUNK_SIZE - current_chunk_len);
             self.chunk_state.update(&input[..take]);
             input = &input[take..];
             self.count += take as u64;
@@ -350,7 +352,7 @@ impl StateParallel {
             // that we always push_back on the free items queue above, so that
             // the first item remains stable.
             let want = WORKER_BUFFER - self.free_items[0].buffer.len();
-            let take = min(want, input.len());
+            let take = cmp::min(want, input.len());
             self.free_items[0].buffer.extend_from_slice(&input[..take]);
             input = &input[take..];
         }
@@ -386,6 +388,100 @@ impl StateParallel {
             rollup_subtree(&mut self.subtrees, total_len, item.hash);
             self.finish_index += 1;
         }
+    }
+}
+
+// TODO: tune this number
+const CHUNKS_PER_JOB: usize = 4;
+const JOB_SIZE: usize = CHUNKS_PER_JOB * CHUNK_SIZE;
+
+struct HashJob {
+    buf: [u8; JOB_SIZE],
+    len: usize,
+    finalization: Finalization,
+    hash: Hash,
+}
+
+impl Job for HashJob {
+    fn new() -> Self {
+        Self {
+            buf: [0; JOB_SIZE],
+            len: 0,
+            finalization: NotRoot,
+            hash: [0; HASH_SIZE],
+        }
+    }
+
+    fn clear(&mut self) {
+        self.len = 0;
+        self.finalization = NotRoot;
+    }
+
+    fn do_work(&mut self) {
+        self.hash = hash_recurse(&self.buf[..self.len], self.finalization);
+    }
+}
+
+struct StateRunner<T: Runner> {
+    runner: T,
+    subtrees: ArrayVec<[Hash; 64]>,
+    total_len: u64,
+    has_launched: bool,
+}
+
+impl<T: Runner<Job = HashJob>> StateRunner<T> {
+    fn new(runner: T) -> Self {
+        Self {
+            runner,
+            subtrees: ArrayVec::new(),
+            total_len: 0,
+            has_launched: false,
+        }
+    }
+
+    fn feed(&mut self, mut input: &[u8]) {
+        while !input.is_empty() {
+            if self.runner.current().len == JOB_SIZE {
+                self.has_launched = true;
+                if let Some(finished_job) = self.runner.launch() {
+                    self.total_len += finished_job.len as u64;
+                    rollup_subtree(&mut self.subtrees, self.total_len, finished_job.hash);
+                }
+            }
+
+            let current = self.runner.current();
+            let want = JOB_SIZE - current.len;
+            let take = cmp::min(want, input.len());
+            current.buf[current.len..][..take].copy_from_slice(&input[..take]);
+            current.len += take;
+            input = &input[take..];
+        }
+    }
+
+    fn finish(&mut self) -> Hash {
+        // As a special case, if there was only ever one job's worth of input
+        // (or even no input at all), manually run that job with the root
+        // finalization, and just return it.
+        if !self.has_launched {
+            let current = self.runner.current();
+            return hash_recurse(&current.buf[..current.len], Root(current.len as u64));
+        }
+        // Otherwise there was more than one job, and we need to finish rolling
+        // them up. While other jobs are in still in flight, run the final job
+        // on this thread. If there was no input at all, this job might be
+        // empty.
+        self.runner.current().do_work();
+        // UGHHHHH THIS IS REALLY BAD UGHHGHGHGHGHG
+        let final_job_hash = self.runner.current().hash;
+        let final_job_len = self.runner.current().len;
+        // Await the jobs that were in flight.
+        while let Some(finished_job) = self.runner.wait() {
+            self.total_len += finished_job.len as u64;
+            rollup_subtree(&mut self.subtrees, self.total_len, finished_job.hash);
+        }
+        // Roll up the result of the final job.
+        self.total_len += final_job_len as u64;
+        rollup_final(&mut self.subtrees, self.total_len, final_job_hash)
     }
 }
 
@@ -477,16 +573,24 @@ mod test {
             let hash_at_once = hash(&input);
             let mut state_serial = State::new();
             let mut state_parallel = StateParallel::new();
+            let mut state_runner_single = StateRunner::new(SingleThreadedRunner::new());
+            let mut state_runner_multi = StateRunner::new(MultiThreadedRunner::new());
             // Use chunks that don't evenly divide 4096, to check the buffering
             // logic.
             for chunk in input.chunks(1000) {
                 state_serial.update(chunk);
                 state_parallel.update(chunk);
+                state_runner_single.feed(chunk);
+                state_runner_multi.feed(chunk);
             }
             let hash_state_serial = state_serial.finalize();
             let hash_state_parallel = state_parallel.finalize();
+            let hash_state_runner_single = state_runner_single.finish();
+            let hash_state_runner_multi = state_runner_multi.finish();
             assert_eq!(hash_at_once, hash_state_serial, "hashes don't match");
             assert_eq!(hash_at_once, hash_state_parallel, "hashes don't match");
+            assert_eq!(hash_at_once, hash_state_runner_single, "hashes don't match");
+            assert_eq!(hash_at_once, hash_state_runner_multi, "hashes don't match");
         }
     }
 
@@ -508,8 +612,12 @@ mod test {
         let input = &[0; 10_000_000];
         let hash_at_once = hash(input);
         let mut state = StateParallel::new();
+        let mut state_runner_multi = StateRunner::new(MultiThreadedRunner::new());
         state.update(input);
+        state_runner_multi.feed(input);
         let hash_parallel = state.finalize();
+        let hash_state_runner_multi = state_runner_multi.finish();
         assert_eq!(hash_at_once, hash_parallel, "hashes don't match");
+        assert_eq!(hash_at_once, hash_state_runner_multi, "hashes don't match");
     }
 }

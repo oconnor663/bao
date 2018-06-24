@@ -9,7 +9,7 @@ pub(crate) trait Runner {
     type Job;
 
     fn current(&mut self) -> &mut Self::Job;
-    fn finished(&mut self) -> Option<&mut Self::Job>;
+    fn finished(&mut self) -> &mut Self::Job;
 
     fn launch(&mut self) -> Option<&mut Self::Job>;
     fn wait(&mut self) -> Option<&mut Self::Job>;
@@ -28,14 +28,16 @@ pub(crate) struct MultiThreadedRunner<T: 'static + Job> {
     capacity: usize,
 }
 
+// TODO: tune this number
+const JOBS_PER_THREAD: usize = 2;
+
 impl<T: Job> MultiThreadedRunner<T> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             current_or_finished: JobWrapper::new(),
             current_is_finished: false,
             receivers: VecDeque::new(),
-            // TODO: tune this number
-            capacity: 2 * rayon::current_num_threads(),
+            capacity: JOBS_PER_THREAD * rayon::current_num_threads(),
         }
     }
 }
@@ -51,12 +53,12 @@ impl<T: Job> Runner for MultiThreadedRunner<T> {
         &mut self.current_or_finished.job
     }
 
-    fn finished(&mut self) -> Option<&mut T> {
-        if self.current_is_finished {
-            Some(&mut *self.current_or_finished.job)
-        } else {
-            None
-        }
+    fn finished(&mut self) -> &mut T {
+        assert!(
+            self.current_is_finished,
+            "trying to access finished() before launch()"
+        );
+        &mut *self.current_or_finished.job
     }
 
     fn launch(&mut self) -> Option<&mut T> {
@@ -65,14 +67,17 @@ impl<T: Job> Runner for MultiThreadedRunner<T> {
             "trying to launch without using current()"
         );
         let mut current;
+        let ret;
         if self.receivers.len() < self.capacity {
             current = mem::replace(&mut self.current_or_finished, JobWrapper::new());
+            ret = None;
         } else {
             let receiver = self.receivers.pop_front().unwrap();
             let mut received = receiver.recv().unwrap();
             received.receiver = Some(receiver);
             current = mem::replace(&mut self.current_or_finished, received);
             self.current_is_finished = true;
+            ret = Some(&mut *self.current_or_finished.job);
         }
 
         self.receivers.push_back(current.receiver.take().unwrap());
@@ -82,7 +87,7 @@ impl<T: Job> Runner for MultiThreadedRunner<T> {
             sender.send(current).unwrap();
         });
 
-        self.finished()
+        ret
     }
 
     fn wait(&mut self) -> Option<&mut T> {
@@ -117,7 +122,7 @@ pub(crate) struct SingleThreadedRunner<T: 'static + Job> {
 }
 
 impl<T: Job> SingleThreadedRunner<T> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             job: T::new(),
             job_is_finished: false,
@@ -136,18 +141,18 @@ impl<T: Job> Runner for SingleThreadedRunner<T> {
         &mut self.job
     }
 
-    fn finished(&mut self) -> Option<&mut T> {
-        if self.job_is_finished {
-            Some(&mut self.job)
-        } else {
-            None
-        }
+    fn finished(&mut self) -> &mut T {
+        assert!(
+            self.job_is_finished,
+            "trying to access finished() before launch()"
+        );
+        &mut self.job
     }
 
     fn launch(&mut self) -> Option<&mut T> {
         self.job.do_work();
         self.job_is_finished = true;
-        self.finished()
+        Some(&mut self.job)
     }
 
     fn wait(&mut self) -> Option<&mut T> {
@@ -158,6 +163,7 @@ impl<T: Job> Runner for SingleThreadedRunner<T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::panic;
 
     struct DoublerJob {
         x: i32,
@@ -177,6 +183,11 @@ mod test {
         }
     }
 
+    fn assert_panic<T, F: FnOnce() -> T>(f: F) {
+        let result = panic::catch_unwind(panic::AssertUnwindSafe(|| f()));
+        assert!(result.is_err());
+    }
+
     fn test_runner<T>(mut runner: T)
     where
         T: Runner<Job = DoublerJob>,
@@ -184,7 +195,7 @@ mod test {
         let mut total = 0;
         for x in 1..=100 {
             runner.current().x = x;
-            assert!(runner.finished().is_none());
+            assert_panic(|| runner.finished());
             if let Some(finished) = runner.launch() {
                 total += finished.x;
             }
@@ -192,7 +203,7 @@ mod test {
         while let Some(finished) = runner.wait() {
             total += finished.x;
         }
-        assert!(runner.finished().is_some());
+        runner.finished(); // not a panic
         assert_eq!(10100, total);
     }
 
