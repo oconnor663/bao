@@ -429,7 +429,7 @@ impl SingleHasher {
         SingleHasher(StateRunner::new(SingleThreadedRunner::new()))
     }
 
-    pub fn feed(&mut self, mut input: &[u8]) {
+    pub fn feed(&mut self, input: &[u8]) {
         self.0.feed(input)
     }
 
@@ -445,7 +445,7 @@ impl MultiHasher {
         MultiHasher(StateRunner::new(MultiThreadedRunner::new()))
     }
 
-    pub fn feed(&mut self, mut input: &[u8]) {
+    pub fn feed(&mut self, input: &[u8]) {
         self.0.feed(input)
     }
 

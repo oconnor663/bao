@@ -92,10 +92,6 @@ impl Accumulator {
             (take, None)
         }
     }
-
-    fn clear(&mut self) {
-        self.buf_len = 0;
-    }
 }
 
 /// (bytes used, output)
