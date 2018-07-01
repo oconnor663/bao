@@ -4,8 +4,6 @@ extern crate arrayvec;
 extern crate blake2_c;
 extern crate byteorder;
 extern crate crossbeam;
-#[macro_use]
-extern crate lazy_static;
 extern crate num_cpus;
 extern crate rayon;
 
@@ -19,5 +17,4 @@ pub mod decoder;
 pub mod encoder;
 pub mod hash;
 pub mod io;
-mod runner;
 mod unverified;

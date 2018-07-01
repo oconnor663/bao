@@ -70,16 +70,9 @@ fn decode(args: &Args) -> io::Result<()> {
 fn hash(_args: &Args) -> io::Result<()> {
     let stdin = io::stdin();
     let mut stdin_lock = stdin.lock();
-    let mut state = bao::hash::StateParallel::new();
-    let mut read_buffer = [0; 4096];
-    loop {
-        let n = stdin_lock.read(&mut read_buffer)?;
-        if n == 0 {
-            break; // EOF
-        }
-        state.update(&read_buffer[..n]);
-    }
-    let hash = state.finalize();
+    let mut writer = bao::hash::Writer::new();
+    io::copy(&mut stdin_lock, &mut writer)?;
+    let hash = writer.finish();
     println!("{}", hex::encode(hash));
     Ok(())
 }

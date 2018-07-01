@@ -1,23 +1,19 @@
 use arrayvec::ArrayVec;
 use blake2_c::blake2b;
 use byteorder::{ByteOrder, LittleEndian};
-use crossbeam::sync::MsQueue;
-use num_cpus;
 use rayon;
 use std::cmp;
-use std::collections::HashMap;
-use std::collections::VecDeque;
+use std::io;
 use std::mem;
-use std::sync::Arc;
-
-use runner::{Job, MultiThreadedRunner, Runner, SingleThreadedRunner};
 
 pub const HASH_SIZE: usize = 32;
+pub(crate) const PARENT_SIZE: usize = 64;
 pub(crate) const HEADER_SIZE: usize = 8;
 pub(crate) const CHUNK_SIZE: usize = 4096;
-pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
+pub(crate) const MAX_DEPTH: usize = 64;
 
 pub type Hash = [u8; HASH_SIZE];
+pub type ParentNode = [u8; 2 * HASH_SIZE];
 
 pub(crate) fn encode_len(len: u64) -> [u8; HEADER_SIZE] {
     debug_assert_eq!(mem::size_of_val(&len), HEADER_SIZE);
@@ -119,401 +115,156 @@ pub fn hash_parallel(input: &[u8]) -> Hash {
     hash_recurse_parallel(input, Root(input.len() as u64))
 }
 
-// This is a cute algorithm for incrementally merging subtrees. We keep only
-// the hash of each subtree assembled so far, ordered from left to right and
-// also largest to smallest in a list. Because all subtrees (prior to the
-// finalization step) are a power of two times the chunk size, adding a new
-// subtree to the right/small end is a lot like adding two binary numbers and
-// propagating the carry bit. Each carry represents a place where two subtrees
-// need to be merged, and the final number of 1 bits is the same as the final
-// number of subtrees.
-//
-// NB: To preserve the left-to-right and largest-to-smallest ordering, the new
-// subtree must not be larger than the smallest/rightmost subtree currently in
-// the list. Typically we merge subtrees of a constant size, so we don't have
-// to worry about this.
-pub(crate) fn rollup_subtree(
-    subtrees: &mut ArrayVec<[Hash; 64]>,
-    new_total_len: u64,
-    new_subtree: Hash,
-) {
-    let final_num_trees = (new_total_len / CHUNK_SIZE as u64).count_ones();
-    subtrees.push(new_subtree);
-    while subtrees.len() > final_num_trees as usize {
-        let right_child = subtrees.pop().expect("called with too few nodes");
-        let left_child = subtrees.pop().expect("called with too few nodes");
-        subtrees.push(hash_parent(&left_child, &right_child, NotRoot));
-    }
-}
-
-// Similar to rollup_subtree, but for the finalization step, where we allow
-// imperfect subtrees on the right edge. From smallest to largest (right to
-// left), each pair of subtrees gets merged, regardless of their length. This
-// can result in a perfect tree, if the final length is a power of two times
-// the smallest subtree size, but generally it doesn't.
-pub(crate) fn rollup_final(
-    subtrees: &mut ArrayVec<[Hash; 64]>,
-    final_len: u64,
-    new_subtree: Hash,
-) -> Hash {
-    subtrees.push(new_subtree);
-    loop {
-        let right_child = subtrees.pop().expect("called with too few nodes");
-        let left_child = subtrees.pop().expect("called with too few nodes");
-        if subtrees.is_empty() {
-            return hash_parent(&left_child, &right_child, Root(final_len));
-        }
-        subtrees.push(hash_parent(&left_child, &right_child, NotRoot));
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct State {
-    chunk_state: blake2b::State,
-    count: u64,
-    subtrees: ArrayVec<[Hash; 64]>,
+    subtrees: ArrayVec<[Hash; MAX_DEPTH]>,
+    total_len: u64,
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
-            chunk_state: blake2b::State::new(HASH_SIZE),
-            count: 0,
-            subtrees: ArrayVec::new(),
-        }
-    }
-
-    pub fn update(&mut self, mut input: &[u8]) {
-        while !input.is_empty() {
-            // If we've completed a chunk, merge it into the subtrees list. We
-            // only do this when we know there's more input to come, otherwise
-            // we have to wait and see if we need to finalize.
-            if self.count > 0 && self.count % CHUNK_SIZE as u64 == 0 {
-                let chunk_hash = finalize_hash(&mut self.chunk_state, NotRoot);
-                self.chunk_state = blake2b::State::new(HASH_SIZE);
-                rollup_subtree(&mut self.subtrees, self.count, chunk_hash);
-            }
-            // Take as many bytes as we can, to fill the next chunk.
-            let current_chunk_len = (self.count % CHUNK_SIZE as u64) as usize;
-            let take = cmp::min(input.len(), CHUNK_SIZE - current_chunk_len);
-            self.chunk_state.update(&input[..take]);
-            input = &input[take..];
-            self.count += take as u64;
-        }
-    }
-
-    /// It's a logic error to call finalize more than once on the same instance.
-    pub fn finalize(&mut self) -> Hash {
-        // If the tree is a single chunk, give that chunk the root flag and
-        // return its hash.
-        if self.count <= CHUNK_SIZE as u64 {
-            return finalize_hash(&mut self.chunk_state, Root(self.count as u64));
-        }
-        // Otherwise we need to hash the chunk as usual and do a rollup that
-        // flags the root parent node.
-        let chunk_hash = finalize_hash(&mut self.chunk_state, NotRoot);
-        rollup_final(&mut self.subtrees, self.count, chunk_hash)
-    }
-}
-
-const WORKER_BUFFER: usize = 64 * CHUNK_SIZE;
-lazy_static! {
-    static ref MAX_ITEMS: usize = 4 * num_cpus::get();
-}
-
-struct ParallelItem {
-    buffer: Vec<u8>,
-    hash: Hash,
-    index: u64,
-}
-
-impl ParallelItem {
-    fn new() -> Self {
-        Self {
-            buffer: Vec::with_capacity(WORKER_BUFFER),
-            hash: [0; HASH_SIZE],
-            index: 0,
-        }
-    }
-}
-
-/// This is an example parallel implementation that accepts incremental writes.
-/// Rayon's join() primitive is exceptionally easy to use when we have the
-/// entire input in memory (either as a large buffer, or as a memory mapped
-/// file). However, because join shouldn't block on IO, it's trickier to
-/// parallelize reading from a pipe or a socket. This implementation uses a
-/// collection of reusable buffers, and it spawns tasks into the Rayon thread
-/// pool whenever a buffer is ready.
-///
-/// Reusing buffers means that we don't have to allocate much for each task,
-/// however both Rayon's spawn() and crossbeam's MsQueue do make small
-/// allocations internally, so this implementation isn't as efficient as it
-/// could be. We use fairly large buffer sizes to spread out that overhead, but
-/// another implementation with dedicated threads might be able to get rid of
-/// allocations entirely.
-pub struct StateParallel {
-    free_items: VecDeque<ParallelItem>,
-    finished_queue: Arc<MsQueue<ParallelItem>>,
-    finished_map: HashMap<u64, ParallelItem>,
-    item_count: usize,
-    start_index: u64,
-    finish_index: u64,
-    subtrees: ArrayVec<[Hash; 64]>,
-}
-
-impl StateParallel {
-    pub fn new() -> Self {
-        Self {
-            free_items: VecDeque::new(),
-            finished_queue: Arc::new(MsQueue::new()),
-            finished_map: HashMap::new(),
-            item_count: 0,
-            start_index: 0,
-            finish_index: 0,
-            subtrees: ArrayVec::new(),
-        }
-    }
-
-    fn send_item_to_workers(&mut self, mut item: ParallelItem) {
-        item.index = self.start_index;
-        self.start_index += 1;
-        let queue_arc = self.finished_queue.clone();
-        // Hash this item in the background.
-        rayon::spawn(move || {
-            item.hash = hash_recurse(&item.buffer, NotRoot);
-            // After hashing is done, stick it on the finish queue.
-            queue_arc.push(item);
-        });
-    }
-
-    // This applies to all items but the very last one.
-    fn finish_item(&mut self, mut item: ParallelItem) {
-        debug_assert_eq!(self.finish_index, item.index, "oops out of order");
-        self.finish_index += 1;
-        let new_total = WORKER_BUFFER as u64 * self.finish_index;
-        rollup_subtree(&mut self.subtrees, new_total, item.hash);
-        // Clear the item buffer so that it's ready for new input.
-        item.buffer.clear();
-        self.free_items.push_back(item);
-    }
-
-    fn blocking_pop_until_index(&mut self, index: u64) {
-        while !self.finished_map.contains_key(&index) {
-            // This blocks.
-            let item = self.finished_queue.pop();
-            self.finished_map.insert(item.index, item);
-        }
-    }
-
-    pub fn update(&mut self, mut input: &[u8]) {
-        // The order of operations in this loop is:
-        // 1. If the current item is full *and* there's more input (so we know
-        //    we don't need to set the finalization flag), send it to a worker.
-        // 2. If we don't have a current item, create one or wait for one.
-        // 3. Fill the current item with more data.
-        while !input.is_empty() {
-            // If the current item (the first item in the free list) is full,
-            // send it to the workers.
-            if self.free_items
-                .front()
-                .map(|item| item.buffer.len() == WORKER_BUFFER)
-                .unwrap_or(false)
-            {
-                let item = self.free_items.pop_front().unwrap();
-                self.send_item_to_workers(item);
-            }
-
-            // Make sure there's a free item.
-            if self.free_items.is_empty() {
-                // If we haven't reached the item limit yet, just create one.
-                if self.item_count < *MAX_ITEMS {
-                    self.free_items.push_back(ParallelItem::new());
-                    self.item_count += 1;
-                } else {
-                    // Otherwise we need to do a blocking wait on the finish
-                    // queue, roll up a finished item, and then add it back to
-                    // the free list. Note that items might not come out of the
-                    // finish queue in order, so we might have to pop more than
-                    // one before we get the next one we can process.
-                    {
-                        let finish_index = self.finish_index; // borrowck workaround
-                        self.blocking_pop_until_index(finish_index);
-                    }
-
-                    // Roll up as many items as we can, and then add them back
-                    // to the free list.
-                    while let Some(item) = self.finished_map.remove(&self.finish_index) {
-                        self.finish_item(item);
-                    }
-                }
-            }
-
-            // Fill up the first free item with as many bytes as we can. Note
-            // that we always push_back on the free items queue above, so that
-            // the first item remains stable.
-            let want = WORKER_BUFFER - self.free_items[0].buffer.len();
-            let take = cmp::min(want, input.len());
-            self.free_items[0].buffer.extend_from_slice(&input[..take]);
-            input = &input[take..];
-        }
-    }
-
-    pub fn finalize(&mut self) -> Hash {
-        // If we never sent any items to workers, we need to hash the current
-        // (possibly empty or nonexistent) item with the finalization flag.
-        if self.start_index == 0 {
-            if let Some(item) = self.free_items.pop_front() {
-                return hash(&item.buffer);
-            } else {
-                return hash(b"");
-            }
-        }
-
-        // Otherwise we need to send the current item to the workers.
-        let item = self.free_items.pop_front().unwrap();
-        self.send_item_to_workers(item);
-
-        // Await all the items. Roll them up the usual way, until the very last
-        // one, which gets the finalization flag.
-        loop {
-            {
-                let finish_index = self.finish_index; // borrowck workaround
-                self.blocking_pop_until_index(finish_index);
-            }
-            let item = self.finished_map.remove(&self.finish_index).unwrap();
-            let total_len = self.finish_index * WORKER_BUFFER as u64 + item.buffer.len() as u64;
-            if self.finish_index == self.start_index - 1 {
-                return rollup_final(&mut self.subtrees, total_len, item.hash);
-            }
-            rollup_subtree(&mut self.subtrees, total_len, item.hash);
-            self.finish_index += 1;
-        }
-    }
-}
-
-// TODO: tune this number
-const CHUNKS_PER_JOB: usize = 4;
-const JOB_SIZE: usize = CHUNKS_PER_JOB * CHUNK_SIZE;
-
-struct HashJob {
-    buf: [u8; JOB_SIZE],
-    len: usize,
-    finalization: Finalization,
-    hash: Hash,
-}
-
-impl Job for HashJob {
-    fn new() -> Self {
-        Self {
-            buf: [0; JOB_SIZE],
-            len: 0,
-            finalization: NotRoot,
-            hash: [0; HASH_SIZE],
-        }
-    }
-
-    fn clear(&mut self) {
-        self.len = 0;
-        self.finalization = NotRoot;
-    }
-
-    fn do_work(&mut self) {
-        self.hash = hash_recurse(&self.buf[..self.len], self.finalization);
-    }
-}
-
-pub struct SingleHasher(StateRunner<SingleThreadedRunner<HashJob>>);
-
-impl SingleHasher {
-    pub fn new() -> SingleHasher {
-        SingleHasher(StateRunner::new(SingleThreadedRunner::new()))
-    }
-
-    pub fn feed(&mut self, input: &[u8]) {
-        self.0.feed(input)
-    }
-
-    pub fn finish(&mut self) -> Hash {
-        self.0.finish()
-    }
-}
-
-pub struct MultiHasher(StateRunner<MultiThreadedRunner<HashJob>>);
-
-impl MultiHasher {
-    pub fn new() -> MultiHasher {
-        MultiHasher(StateRunner::new(MultiThreadedRunner::new()))
-    }
-
-    pub fn feed(&mut self, input: &[u8]) {
-        self.0.feed(input)
-    }
-
-    pub fn finish(&mut self) -> Hash {
-        self.0.finish()
-    }
-}
-
-struct StateRunner<T: Runner<Job = HashJob>> {
-    runner: T,
-    subtrees: ArrayVec<[Hash; 64]>,
-    total_len: u64,
-    has_launched: bool,
-}
-
-impl<T: Runner<Job = HashJob>> StateRunner<T> {
-    fn new(runner: T) -> Self {
-        Self {
-            runner,
             subtrees: ArrayVec::new(),
             total_len: 0,
-            has_launched: false,
         }
     }
 
-    fn feed(&mut self, mut input: &[u8]) {
+    fn merge_inner(&mut self, finalization: Finalization) -> ParentNode {
+        let right_child = self.subtrees.pop().unwrap();
+        let left_child = self.subtrees.pop().unwrap();
+        let mut parent_node = [0; PARENT_SIZE];
+        parent_node[..HASH_SIZE].copy_from_slice(&left_child);
+        parent_node[HASH_SIZE..].copy_from_slice(&right_child);
+        let parent_hash = hash_parent(&left_child, &right_child, finalization);
+        self.subtrees.push(parent_hash);
+        parent_node
+    }
+
+    // We keep the subtree hashes in an array without storing their size, and
+    // we use this cute trick to figure out when we should merge them. Because
+    // every subtree (prior to the finalization step) is a power of two times
+    // the chunk size, adding a new subtree to the right/small end is a lot
+    // like adding a 1 to a binary number, and merging subtrees is like
+    // propagating the carry bit. Each carry represents a place where two
+    // subtrees need to be merged, and the final number of
+    // 1 bits is the same as the final number of subtrees.
+    fn needs_merge(&self) -> bool {
+        self.subtrees.len() > (self.total_len / CHUNK_SIZE as u64).count_ones() as usize
+    }
+
+    /// All the chunks must be exactly CHUNK_SIZE
+    pub fn push_chunk(&mut self, hash: Hash, len: usize) {
+        // TODO: Would it be cleaner to separate push_chunk and push_final?
+        debug_assert!(len > 0, "empty chunk");
+        debug_assert!(len <= CHUNK_SIZE, "chunk too big");
+        debug_assert_eq!(
+            0,
+            self.total_len % CHUNK_SIZE as u64,
+            "only the final chunk may be partial"
+        );
+        // Merge any subtrees that need to be merged before pushing. In the
+        // encoding case, the caller will already have done this via
+        // merge_parent(), but in the hashing case the caller doesn't care
+        // about the parent nodes.
+        while self.needs_merge() {
+            self.merge_inner(NotRoot);
+        }
+        self.subtrees.push(hash);
+        self.total_len += len as u64;
+    }
+
+    /// Callers making an encoding need to get their hands on the bytes of each
+    /// parent node. They should inspect the return value of `push_subtree`,
+    /// and then if it's not `None` call this function in a loop until it
+    /// returns `None`. This will yield all the parent nodes in
+    /// smallest-to-largest order. Callers who don't need parent nodes, and
+    /// instead just want the root hash, can skip this function.
+    pub fn merge_parent(&mut self) -> Option<ParentNode> {
+        if !self.needs_merge() {
+            return None;
+        }
+        Some(self.merge_inner(NotRoot))
+    }
+
+    pub fn merge_finish(&mut self) -> FinishResult {
+        assert!(self.subtrees.len() >= 2, "not enough subtrees");
+        if self.subtrees.len() > 2 {
+            FinishResult::Parent(self.merge_inner(NotRoot))
+        } else {
+            let finalization = Root(self.total_len);
+            let root_node = self.merge_inner(finalization);
+            let root_hash = self.subtrees.pop().unwrap();
+            FinishResult::Root(root_node, root_hash)
+        }
+    }
+
+    /// A wrapper around `merge_finish` for callers who don't need the parent
+    /// nodes.
+    pub fn finish(&mut self) -> Hash {
+        loop {
+            match self.merge_finish() {
+                FinishResult::Parent(_) => {}
+                FinishResult::Root(_, hash) => return hash,
+            }
+        }
+    }
+}
+
+pub enum FinishResult {
+    Parent(ParentNode),
+    Root(ParentNode, Hash),
+}
+
+pub struct Writer {
+    chunk: blake2b::State,
+    chunk_len: usize,
+    first_chunk: bool,
+    state: State,
+}
+
+impl Writer {
+    pub fn new() -> Self {
+        Self {
+            chunk: blake2b::State::new(HASH_SIZE),
+            chunk_len: 0,
+            first_chunk: true,
+            state: State::new(),
+        }
+    }
+
+    pub fn finish(&mut self) -> Hash {
+        if self.first_chunk {
+            let finalization = Root(self.chunk_len as u64);
+            return finalize_hash(&mut self.chunk, finalization);
+        }
+        let last_chunk_hash = finalize_hash(&mut self.chunk, NotRoot);
+        self.state.push_chunk(last_chunk_hash, self.chunk_len);
+        self.state.finish()
+    }
+}
+
+impl io::Write for Writer {
+    fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
+        let input_len = input.len();
         while !input.is_empty() {
-            if self.runner.current().len == JOB_SIZE {
-                self.has_launched = true;
-                if let Some(finished_job) = self.runner.launch() {
-                    self.total_len += finished_job.len as u64;
-                    rollup_subtree(&mut self.subtrees, self.total_len, finished_job.hash);
-                }
+            if self.chunk_len == CHUNK_SIZE {
+                let chunk_hash = finalize_hash(&mut self.chunk, NotRoot);
+                self.state.push_chunk(chunk_hash, CHUNK_SIZE);
+                self.chunk = blake2b::State::new(HASH_SIZE);
+                self.chunk_len = 0;
+                self.first_chunk = false;
             }
 
-            let current = self.runner.current();
-            let want = JOB_SIZE - current.len;
+            let want = CHUNK_SIZE - self.chunk_len;
             let take = cmp::min(want, input.len());
-            current.buf[current.len..][..take].copy_from_slice(&input[..take]);
-            current.len += take;
+            self.chunk.update(&input[..take]);
+            self.chunk_len += take;
             input = &input[take..];
         }
+        Ok(input_len)
     }
 
-    fn finish(&mut self) -> Hash {
-        // As a special case, if there was only ever one job's worth of input
-        // (or even no input at all), manually run that job with the root
-        // finalization, and just return it.
-        if !self.has_launched {
-            let current = self.runner.current();
-            return hash_recurse(&current.buf[..current.len], Root(current.len as u64));
-        }
-        // Otherwise there was more than one job, and we need to finish rolling
-        // them up. While other jobs are in still in flight, run the final job
-        // on this thread. If there was no input at all, this job might be
-        // empty.
-        self.runner.current().do_work();
-        // UGHHHHH THIS IS REALLY BAD UGHHGHGHGHGHG
-        let final_job_hash = self.runner.current().hash;
-        let final_job_len = self.runner.current().len;
-        // Await the jobs that were in flight.
-        while let Some(finished_job) = self.runner.wait() {
-            self.total_len += finished_job.len as u64;
-            rollup_subtree(&mut self.subtrees, self.total_len, finished_job.hash);
-        }
-        // Roll up the result of the final job.
-        self.total_len += final_job_len as u64;
-        rollup_final(&mut self.subtrees, self.total_len, final_job_hash)
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -544,6 +295,7 @@ pub(crate) const TEST_CASES: &[usize] = &[
 mod test {
     use super::*;
     use hex;
+    use std::io::prelude::*;
 
     #[test]
     fn test_power_of_two() {
@@ -597,36 +349,6 @@ mod test {
     }
 
     #[test]
-    fn test_state() {
-        // Cover both serial and parallel here.
-        for &case in TEST_CASES {
-            println!("case {}", case);
-            let input = vec![0x42; case];
-            let hash_at_once = hash(&input);
-            let mut state_serial = State::new();
-            let mut state_parallel = StateParallel::new();
-            let mut state_runner_single = SingleHasher::new();
-            let mut state_runner_multi = MultiHasher::new();
-            // Use chunks that don't evenly divide 4096, to check the buffering
-            // logic.
-            for chunk in input.chunks(1000) {
-                state_serial.update(chunk);
-                state_parallel.update(chunk);
-                state_runner_single.feed(chunk);
-                state_runner_multi.feed(chunk);
-            }
-            let hash_state_serial = state_serial.finalize();
-            let hash_state_parallel = state_parallel.finalize();
-            let hash_state_runner_single = state_runner_single.finish();
-            let hash_state_runner_multi = state_runner_multi.finish();
-            assert_eq!(hash_at_once, hash_state_serial, "hashes don't match");
-            assert_eq!(hash_at_once, hash_state_parallel, "hashes don't match");
-            assert_eq!(hash_at_once, hash_state_runner_single, "hashes don't match");
-            assert_eq!(hash_at_once, hash_state_runner_multi, "hashes don't match");
-        }
-    }
-
-    #[test]
     fn test_parallel() {
         for &case in TEST_CASES {
             println!("case {}", case);
@@ -637,19 +359,41 @@ mod test {
         }
     }
 
+    fn drive_state(input: &[u8]) -> Hash {
+        if input.len() <= CHUNK_SIZE {
+            return hash_chunk(input, Root(input.len() as u64));
+        }
+        let mut state = State::new();
+        let chunk_hashes = input
+            .chunks(CHUNK_SIZE)
+            .map(|chunk| (hash_chunk(chunk, NotRoot), chunk.len()));
+        for (chunk_hash, len) in chunk_hashes {
+            state.push_chunk(chunk_hash, len);
+        }
+        state.finish()
+    }
+
     #[test]
-    fn test_state_parallel_10mb() {
-        // The internal buffer is about a megabyte, so make sure to test a case
-        // that fills it up multiple times.
-        let input = &[0; 10_000_000];
-        let hash_at_once = hash(input);
-        let mut state = StateParallel::new();
-        let mut state_runner_multi = MultiHasher::new();
-        state.update(input);
-        state_runner_multi.feed(input);
-        let hash_parallel = state.finalize();
-        let hash_state_runner_multi = state_runner_multi.finish();
-        assert_eq!(hash_at_once, hash_parallel, "hashes don't match");
-        assert_eq!(hash_at_once, hash_state_runner_multi, "hashes don't match");
+    fn test_state() {
+        for &case in TEST_CASES {
+            println!("case {}", case);
+            let input = vec![0x42; case];
+            let expected = hash(&input);
+            let found = drive_state(&input);
+            assert_eq!(expected, found, "hashes don't match");
+        }
+    }
+
+    #[test]
+    fn test_writer() {
+        for &case in TEST_CASES {
+            println!("case {}", case);
+            let input = vec![0x42; case];
+            let expected = hash(&input);
+            let mut writer = Writer::new();
+            writer.write_all(&input).unwrap();
+            let found = writer.finish();
+            assert_eq!(expected, found, "hashes don't match");
+        }
     }
 }
