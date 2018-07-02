@@ -31,7 +31,7 @@ pub(crate) fn decode_len(bytes: &[u8]) -> u64 {
 // That means that no root hash can ever collide with an interior hash, or with
 // the root of a different size tree.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Finalization {
+pub enum Finalization {
     NotRoot,
     Root(u64),
 }
@@ -93,6 +93,7 @@ pub(crate) fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
     hash_parent(&left_hash, &right_hash, finalization)
 }
 
+/// Hash a slice of input bytes all at once.
 pub fn hash(input: &[u8]) -> Hash {
     hash_recurse(input, Root(input.len() as u64))
 }
@@ -111,20 +112,36 @@ pub(crate) fn hash_recurse_parallel(input: &[u8], finalization: Finalization) ->
     hash_parent(&left_hash, &right_hash, finalization)
 }
 
+/// Hash a slice of input bytes all at once, using multiple threads via
+/// [Rayon](https://crates.io/crates/rayon).
 pub fn hash_parallel(input: &[u8]) -> Hash {
     hash_recurse_parallel(input, Root(input.len() as u64))
 }
 
+/// A minimal state object for incrementally hashing input. Most callers should use the `Writer`
+/// interface instead.
+///
+/// This is designed to be useful for as many callers as possible, including `no_std` callers. It
+/// handles merging subtrees and keeps track of subtrees assembled so far. It takes only hashes as
+/// input, rather than raw input bytes, so it can be used with e.g. multiple threads hashing chunks
+/// in parallel. Callers that need `ParentNode` bytes for building the encoded tree, can use the
+/// optional `merge_parent` and `merge_finish` interfaces.
+///
+/// This struct contains a relatively large buffer for holding tree state, 2 KB on the stack. This
+/// is enough space for the largest possible input, `2^64 - 1` 4-kilobyte chunks or about 75
+/// zettabytes. That's impractically large for anything that could be hashed in the real world, and
+/// implementations that are starved for stack space could cut that buffer in half and still be
+/// able to hash about 17 terabytes.
 pub struct State {
     subtrees: ArrayVec<[Hash; MAX_DEPTH]>,
-    total_len: u64,
+    subtree_count: u64,
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
             subtrees: ArrayVec::new(),
-            total_len: 0,
+            subtree_count: 0,
         }
     }
 
@@ -139,45 +156,49 @@ impl State {
         parent_node
     }
 
-    // We keep the subtree hashes in an array without storing their size, and
-    // we use this cute trick to figure out when we should merge them. Because
-    // every subtree (prior to the finalization step) is a power of two times
-    // the chunk size, adding a new subtree to the right/small end is a lot
-    // like adding a 1 to a binary number, and merging subtrees is like
-    // propagating the carry bit. Each carry represents a place where two
-    // subtrees need to be merged, and the final number of
-    // 1 bits is the same as the final number of subtrees.
+    // We keep the subtree hashes in an array without storing their size, and we use this cute
+    // trick to figure out when we should merge them. Because every subtree (prior to the
+    // finalization step) is a power of two times the chunk size, adding a new subtree to the
+    // right/small end is a lot like adding a 1 to a binary number, and merging subtrees is like
+    // propagating the carry bit. Each carry represents a place where two subtrees need to be
+    // merged, and the final number of 1 bits is the same as the final number of subtrees.
     fn needs_merge(&self) -> bool {
-        self.subtrees.len() > (self.total_len / CHUNK_SIZE as u64).count_ones() as usize
+        self.subtrees.len() > self.subtree_count.count_ones() as usize
     }
 
-    /// All the chunks must be exactly CHUNK_SIZE
-    pub fn push_chunk(&mut self, hash: Hash, len: usize) {
-        // TODO: Would it be cleaner to separate push_chunk and push_final?
-        debug_assert!(len > 0, "empty chunk");
-        debug_assert!(len <= CHUNK_SIZE, "chunk too big");
-        debug_assert_eq!(
-            0,
-            self.total_len % CHUNK_SIZE as u64,
-            "only the final chunk may be partial"
-        );
-        // Merge any subtrees that need to be merged before pushing. In the
-        // encoding case, the caller will already have done this via
-        // merge_parent(), but in the hashing case the caller doesn't care
-        // about the parent nodes.
+    /// Add a subtree hash to the state.
+    ///
+    /// For most callers, this will always be the hash of a `CHUNK_SIZE` chunk of input bytes, with
+    /// the final chunk possibly having fewer (but never zero) bytes. It's possible to use input
+    /// subtrees larger than a single chunk, as long as the size is a power of 2 times `CHUNK_SIZE`
+    /// and again kept constant until the final chunk. This might be helpful in elaborate
+    /// multi-threaded settings with layers of `State` objects, but most callers should stick with
+    /// single chunks.
+    ///
+    /// In cases where the total input is a single chunk or less, including the case with no input
+    /// bytes at all, callers are expected to finalize that chunk and return the result *without*
+    /// calling into this state object. It's of course impossible to back out the input bytes and
+    /// re-finalize them.
+    pub fn push_subtree(&mut self, hash: Hash) {
+        // Merge any subtrees that need to be merged before pushing. In the encoding case, the
+        // caller will already have done this via merge_parent(), but in the hashing case the
+        // caller doesn't care about the parent nodes.
         while self.needs_merge() {
             self.merge_inner(NotRoot);
         }
         self.subtrees.push(hash);
-        self.total_len += len as u64;
+        self.subtree_count += 1;
     }
 
-    /// Callers making an encoding need to get their hands on the bytes of each
-    /// parent node. They should inspect the return value of `push_subtree`,
-    /// and then if it's not `None` call this function in a loop until it
-    /// returns `None`. This will yield all the parent nodes in
-    /// smallest-to-largest order. Callers who don't need parent nodes, and
-    /// instead just want the root hash, can skip this function.
+    /// Returns a `ParentNode` corresponding to a just-completed subtree, if any.
+    ///
+    /// Callers that want parent node bytes (to build an encoded tree) must call `merge_parent` in
+    /// a loop, until it returns `None`. Parent nodes are yielded in smallest-to-largest order.
+    /// Callers that only want the final root hash can ignore this function; the next call to
+    /// `push_subtree` will take care of merging in that case.
+    ///
+    /// After the final call to `push_subtree`, you must call `merge_finish` in a loop instead of
+    /// this function.
     pub fn merge_parent(&mut self) -> Option<ParentNode> {
         if !self.needs_merge() {
             return None;
@@ -185,39 +206,38 @@ impl State {
         Some(self.merge_inner(NotRoot))
     }
 
-    pub fn merge_finish(&mut self) -> FinishResult {
+    /// Returns a tuple of `ParentNode` bytes and (in the last call only) the root hash. Callers
+    /// who need `ParentNode` bytes must call `merge_finish` in a loop after pushing the final
+    /// subtree, until the second return value is `Some`. Callers who don't need parent nodes
+    /// should use the simpler `finish` interface instead.
+    pub fn merge_finish(&mut self, finalization: Finalization) -> (ParentNode, Option<Hash>) {
         assert!(self.subtrees.len() >= 2, "not enough subtrees");
         if self.subtrees.len() > 2 {
-            FinishResult::Parent(self.merge_inner(NotRoot))
+            (self.merge_inner(NotRoot), None)
         } else {
-            let finalization = Root(self.total_len);
             let root_node = self.merge_inner(finalization);
             let root_hash = self.subtrees.pop().unwrap();
-            FinishResult::Root(root_node, root_hash)
+            (root_node, Some(root_hash))
         }
     }
 
     /// A wrapper around `merge_finish` for callers who don't need the parent
     /// nodes.
-    pub fn finish(&mut self) -> Hash {
+    pub fn finish(&mut self, finalization: Finalization) -> Hash {
         loop {
-            match self.merge_finish() {
-                FinishResult::Parent(_) => {}
-                FinishResult::Root(_, hash) => return hash,
+            if let (_, Some(root_hash)) = self.merge_finish(finalization) {
+                return root_hash;
             }
         }
     }
 }
 
-pub enum FinishResult {
-    Parent(ParentNode),
-    Root(ParentNode, Hash),
-}
-
+/// A `std::io::Writer` interface to the incremental hasher. Most callers that can't use the
+/// all-at-once `hash` function should use this interface.
 pub struct Writer {
     chunk: blake2b::State,
     chunk_len: usize,
-    first_chunk: bool,
+    total_len: u64,
     state: State,
 }
 
@@ -226,19 +246,21 @@ impl Writer {
         Self {
             chunk: blake2b::State::new(HASH_SIZE),
             chunk_len: 0,
-            first_chunk: true,
+            total_len: 0,
             state: State::new(),
         }
     }
 
+    /// After feeding all the input bytes to `write`, return the root hash. The writer cannot be
+    /// used after this.
     pub fn finish(&mut self) -> Hash {
-        if self.first_chunk {
-            let finalization = Root(self.chunk_len as u64);
+        let finalization = Root(self.total_len);
+        if self.total_len <= CHUNK_SIZE as u64 {
             return finalize_hash(&mut self.chunk, finalization);
         }
         let last_chunk_hash = finalize_hash(&mut self.chunk, NotRoot);
-        self.state.push_chunk(last_chunk_hash, self.chunk_len);
-        self.state.finish()
+        self.state.push_subtree(last_chunk_hash);
+        self.state.finish(finalization)
     }
 }
 
@@ -248,16 +270,16 @@ impl io::Write for Writer {
         while !input.is_empty() {
             if self.chunk_len == CHUNK_SIZE {
                 let chunk_hash = finalize_hash(&mut self.chunk, NotRoot);
-                self.state.push_chunk(chunk_hash, CHUNK_SIZE);
+                self.state.push_subtree(chunk_hash);
                 self.chunk = blake2b::State::new(HASH_SIZE);
                 self.chunk_len = 0;
-                self.first_chunk = false;
             }
 
             let want = CHUNK_SIZE - self.chunk_len;
             let take = cmp::min(want, input.len());
             self.chunk.update(&input[..take]);
             self.chunk_len += take;
+            self.total_len += take as u64;
             input = &input[take..];
         }
         Ok(input_len)
@@ -360,17 +382,18 @@ mod test {
     }
 
     fn drive_state(input: &[u8]) -> Hash {
+        let finalization = Root(input.len() as u64);
         if input.len() <= CHUNK_SIZE {
-            return hash_chunk(input, Root(input.len() as u64));
+            return hash_chunk(input, finalization);
         }
         let mut state = State::new();
         let chunk_hashes = input
             .chunks(CHUNK_SIZE)
-            .map(|chunk| (hash_chunk(chunk, NotRoot), chunk.len()));
-        for (chunk_hash, len) in chunk_hashes {
-            state.push_chunk(chunk_hash, len);
+            .map(|chunk| hash_chunk(chunk, NotRoot));
+        for chunk_hash in chunk_hashes {
+            state.push_subtree(chunk_hash);
         }
-        state.finish()
+        state.finish(finalization)
     }
 
     #[test]
