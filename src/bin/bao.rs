@@ -3,12 +3,15 @@ extern crate arrayref;
 extern crate bao;
 extern crate docopt;
 extern crate hex;
+extern crate libc;
 #[macro_use]
 extern crate serde_derive;
+extern crate memmap;
 
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::prelude::*;
+use std::mem::ManuallyDrop;
 
 fn encode(args: &Args) -> io::Result<()> {
     let stdin = io::stdin();
@@ -67,12 +70,26 @@ fn decode(args: &Args) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+fn try_mmap_stdin() -> io::Result<memmap::Mmap> {
+    use std::os::unix::prelude::*;
+    unsafe {
+        let dummy_file = ManuallyDrop::new(File::from_raw_fd(libc::STDIN_FILENO));
+        memmap::Mmap::map(&dummy_file)
+    }
+}
+
 fn hash(_args: &Args) -> io::Result<()> {
-    let stdin = io::stdin();
-    let mut stdin_lock = stdin.lock();
-    let mut writer = bao::hash::Writer::new();
-    io::copy(&mut stdin_lock, &mut writer)?;
-    let hash = writer.finish();
+    let hash = match try_mmap_stdin() {
+        Ok(mmap) => bao::hash::hash_parallel(&mmap),
+        Err(_) => {
+            let stdin = io::stdin();
+            let mut stdin_lock = stdin.lock();
+            let mut writer = bao::hash::Writer::new();
+            io::copy(&mut stdin_lock, &mut writer)?;
+            writer.finish()
+        }
+    };
     println!("{}", hex::encode(hash));
     Ok(())
 }
