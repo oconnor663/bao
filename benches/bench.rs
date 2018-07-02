@@ -4,15 +4,24 @@ extern crate bao;
 extern crate blake2_c;
 extern crate test;
 
+use std::io::prelude::*;
 use test::Bencher;
 
 const SHORT: &[u8] = b"hello world";
+const MEDIUM: &[u8] = &[0; 4096 * 3];
 const LONG: &[u8] = &[0; 1_000_000];
 
 #[bench]
 fn bench_blake2b_short(b: &mut Bencher) {
     b.iter(|| {
         blake2_c::blake2b_256(SHORT);
+    });
+}
+
+#[bench]
+fn bench_blake2b_medium(b: &mut Bencher) {
+    b.iter(|| {
+        blake2_c::blake2b_256(MEDIUM);
     });
 }
 
@@ -31,6 +40,13 @@ fn bench_bao_hash_short(b: &mut Bencher) {
 }
 
 #[bench]
+fn bench_bao_hash_medium(b: &mut Bencher) {
+    b.iter(|| {
+        bao::hash::hash(MEDIUM);
+    });
+}
+
+#[bench]
 fn bench_bao_hash_long(b: &mut Bencher) {
     b.iter(|| {
         bao::hash::hash(LONG);
@@ -45,6 +61,13 @@ fn bench_bao_hash_parallel_short(b: &mut Bencher) {
 }
 
 #[bench]
+fn bench_bao_hash_parallel_medium(b: &mut Bencher) {
+    b.iter(|| {
+        bao::hash::hash_parallel(MEDIUM);
+    });
+}
+
+#[bench]
 fn bench_bao_hash_parallel_long(b: &mut Bencher) {
     b.iter(|| {
         bao::hash::hash_parallel(LONG);
@@ -52,73 +75,28 @@ fn bench_bao_hash_parallel_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_state_short(b: &mut Bencher) {
+fn bench_bao_hash_writer_short(b: &mut Bencher) {
     b.iter(|| {
-        let mut state = bao::hash::State::new();
-        state.update(SHORT);
-        state.finalize();
+        let mut writer = bao::hash::Writer::new();
+        writer.write_all(SHORT).unwrap();
+        writer.finish();
     });
 }
 
 #[bench]
-fn bench_bao_hash_state_long(b: &mut Bencher) {
+fn bench_bao_hash_writer_medium(b: &mut Bencher) {
     b.iter(|| {
-        let mut state = bao::hash::State::new();
-        state.update(LONG);
-        state.finalize();
+        let mut writer = bao::hash::Writer::new();
+        writer.write_all(MEDIUM).unwrap();
+        writer.finish();
     });
 }
 
 #[bench]
-fn bench_bao_hash_state_parallel_short(b: &mut Bencher) {
+fn bench_bao_hash_writer_long(b: &mut Bencher) {
     b.iter(|| {
-        let mut state = bao::hash::StateParallel::new();
-        state.update(SHORT);
-        state.finalize();
-    });
-}
-
-#[bench]
-fn bench_bao_hash_state_parallel_long(b: &mut Bencher) {
-    b.iter(|| {
-        let mut state = bao::hash::StateParallel::new();
-        state.update(LONG);
-        state.finalize();
-    });
-}
-
-#[bench]
-fn bench_bao_hash_state_runner_single_short(b: &mut Bencher) {
-    b.iter(|| {
-        let mut state = bao::hash::SingleHasher::new();
-        state.feed(SHORT);
-        state.finish();
-    });
-}
-
-#[bench]
-fn bench_bao_hash_state_runner_single_long(b: &mut Bencher) {
-    b.iter(|| {
-        let mut state = bao::hash::SingleHasher::new();
-        state.feed(LONG);
-        state.finish();
-    });
-}
-
-#[bench]
-fn bench_bao_hash_state_runner_multi_short(b: &mut Bencher) {
-    b.iter(|| {
-        let mut state = bao::hash::MultiHasher::new();
-        state.feed(SHORT);
-        state.finish();
-    });
-}
-
-#[bench]
-fn bench_bao_hash_state_runner_multi_long(b: &mut Bencher) {
-    b.iter(|| {
-        let mut state = bao::hash::MultiHasher::new();
-        state.feed(LONG);
-        state.finish();
+        let mut writer = bao::hash::Writer::new();
+        writer.write_all(LONG).unwrap();
+        writer.finish();
     });
 }

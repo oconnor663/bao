@@ -99,10 +99,8 @@ pub fn hash(input: &[u8]) -> Hash {
 }
 
 pub(crate) fn hash_recurse_parallel(input: &[u8], finalization: Finalization) -> Hash {
-    // By my measurements on an i5-4590, the overhead of parallel hashing
-    // doesn't pay for itself until you have more than two chunks.
-    if input.len() <= 2 * CHUNK_SIZE {
-        return hash_recurse(input, finalization);
+    if input.len() <= CHUNK_SIZE {
+        return hash_chunk(input, finalization);
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
     let (left_hash, right_hash) = rayon::join(
