@@ -5,21 +5,8 @@ use std::cmp;
 use std::ops::Deref;
 
 /// Encode a given input all at once in memory.
-pub fn encode(mut input: &[u8]) -> (Hash, Vec<u8>) {
-    let mut output = Vec::new();
-    let mut post_encoder = PostOrderEncoder::new();
-    while !input.is_empty() {
-        let (used, out) = post_encoder.feed(input);
-        output.extend_from_slice(out);
-        input = &input[used..];
-    }
-    let hash = loop {
-        let (maybe_hash, out) = post_encoder.finish();
-        output.extend_from_slice(out);
-        if let Some(hash) = maybe_hash {
-            break hash;
-        }
-    };
+pub fn encode(input: &[u8]) -> (Hash, Vec<u8>) {
+    let (mut output, hash) = encode_post_order(input);
     let mut flipper = PostToPreFlipper::new();
     let mut read_cursor = output.len();
     let mut write_cursor = output.len();
@@ -31,6 +18,41 @@ pub fn encode(mut input: &[u8]) -> (Hash, Vec<u8>) {
         write_cursor -= out.len();
     }
     (hash, output)
+}
+
+fn encode_post_order(mut input: &[u8]) -> (Vec<u8>, Hash) {
+    let encoded_len = hash::encode_len(input.len() as u64);
+    let finalization = Root(input.len() as u64);
+    let mut ret = Vec::new();
+    let root_hash;
+    if input.len() <= CHUNK_SIZE {
+        ret.extend_from_slice(input);
+        root_hash = hash::hash_chunk(input, finalization);
+    } else {
+        let mut state = hash::State::new();
+        while input.len() > CHUNK_SIZE {
+            ret.extend_from_slice(&input[..CHUNK_SIZE]);
+            let chunk_hash = hash::hash_chunk(&input[..CHUNK_SIZE], NotRoot);
+            state.push_subtree(chunk_hash);
+            while let Some(parent) = state.merge_parent() {
+                ret.extend_from_slice(&parent);
+            }
+            input = &input[CHUNK_SIZE..];
+        }
+        ret.extend_from_slice(&input);
+        let final_chunk_hash = hash::hash_chunk(input, NotRoot);
+        state.push_subtree(final_chunk_hash);
+        loop {
+            let (parent, maybe_root) = state.merge_finish(finalization);
+            ret.extend_from_slice(&parent);
+            if let Some(root) = maybe_root {
+                root_hash = root;
+                break;
+            }
+        }
+    }
+    ret.extend_from_slice(&encoded_len);
+    (ret, root_hash)
 }
 
 pub struct PostOrderEncoder {
