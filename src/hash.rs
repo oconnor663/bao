@@ -125,11 +125,12 @@ pub fn hash_parallel(input: &[u8]) -> Hash {
 /// in parallel. Callers that need `ParentNode` bytes for building the encoded tree, can use the
 /// optional `merge_parent` and `merge_finish` interfaces.
 ///
-/// This struct contains a relatively large buffer for holding tree state, 2 KB on the stack. This
-/// is enough space for the largest possible input, `2^64 - 1` 4-kilobyte chunks or about 75
-/// zettabytes. That's impractically large for anything that could be hashed in the real world, and
-/// implementations that are starved for stack space could cut that buffer in half and still be
-/// able to hash about 17 terabytes.
+/// This struct contains a relatively large buffer on the stack for holding partial subtree hashes:
+/// 64 hashes at 32 bytes apiece, 2048 bytes in total. This is enough state space for the largest
+/// possible input, `2^64 - 1` bytes or about 18 exabytes. That's impractically large for anything
+/// that could be hashed in the real world, and implementations that are starved for stack space
+/// could cut that buffer in half and still be able to hash about 17 terabytes (`2^32` times the
+/// 4096-byte chunk size).
 pub struct State {
     subtrees: ArrayVec<[Hash; MAX_DEPTH]>,
     subtree_count: u64,
