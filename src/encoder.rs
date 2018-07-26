@@ -55,6 +55,54 @@ fn encode_post_order(mut input: &[u8]) -> (Vec<u8>, Hash) {
     (ret, root_hash)
 }
 
+/// Prior to the final chunk, to calculate the number of post-order parent nodes for a chunk, we
+/// need to know the height of the subtree for which the chunk is the rightmost. This is the same as
+/// the number of trailing ones in the chunk index (counting from 0). For example, chunk number 11
+/// (0b1011) has two trailing parent nodes.
+///
+/// Note that this is closely related to the trick we're using in hash::State::needs_merge. The
+/// number of trailing zeroes at a given index is the same as the number of ones that switched off
+/// when we moved rightward from the previous index.
+fn post_order_parent_nodes_nonfinal(chunk: u64) -> usize {
+    (!chunk).trailing_zeros() as usize
+}
+
+/// The final chunk of a post order tree has to have a parent node for each of the not yet merged
+/// subtrees behind it. This is the same as the total number of ones in the chunk index (counting
+/// from 0).
+fn post_order_parent_nodes_final(chunk: u64) -> usize {
+    chunk.count_ones() as usize
+}
+
+/// In pre-order there are a couple considerations for counting the number of parent nodes:
+///
+/// - The number of parents for the first chunk in a tree, is equal to the bit length of the index
+///   of the final chunk (counting from 0). For example, a tree of 16 chunks (final chunk index 15
+///   or 0b1111) has 4 leading parent nodes, while a tree of 17 chunks has 5.
+/// - In the interior of the tree -- ignoring the chunks near the end for a moment -- the number of
+///   parent nodes is the height of the tree for which the given chunk is the leftmost. This is
+///   equal to the number of trailing zeros in the chunk index. This ends up being similar to the
+///   post_order_parent_nodes_nonfinal calculation above, except offset by one.
+///
+/// Unlike the post-order logic above, where all the subtrees we're looking at before the final
+/// chunk are complete, the pre-order case has to account for partial subtrees. For example, chunk 4
+/// would normally (in any tree of 8 or more chunks) be the start of a subtree of size 4 and height
+/// 2. However, if the tree has a total of 7 chunks, then the subtree starting at chunk 4 is only of
+/// size 3. And if the tree has a total of 5 chunks, then chunk 4 is the final chunk and the only
+/// chunk in its subtree.
+///
+/// To account for this, for every chunk after the first, we take the minimum of both rules, with
+/// respect to the number of chunks *remaining*. For example, in the 7 chunk tree, chunk 4 starts a
+/// subtree of the 3 remaining chunks. That means it still has 2 parent nodes, because a 3 chunk
+/// tree is still of height 2. But in the 5 chunk tree, chunk 4 has no parent nodes at all, because
+/// a 1 chunk tree is of height 0.
+fn pre_order_parent_nodes(chunk: u64, total_chunks: u64) -> usize {
+    let remaining = total_chunks - chunk;
+    let starting_bound = 64 - (remaining - 1).leading_zeros();
+    let interior_bound = chunk.trailing_zeros();
+    cmp::min(starting_bound, interior_bound) as usize
+}
+
 pub struct PostOrderEncoder {
     subtree_stack: Vec<Hash>,
     total_len: u64,
@@ -390,6 +438,64 @@ mod test {
             let (_, python_encoded) = python_encode(&input);
             let (_, encoded) = encode(&input);
             assert_eq!(python_encoded, encoded, "encoded mismatch");
+        }
+    }
+
+    // This is another way to calculate the number of parent nodes, which takes longer but is less
+    // magical. We use it for testing below.
+    fn make_pre_post_list(total_chunks: u64) -> Vec<(usize, usize)> {
+        fn recurse(start: u64, size: u64, answers: &mut Vec<(usize, usize)>) {
+            assert!(size > 0);
+            if size == 1 {
+                return;
+            }
+            answers[start as usize].0 += 1;
+            answers[(start + size - 1) as usize].1 += 1;
+            let split = hash::largest_power_of_two(size - 1);
+            recurse(start, split, answers);
+            recurse(start + split, size - split, answers);
+        }
+        let mut answers = vec![(0, 0); total_chunks as usize];
+        recurse(0, total_chunks, &mut answers);
+        answers
+    }
+
+    // Sanity check the helper above.
+    #[test]
+    fn test_make_pre_post_list() {
+        assert_eq!(make_pre_post_list(1), vec![(0, 0)]);
+        assert_eq!(make_pre_post_list(2), vec![(1, 0), (0, 1)]);
+        assert_eq!(make_pre_post_list(3), vec![(2, 0), (0, 1), (0, 1)]);
+        assert_eq!(make_pre_post_list(4), vec![(2, 0), (0, 1), (1, 0), (0, 2)]);
+        assert_eq!(
+            make_pre_post_list(5),
+            vec![(3, 0), (0, 1), (1, 0), (0, 2), (0, 1)]
+        );
+    }
+
+    #[test]
+    fn test_parent_nodes() {
+        for total_chunks in 1..100 {
+            let pre_post_list = make_pre_post_list(total_chunks);
+            for chunk in 0..total_chunks {
+                let (expected_pre, expected_post) = pre_post_list[chunk as usize];
+                let pre = pre_order_parent_nodes(chunk, total_chunks);
+                let post = if chunk < total_chunks - 1 {
+                    post_order_parent_nodes_nonfinal(chunk)
+                } else {
+                    post_order_parent_nodes_final(chunk)
+                };
+                assert_eq!(
+                    expected_pre, pre,
+                    "incorrect pre-order parent nodes for chunk {} of total {}",
+                    chunk, total_chunks
+                );
+                assert_eq!(
+                    expected_post, post,
+                    "incorrect post-order parent nodes for chunk {} of total {}",
+                    chunk, total_chunks
+                );
+            }
         }
     }
 

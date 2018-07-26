@@ -66,7 +66,7 @@ pub(crate) fn hash_parent(left_hash: &Hash, right_hash: &Hash, finalization: Fin
 
 // Find the largest power of two that's less than or equal to `n`. We use this
 // for computing subtree sizes below.
-fn largest_power_of_two(n: u64) -> u64 {
+pub(crate) fn largest_power_of_two(n: u64) -> u64 {
     debug_assert!(n != 0);
     1 << (63 - n.leading_zeros())
 }
