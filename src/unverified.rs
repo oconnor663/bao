@@ -1,7 +1,7 @@
 extern crate constant_time_eq;
 
 use self::constant_time_eq::constant_time_eq;
-use decoder::{Error, Result};
+use decode::{Error, Result};
 use hash::{self, Hash};
 
 fn verify(input: &[u8], hash: &Hash) -> Result<()> {

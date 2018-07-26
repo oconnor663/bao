@@ -2,7 +2,7 @@ use std::cmp::min;
 use std::io;
 use std::io::prelude::*;
 
-use decoder::Decoder;
+use decode::Decoder;
 use hash::Hash;
 
 /// Note that `Reader` works even if the underlying type doesn't implement

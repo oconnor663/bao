@@ -491,7 +491,7 @@ fn checked_mul(a: u64, b: u64) -> Result<u64> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use encoder::encode;
+    use encode::encode;
 
     #[test]
     fn test_tree_height() {

@@ -13,8 +13,8 @@ extern crate duct;
 #[cfg(test)]
 extern crate hex;
 
-pub mod decoder;
-pub mod encoder;
+pub mod decode;
+pub mod encode;
 pub mod hash;
 pub mod io;
 mod unverified;

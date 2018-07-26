@@ -18,13 +18,13 @@ fn encode(args: &Args) -> io::Result<()> {
     if args.flag_memory {
         let mut output = io::Cursor::new(Vec::<u8>::new());
         {
-            let mut writer = bao::encoder::Writer::new(&mut output);
+            let mut writer = bao::encode::Writer::new(&mut output);
             io::copy(&mut stdin.lock(), &mut writer)?;
             writer.finish()?;
         }
         io::stdout().write_all(output.get_ref())?;
     } else {
-        let mut writer = bao::encoder::Writer::new(OpenOptions::new()
+        let mut writer = bao::encode::Writer::new(OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
