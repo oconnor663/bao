@@ -1,23 +1,53 @@
+use arrayvec::ArrayVec;
 use blake2_c::blake2b;
 use hash::Finalization::{NotRoot, Root};
-use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
+use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 use std::cmp;
 use std::ops::Deref;
 
 /// Encode a given input all at once in memory.
 pub fn encode(input: &[u8]) -> (Hash, Vec<u8>) {
     let (mut output, hash) = encode_post_order(input);
-    let mut flipper = PostToPreFlipper::new();
-    let mut read_cursor = output.len();
-    let mut write_cursor = output.len();
-    while read_cursor > 0 {
-        let (used, out) = flipper.feed_back(&output[..read_cursor]);
-        read_cursor -= used;
-        debug_assert!(write_cursor - out.len() >= read_cursor, "wrote over input");
-        output[write_cursor - out.len()..write_cursor].copy_from_slice(out);
-        write_cursor -= out.len();
-    }
+    flip_in_place(&mut output);
     (hash, output)
+}
+
+/// Encode a given input all at once in memory.
+pub fn flip_in_place(encoded: &mut [u8]) {
+    let header = *array_ref!(encoded, encoded.len() - HEADER_SIZE, HEADER_SIZE);
+    let input_len = hash::decode_len(&header) as usize;
+    let total_chunks;
+    let mut chunk_len;
+    if input_len == 0 || input_len % CHUNK_SIZE != 0 {
+        total_chunks = (input_len / CHUNK_SIZE) + 1;
+        chunk_len = input_len % CHUNK_SIZE;
+    } else {
+        total_chunks = input_len / CHUNK_SIZE;
+        chunk_len = CHUNK_SIZE;
+    }
+    let mut flipper = FlipperState::new(total_chunks as u64);
+    let mut read_cursor = encoded.len() - HEADER_SIZE;
+    let mut write_cursor = encoded.len();
+    let mut chunk = [0; CHUNK_SIZE];
+    while read_cursor > 0 {
+        while flipper.needs_parent() {
+            let parent = *array_ref!(encoded, read_cursor - PARENT_SIZE, PARENT_SIZE);
+            flipper.feed_parent(parent);
+            read_cursor -= PARENT_SIZE;
+        }
+        chunk[..chunk_len].copy_from_slice(&encoded[read_cursor - chunk_len..read_cursor]);
+        read_cursor -= chunk_len;
+        encoded[write_cursor - chunk_len..write_cursor].copy_from_slice(&chunk[..chunk_len]);
+        write_cursor -= chunk_len;
+        chunk_len = CHUNK_SIZE;
+        while let Some(parent) = flipper.take_parent() {
+            encoded[write_cursor - PARENT_SIZE..write_cursor].copy_from_slice(&parent);
+            write_cursor -= PARENT_SIZE;
+        }
+    }
+    debug_assert_eq!(0, read_cursor);
+    debug_assert_eq!(HEADER_SIZE, write_cursor);
+    *array_mut_ref!(encoded, 0, HEADER_SIZE) = header;
 }
 
 fn encode_post_order(mut input: &[u8]) -> (Vec<u8>, Hash) {
@@ -101,6 +131,53 @@ fn pre_order_parent_nodes(chunk: u64, total_chunks: u64) -> usize {
     let starting_bound = 64 - (remaining - 1).leading_zeros();
     let interior_bound = chunk.trailing_zeros();
     cmp::min(starting_bound, interior_bound) as usize
+}
+
+pub struct FlipperState {
+    parents: ArrayVec<[hash::ParentNode; MAX_DEPTH]>,
+    total_chunks: u64,
+    chunk: u64,
+    parents_needed: usize,
+    parents_available: usize,
+}
+
+impl FlipperState {
+    pub fn new(total_chunks: u64) -> Self {
+        let final_chunk = total_chunks - 1;
+        Self {
+            parents: ArrayVec::new(),
+            total_chunks: total_chunks,
+            chunk: final_chunk,
+            parents_needed: post_order_parent_nodes_final(final_chunk),
+            parents_available: pre_order_parent_nodes(final_chunk, total_chunks),
+        }
+    }
+
+    pub fn needs_parent(&self) -> bool {
+        self.parents_needed > 0
+    }
+
+    pub fn feed_parent(&mut self, parent: hash::ParentNode) {
+        assert!(self.needs_parent(), "unexpected feed_parent()");
+        self.parents.push(parent);
+        self.parents_needed -= 1;
+    }
+
+    pub fn take_parent(&mut self) -> Option<hash::ParentNode> {
+        assert!(!self.needs_parent(), "unexpected take_parent()");
+        if self.parents_available > 0 {
+            self.parents_available -= 1;
+            Some(self.parents.pop().expect("unexpectedly empty parents list"))
+        } else {
+            // Move to the previous chunk, unless we're at chunk 0.
+            if self.chunk > 0 {
+                self.chunk -= 1;
+                self.parents_needed = post_order_parent_nodes_nonfinal(self.chunk);
+                self.parents_available = pre_order_parent_nodes(self.chunk, self.total_chunks);
+            }
+            None
+        }
+    }
 }
 
 pub struct PostOrderEncoder {
