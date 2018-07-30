@@ -29,38 +29,44 @@ pub fn encode(input: &[u8]) -> (Hash, Vec<u8>) {
 fn encode_post_order(mut input: &[u8]) -> (Vec<u8>, Hash) {
     let encoded_len = hash::encode_len(input.len() as u64);
     let finalization = Root(input.len() as u64);
-    // Overflow should be practically impossible here, and also passing a small value to
-    // with_capacity only results in a performance penalty.
+    // Overflow should be practically impossible in this u128->usize cast, and also passing a small
+    // value to with_capacity only results in a performance penalty.
     let mut ret = Vec::with_capacity(encoded_size(input.len() as u64) as usize);
-    let root_hash;
+    // For short inputs, we assemble the encoding directly.
     if input.len() <= CHUNK_SIZE {
         ret.extend_from_slice(input);
-        root_hash = hash::hash_chunk(input, finalization);
-    } else {
-        let mut state = hash::State::new();
-        while input.len() > CHUNK_SIZE {
-            ret.extend_from_slice(&input[..CHUNK_SIZE]);
-            let chunk_hash = hash::hash_chunk(&input[..CHUNK_SIZE], NotRoot);
-            state.push_subtree(chunk_hash);
+        ret.extend_from_slice(&encoded_len);
+        return (ret, hash::hash_chunk(input, finalization));
+    }
+    // For longer inputs, we create a State object and loop over it.
+    let mut state = hash::State::new();
+    loop {
+        // For each chunk of input, both append it to the encoded output, and push its hash into the
+        // State object.
+        let current_chunk_size = cmp::min(CHUNK_SIZE, input.len());
+        ret.extend_from_slice(&input[..current_chunk_size]);
+        let chunk_hash = hash::hash_chunk(&input[..current_chunk_size], NotRoot);
+        state.push_subtree(chunk_hash);
+        input = &input[current_chunk_size..];
+        if !input.is_empty() {
+            // After each chunk, lay out any post-order parent nodes.
             while let Some(parent) = state.merge_parent() {
                 ret.extend_from_slice(&parent);
             }
-            input = &input[CHUNK_SIZE..];
-        }
-        ret.extend_from_slice(&input);
-        let final_chunk_hash = hash::hash_chunk(input, NotRoot);
-        state.push_subtree(final_chunk_hash);
-        loop {
-            let (parent, maybe_root) = state.merge_finish(finalization);
-            ret.extend_from_slice(&parent);
-            if let Some(root) = maybe_root {
-                root_hash = root;
-                break;
+        } else {
+            // After the final chunk, again lay out post-order parent nodes. Calling merge_finish
+            // instead of merge_parent here informs the state that it should roll up any remaining
+            // partial subtrees, because there's no more input.
+            loop {
+                let (parent, maybe_root) = state.merge_finish(finalization);
+                ret.extend_from_slice(&parent);
+                if let Some(root) = maybe_root {
+                    ret.extend_from_slice(&encoded_len);
+                    return (ret, root);
+                }
             }
         }
     }
-    ret.extend_from_slice(&encoded_len);
-    (ret, root_hash)
 }
 
 fn flip_in_place(encoded: &mut [u8]) {
@@ -69,7 +75,6 @@ fn flip_in_place(encoded: &mut [u8]) {
     let mut flipper = FlipperState::new(content_len);
     let mut read_cursor = encoded.len() - HEADER_SIZE;
     let mut write_cursor = encoded.len();
-    let mut chunk = [0; CHUNK_SIZE];
     loop {
         match flipper.next() {
             FlipperNext::FeedParent => {
@@ -83,6 +88,7 @@ fn flip_in_place(encoded: &mut [u8]) {
                 write_cursor -= PARENT_SIZE;
             }
             FlipperNext::Chunk(size) => {
+                let mut chunk = [0; CHUNK_SIZE];
                 chunk[..size].copy_from_slice(&encoded[read_cursor - size..read_cursor]);
                 read_cursor -= size;
                 encoded[write_cursor - size..write_cursor].copy_from_slice(&chunk[..size]);
@@ -278,7 +284,6 @@ impl<T: Read + Write + Seek> Writer<T> {
         let mut flipper = FlipperState::new(self.total_len);
         let mut write_cursor = self.inner.seek(Current(0))?;
         let mut read_cursor = write_cursor - HEADER_SIZE as u64;
-        let mut chunk = [0; CHUNK_SIZE];
         loop {
             match flipper.next() {
                 FlipperNext::FeedParent => {
@@ -295,6 +300,7 @@ impl<T: Read + Write + Seek> Writer<T> {
                     write_cursor -= PARENT_SIZE as u64;
                 }
                 FlipperNext::Chunk(size) => {
+                    let mut chunk = [0; CHUNK_SIZE];
                     self.inner.seek(Start(read_cursor - size as u64))?;
                     self.inner.read_exact(&mut chunk[..size])?;
                     read_cursor -= size as u64;
