@@ -97,7 +97,7 @@ fn flip_in_place(encoded: &mut [u8]) {
             }
             FlipperNeeds::Done => {
                 debug_assert_eq!(HEADER_SIZE, write_cursor);
-                *array_mut_ref!(encoded, 0, HEADER_SIZE) = header;
+                encoded[..HEADER_SIZE].copy_from_slice(&header);
                 return;
             }
         }
@@ -336,20 +336,15 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use hex;
 
-    fn python_encode(input: &[u8]) -> (Hash, Vec<u8>) {
-        let hex_hash = cmd!("python3", "./python/bao.py", "hash")
-            .input(input)
-            .read()
-            .expect("is python3 installed?");
-        let hash = hex::decode(&hex_hash).expect("bad hex?");
-        let output = cmd!("python3", "./python/bao.py", "encode")
-            .input(input)
-            .stdout_capture()
-            .run()
-            .unwrap();
-        (*array_ref!(hash, 0, hash::HASH_SIZE), output.stdout)
+    #[test]
+    fn test_encoded_size() {
+        for &case in hash::TEST_CASES {
+            let input = vec![0; case];
+            let (_, encoded) = encode(&input);
+            assert_eq!(encoded.len() as u128, encoded_size(case as u64));
+            assert_eq!(encoded.len(), encoded.capacity());
+        }
     }
 
     #[test]
@@ -368,13 +363,13 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("starting case {}", case);
             let input = vec![9; case];
-            let (_, python_encoded) = python_encode(&input);
             let (_, encoded) = encode(&input);
-            assert_eq!(python_encoded, encoded, "encoded mismatch");
-
-            // While we're at it, test encoded_size().
-            assert_eq!(python_encoded.len() as u128, encoded_size(case as u64));
-            assert_eq!(encoded.len(), encoded.capacity());
+            let output = cmd!("python3", "./python/bao.py", "encode")
+                .input(input)
+                .stdout_capture()
+                .run()
+                .unwrap();
+            assert_eq!(output.stdout, encoded, "encoded mismatch");
         }
     }
 
