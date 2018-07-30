@@ -7,6 +7,18 @@ use std::io;
 use std::io::prelude::*;
 use std::io::SeekFrom::{Current, Start};
 
+pub fn encoded_size(input_len: u64) -> u128 {
+    encoded_subtree_size(input_len) + HEADER_SIZE as u128
+}
+
+pub(crate) fn encoded_subtree_size(input_len: u64) -> u128 {
+    // The number of parent nodes is always the number of chunks minus one. To see why this is true,
+    // start with a single chunk and incrementally add chunks to the tree. Each new chunk always
+    // brings one parent node along with it.
+    let num_parents = count_chunks(input_len) - 1;
+    input_len as u128 + (num_parents as u128 * PARENT_SIZE as u128)
+}
+
 /// Encode a given input all at once in memory.
 pub fn encode(input: &[u8]) -> (Hash, Vec<u8>) {
     let (mut output, hash) = encode_post_order(input);
@@ -17,7 +29,9 @@ pub fn encode(input: &[u8]) -> (Hash, Vec<u8>) {
 fn encode_post_order(mut input: &[u8]) -> (Vec<u8>, Hash) {
     let encoded_len = hash::encode_len(input.len() as u64);
     let finalization = Root(input.len() as u64);
-    let mut ret = Vec::new();
+    // Overflow should be practically impossible here, and also passing a small value to
+    // with_capacity only results in a performance penalty.
+    let mut ret = Vec::with_capacity(encoded_size(input.len() as u64) as usize);
     let root_hash;
     if input.len() <= CHUNK_SIZE {
         ret.extend_from_slice(input);
@@ -328,6 +342,10 @@ mod test {
             let (_, python_encoded) = python_encode(&input);
             let (_, encoded) = encode(&input);
             assert_eq!(python_encoded, encoded, "encoded mismatch");
+
+            // While we're at it, test encoded_size().
+            assert_eq!(python_encoded.len() as u128, encoded_size(case as u64));
+            assert_eq!(encoded.len(), encoded.capacity());
         }
     }
 
