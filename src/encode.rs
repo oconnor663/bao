@@ -73,36 +73,35 @@ fn count_chunks(total_len: u64) -> u64 {
 
 fn flip_in_place(encoded: &mut [u8]) {
     let header = *array_ref!(encoded, encoded.len() - HEADER_SIZE, HEADER_SIZE);
-    let input_len = hash::decode_len(&header) as usize;
-    let total_chunks = count_chunks(input_len as u64);
-    let mut chunk_len;
-    if input_len == 0 || input_len % CHUNK_SIZE != 0 {
-        chunk_len = input_len % CHUNK_SIZE;
-    } else {
-        chunk_len = CHUNK_SIZE;
-    }
-    let mut flipper = FlipperState::new(total_chunks as u64);
+    let input_len = hash::decode_len(&header);
+    let mut flipper = FlipperState::new(input_len);
     let mut read_cursor = encoded.len() - HEADER_SIZE;
     let mut write_cursor = encoded.len();
     let mut chunk = [0; CHUNK_SIZE];
-    while read_cursor > 0 {
-        while flipper.needs_parent() {
-            let parent = *array_ref!(encoded, read_cursor - PARENT_SIZE, PARENT_SIZE);
-            flipper.feed_parent(parent);
-            read_cursor -= PARENT_SIZE;
-        }
-        chunk[..chunk_len].copy_from_slice(&encoded[read_cursor - chunk_len..read_cursor]);
-        read_cursor -= chunk_len;
-        encoded[write_cursor - chunk_len..write_cursor].copy_from_slice(&chunk[..chunk_len]);
-        write_cursor -= chunk_len;
-        chunk_len = CHUNK_SIZE;
-        while let Some(parent) = flipper.take_parent() {
-            encoded[write_cursor - PARENT_SIZE..write_cursor].copy_from_slice(&parent);
-            write_cursor -= PARENT_SIZE;
+    loop {
+        match flipper.needs() {
+            FlipperNeeds::Parent => {
+                let parent = *array_ref!(encoded, read_cursor - PARENT_SIZE, PARENT_SIZE);
+                read_cursor -= PARENT_SIZE;
+                flipper.feed_parent(parent);
+            }
+            FlipperNeeds::Chunk(size) => {
+                chunk[..size].copy_from_slice(&encoded[read_cursor - size..read_cursor]);
+                read_cursor -= size;
+                encoded[write_cursor - size..write_cursor].copy_from_slice(&chunk[..size]);
+                write_cursor -= size;
+                while let Some(parent) = flipper.take_parent() {
+                    encoded[write_cursor - PARENT_SIZE..write_cursor].copy_from_slice(&parent);
+                    write_cursor -= PARENT_SIZE;
+                }
+            }
+            FlipperNeeds::Done => {
+                debug_assert_eq!(HEADER_SIZE, write_cursor);
+                *array_mut_ref!(encoded, 0, HEADER_SIZE) = header;
+                return;
+            }
         }
     }
-    debug_assert_eq!(HEADER_SIZE, write_cursor);
-    *array_mut_ref!(encoded, 0, HEADER_SIZE) = header;
 }
 
 /// Prior to the final chunk, to calculate the number of post-order parent nodes for a chunk, we
@@ -153,51 +152,77 @@ fn pre_order_parent_nodes(chunk: u64, total_chunks: u64) -> usize {
     cmp::min(starting_bound, interior_bound) as usize
 }
 
+#[derive(Clone)]
 pub struct FlipperState {
     parents: ArrayVec<[hash::ParentNode; MAX_DEPTH]>,
-    total_chunks: u64,
+    input_len: u64,
     chunk: u64,
     parents_needed: usize,
     parents_available: usize,
+    done: bool,
 }
 
 impl FlipperState {
-    pub fn new(total_chunks: u64) -> Self {
+    pub fn new(input_len: u64) -> Self {
+        let total_chunks = count_chunks(input_len);
         let final_chunk = total_chunks - 1;
         Self {
             parents: ArrayVec::new(),
-            total_chunks: total_chunks,
+            input_len,
             chunk: final_chunk,
             parents_needed: post_order_parent_nodes_final(final_chunk),
             parents_available: pre_order_parent_nodes(final_chunk, total_chunks),
+            done: false,
         }
     }
 
-    pub fn needs_parent(&self) -> bool {
-        self.parents_needed > 0
+    pub fn needs(&self) -> FlipperNeeds {
+        if self.parents_needed > 0 {
+            FlipperNeeds::Parent
+        } else if self.done {
+            FlipperNeeds::Done
+        } else {
+            let chunk_start = self.chunk * CHUNK_SIZE as u64;
+            if self.input_len - chunk_start > CHUNK_SIZE as u64 {
+                FlipperNeeds::Chunk(CHUNK_SIZE)
+            } else {
+                FlipperNeeds::Chunk((self.input_len - chunk_start) as usize)
+            }
+        }
     }
 
     pub fn feed_parent(&mut self, parent: hash::ParentNode) {
-        assert!(self.needs_parent(), "unexpected feed_parent()");
+        debug_assert!(self.parents_needed > 0, "unexpected feed_parent()");
+        debug_assert!(!self.done, "feed_parent() after done");
         self.parents.push(parent);
         self.parents_needed -= 1;
     }
 
     pub fn take_parent(&mut self) -> Option<hash::ParentNode> {
-        assert!(!self.needs_parent(), "unexpected take_parent()");
+        debug_assert!(self.parents_needed == 0, "unexpected take_parent()");
+        debug_assert!(!self.done, "take_parent() after done");
         if self.parents_available > 0 {
             self.parents_available -= 1;
             Some(self.parents.pop().expect("unexpectedly empty parents list"))
         } else {
-            // Move to the previous chunk, unless we're at chunk 0.
             if self.chunk > 0 {
                 self.chunk -= 1;
                 self.parents_needed = post_order_parent_nodes_nonfinal(self.chunk);
-                self.parents_available = pre_order_parent_nodes(self.chunk, self.total_chunks);
+                let total_chunks = count_chunks(self.input_len);
+                self.parents_available = pre_order_parent_nodes(self.chunk, total_chunks);
+            } else {
+                self.done = true;
             }
             None
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum FlipperNeeds {
+    Parent,
+    Chunk(usize),
+    Done,
 }
 
 /// Most callers should use this writer for incremental encoding. The writer makes no attempt to
@@ -242,36 +267,40 @@ impl<T: Read + Write + Seek> Writer<T> {
         self.inner.write_all(&hash::encode_len(self.total_len))?;
 
         // Then flip the tree to be pre-order.
-        let mut flipper = FlipperState::new(count_chunks(self.total_len));
+        let mut flipper = FlipperState::new(self.total_len);
         let mut write_cursor = self.inner.seek(Current(0))?;
         let mut read_cursor = write_cursor - HEADER_SIZE as u64;
         let mut chunk = [0; CHUNK_SIZE];
-        let mut chunk_len = self.chunk_len;
-        while read_cursor > 0 {
-            while flipper.needs_parent() {
-                let mut parent = [0; PARENT_SIZE];
-                self.inner.seek(Start(read_cursor - PARENT_SIZE as u64))?;
-                self.inner.read_exact(&mut parent)?;
-                read_cursor -= PARENT_SIZE as u64;
-                flipper.feed_parent(parent);
-            }
-            self.inner.seek(Start(read_cursor - chunk_len as u64))?;
-            self.inner.read_exact(&mut chunk[..chunk_len])?;
-            read_cursor -= chunk_len as u64;
-            self.inner.seek(Start(write_cursor - chunk_len as u64))?;
-            self.inner.write_all(&chunk[..chunk_len])?;
-            write_cursor -= chunk_len as u64;
-            chunk_len = CHUNK_SIZE;
-            while let Some(parent) = flipper.take_parent() {
-                self.inner.seek(Start(write_cursor - PARENT_SIZE as u64))?;
-                self.inner.write_all(&parent)?;
-                write_cursor -= PARENT_SIZE as u64;
+        loop {
+            match flipper.needs() {
+                FlipperNeeds::Parent => {
+                    let mut parent = [0; PARENT_SIZE];
+                    self.inner.seek(Start(read_cursor - PARENT_SIZE as u64))?;
+                    self.inner.read_exact(&mut parent)?;
+                    read_cursor -= PARENT_SIZE as u64;
+                    flipper.feed_parent(parent);
+                }
+                FlipperNeeds::Chunk(size) => {
+                    self.inner.seek(Start(read_cursor - size as u64))?;
+                    self.inner.read_exact(&mut chunk[..size])?;
+                    read_cursor -= size as u64;
+                    self.inner.seek(Start(write_cursor - size as u64))?;
+                    self.inner.write_all(&chunk[..size])?;
+                    write_cursor -= size as u64;
+                    while let Some(parent) = flipper.take_parent() {
+                        self.inner.seek(Start(write_cursor - PARENT_SIZE as u64))?;
+                        self.inner.write_all(&parent)?;
+                        write_cursor -= PARENT_SIZE as u64;
+                    }
+                }
+                FlipperNeeds::Done => {
+                    debug_assert_eq!(HEADER_SIZE as u64, write_cursor);
+                    self.inner.seek(Start(0))?;
+                    self.inner.write_all(&hash::encode_len(self.total_len))?;
+                    return Ok(root_hash);
+                }
             }
         }
-        debug_assert_eq!(HEADER_SIZE as u64, write_cursor);
-        self.inner.seek(Start(0))?;
-        self.inner.write_all(&hash::encode_len(self.total_len))?;
-        Ok(root_hash)
     }
 }
 
