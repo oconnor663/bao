@@ -50,14 +50,14 @@ pub(crate) fn finalize_hash(state: &mut blake2b::State, finalization: Finalizati
     *array_ref!(blake_digest.bytes, 0, HASH_SIZE)
 }
 
-pub(crate) fn hash_chunk(chunk: &[u8], finalization: Finalization) -> Hash {
+pub(crate) fn hash_node(chunk: &[u8], finalization: Finalization) -> Hash {
     debug_assert!(chunk.len() <= CHUNK_SIZE);
     let mut state = blake2b::State::new(HASH_SIZE);
     state.update(chunk);
     finalize_hash(&mut state, finalization)
 }
 
-pub(crate) fn hash_parent(left_hash: &Hash, right_hash: &Hash, finalization: Finalization) -> Hash {
+pub(crate) fn parent_hash(left_hash: &Hash, right_hash: &Hash, finalization: Finalization) -> Hash {
     let mut state = blake2b::State::new(HASH_SIZE);
     state.update(left_hash);
     state.update(right_hash);
@@ -82,7 +82,7 @@ pub(crate) fn left_len(content_len: u64) -> u64 {
 
 pub(crate) fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
-        return hash_chunk(input, finalization);
+        return hash_node(input, finalization);
     }
     // If we have more than one chunk of input, recursively hash the left and
     // right sides. The left_len() function determines the shape of the tree.
@@ -90,7 +90,7 @@ pub(crate) fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
     // Child nodes are never the root.
     let left_hash = hash_recurse(left, NotRoot);
     let right_hash = hash_recurse(right, NotRoot);
-    hash_parent(&left_hash, &right_hash, finalization)
+    parent_hash(&left_hash, &right_hash, finalization)
 }
 
 /// Hash a slice of input bytes all at once.
@@ -100,14 +100,14 @@ pub fn hash(input: &[u8]) -> Hash {
 
 pub(crate) fn hash_recurse_parallel(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
-        return hash_chunk(input, finalization);
+        return hash_node(input, finalization);
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
     let (left_hash, right_hash) = rayon::join(
         || hash_recurse_parallel(left, NotRoot),
         || hash_recurse_parallel(right, NotRoot),
     );
-    hash_parent(&left_hash, &right_hash, finalization)
+    parent_hash(&left_hash, &right_hash, finalization)
 }
 
 /// Hash a slice of input bytes all at once, using multiple threads via
@@ -150,7 +150,7 @@ impl State {
         let mut parent_node = [0; PARENT_SIZE];
         parent_node[..HASH_SIZE].copy_from_slice(&left_child);
         parent_node[HASH_SIZE..].copy_from_slice(&right_child);
-        let parent_hash = hash_parent(&left_child, &right_child, finalization);
+        let parent_hash = parent_hash(&left_child, &right_child, finalization);
         self.subtrees.push(parent_hash);
         parent_node
     }
@@ -383,12 +383,12 @@ mod test {
     fn drive_state(input: &[u8]) -> Hash {
         let finalization = Root(input.len() as u64);
         if input.len() <= CHUNK_SIZE {
-            return hash_chunk(input, finalization);
+            return hash_node(input, finalization);
         }
         let mut state = State::new();
         let chunk_hashes = input
             .chunks(CHUNK_SIZE)
-            .map(|chunk| hash_chunk(chunk, NotRoot));
+            .map(|chunk| hash_node(chunk, NotRoot));
         for chunk_hash in chunk_hashes {
             state.push_subtree(chunk_hash);
         }

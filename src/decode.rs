@@ -180,7 +180,7 @@ impl Decoder2 {
         if let Some(parent_bytes) = maybe_bytes {
             let left = array_ref!(parent_bytes, 0, HASH_SIZE);
             let right = array_ref!(parent_bytes, HASH_SIZE, HASH_SIZE);
-            let found_hash = hash::hash_parent(left, right, finalization);
+            let found_hash = hash::parent_hash(left, right, finalization);
             if !constant_time_eq(&found_hash, &self.hash) {
                 return Err(());
             }
@@ -202,7 +202,7 @@ impl Decoder2 {
         let chunk_len = std::cmp::min(CHUNK_SIZE as u64, remaining_len) as usize;
         let (used, maybe_bytes) = self.acc.accumulate(input, chunk_len);
         if let Some(bytes) = maybe_bytes {
-            let found_hash = hash::hash_chunk(bytes, finalization);
+            let found_hash = hash::hash_node(bytes, finalization);
             if !constant_time_eq(&found_hash, &self.hash) {
                 return Err(());
             }

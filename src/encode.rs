@@ -36,7 +36,7 @@ fn encode_post_order(mut input: &[u8]) -> (Vec<u8>, Hash) {
     if input.len() <= CHUNK_SIZE {
         ret.extend_from_slice(input);
         ret.extend_from_slice(&encoded_len);
-        return (ret, hash::hash_chunk(input, finalization));
+        return (ret, hash::hash_node(input, finalization));
     }
     // For longer inputs, we create a State object and loop over it.
     let mut state = hash::State::new();
@@ -45,7 +45,7 @@ fn encode_post_order(mut input: &[u8]) -> (Vec<u8>, Hash) {
         // State object.
         let current_chunk_size = cmp::min(CHUNK_SIZE, input.len());
         ret.extend_from_slice(&input[..current_chunk_size]);
-        let chunk_hash = hash::hash_chunk(&input[..current_chunk_size], NotRoot);
+        let chunk_hash = hash::hash_node(&input[..current_chunk_size], NotRoot);
         state.push_subtree(chunk_hash);
         input = &input[current_chunk_size..];
         if !input.is_empty() {
