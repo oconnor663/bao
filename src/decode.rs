@@ -4,9 +4,218 @@ use self::constant_time_eq::constant_time_eq;
 use arrayvec::ArrayVec;
 use unverified::Unverified;
 
+use encode;
 use hash::Finalization::{self, NotRoot, Root};
-use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
+use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
+
 use std;
+
+#[derive(Clone)]
+pub struct State2 {
+    stack: ArrayVec<[Subtree; MAX_DEPTH]>,
+    root_hash: Hash,
+    content_length: Option<u64>,
+    content_position: u64,
+    encoded_offset: u128,
+}
+
+impl State2 {
+    pub fn new(root_hash: Hash) -> Self {
+        Self {
+            stack: ArrayVec::new(),
+            root_hash,
+            content_length: None,
+            content_position: 0,
+            encoded_offset: 0,
+        }
+    }
+
+    fn position(&self) -> u64 {
+        self.content_position
+    }
+
+    fn len(&self) -> Option<u64> {
+        self.content_length
+    }
+
+    fn reset_to_root(&mut self) {
+        self.content_position = 0;
+        self.encoded_offset = HEADER_SIZE as u128;
+        self.stack.clear();
+        self.stack.push(Subtree {
+            hash: self.root_hash,
+            start: 0,
+            end: self.content_length.expect("no header"),
+        });
+    }
+
+    pub fn read_next(&self) -> StateNext {
+        if self.content_length.is_none() {
+            StateNext::Header
+        } else if let Some(subtree) = self.stack.last() {
+            subtree.state_next(self.content_position)
+        } else {
+            // XXX: This assumes that seeking past EOF will always verify the length. If seek didn't
+            // enforce that below, this could be a spurious EOF.
+            StateNext::Done
+        }
+    }
+
+    pub fn seek_next(&mut self, content_position: u64) -> (u128, StateNext) {
+        self.content_position = content_position;
+
+        // Get the current content length, or short circuit.
+        let content_length;
+        if let Some(length) = self.content_length {
+            content_length = length;
+        } else {
+            return (self.encoded_offset, StateNext::Header);
+        }
+
+        // If we're already past EOF, either reset or short circuit.
+        if self.stack.is_empty() {
+            if content_position >= content_length {
+                return (self.encoded_offset, StateNext::Done);
+            } else {
+                self.reset_to_root();
+            }
+        }
+
+        // Also reset if we're in the tree but the seek is to our left.
+        if content_position < self.stack.last().unwrap().start {
+            self.reset_to_root();
+        }
+
+        // XXX: If the caller is going to seek past EOF, and we haven't verified the root, we
+        // *must* do that first. This verifies the hash of the content length, which is what we're
+        // using to determine EOF in the first place. Other seeks will naturally verify the root
+        // node in the main loop below.
+        let current = *self.stack.last().unwrap();
+        let is_root = current.is_root(content_length);
+        let seek_to_eof = content_position >= content_length;
+        if is_root && seek_to_eof {
+            return (self.encoded_offset, current.state_next(content_length));
+        }
+
+        // The main loop. Pop subtrees out of the stack until we find one that contains the seek
+        // target, and then descend into that tree. Repeat (through in subsequent calls) until the
+        // next chunk contains the seek target, or until we hit EOF.
+        while let Some(&current) = self.stack.last() {
+            // If the target is within the next chunk, the seek is finished. Note that there may be
+            // more parent nodes in front of the chunk, but read will process them as usual.
+            if content_position < current.start + CHUNK_SIZE as u64 {
+                return (self.encoded_offset, StateNext::Done);
+            }
+
+            // If the target is outside the next chunk, but within the current subtree, then we
+            // need to descend.
+            if content_position < current.end {
+                return (self.encoded_offset, current.state_next(content_length));
+            }
+
+            // Otherwise pop the current tree and repeat.
+            self.encoded_offset += encode::encoded_subtree_size(current.len());
+            self.stack.pop();
+        }
+
+        // If we made it out the main loop, we're at EOF.
+        (self.encoded_offset, StateNext::Done)
+    }
+
+    pub fn feed_header(&mut self, header: [u8; HEADER_SIZE]) {
+        assert!(self.content_length.is_none(), "second call to feed_header");
+        let content_length = hash::decode_len(header);
+        self.content_length = Some(content_length);
+        self.reset_to_root();
+    }
+
+    pub fn feed_parent(&mut self, parent: hash::ParentNode) -> std::result::Result<(), ()> {
+        let content_length = self.content_length.expect("feed_parent before header");
+        let current = *self.stack.last().expect("feed_parent after EOF");
+        if current.len() <= CHUNK_SIZE as u64 {
+            panic!("too many calls to feed_parent");
+        }
+        let computed_hash = hash::hash_node(&parent, current.finalization(content_length));
+        if !constant_time_eq(&current.hash, &computed_hash) {
+            return Err(());
+        }
+        let split = current.start + hash::left_len(current.len());
+        let left_subtree = Subtree {
+            hash: *array_ref!(parent, 0, HASH_SIZE),
+            start: current.start,
+            end: split,
+        };
+        let right_subtree = Subtree {
+            hash: *array_ref!(parent, HASH_SIZE, HASH_SIZE),
+            start: split,
+            end: current.end,
+        };
+        self.stack.pop();
+        self.stack.push(right_subtree);
+        self.stack.push(left_subtree);
+        self.encoded_offset += PARENT_SIZE as u128;
+        Ok(())
+    }
+
+    pub fn feed_subtree(&mut self, subtree: Hash) -> std::result::Result<(), ()> {
+        let current = *self.stack.last().expect("feed_subtree after EOF");
+        if !constant_time_eq(&subtree, &current.hash) {
+            return Err(());
+        }
+        self.stack.pop();
+        self.content_position = current.end;
+        self.encoded_offset += encode::encoded_subtree_size(current.len());
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum StateNext {
+    Header,
+    Subtree { size: u64, skip: u64 },
+    Chunk { size: usize, skip: usize },
+    Done,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct Subtree {
+    hash: Hash,
+    start: u64,
+    end: u64,
+}
+
+impl Subtree {
+    fn len(&self) -> u64 {
+        self.end - self.start
+    }
+
+    fn is_root(&self, content_length: u64) -> bool {
+        self.start == 0 && self.end == content_length
+    }
+
+    fn finalization(&self, content_length: u64) -> Finalization {
+        if self.is_root(content_length) {
+            Root(self.len())
+        } else {
+            NotRoot
+        }
+    }
+
+    fn state_next(&self, content_position: u64) -> StateNext {
+        let skip = content_position - self.start;
+        if self.len() <= CHUNK_SIZE as u64 {
+            StateNext::Chunk {
+                size: self.len() as usize,
+                skip: skip as usize,
+            }
+        } else {
+            StateNext::Subtree {
+                size: self.len(),
+                skip,
+            }
+        }
+    }
+}
 
 pub fn decode(mut input: &[u8], hash: &Hash) -> std::result::Result<Vec<u8>, ()> {
     let mut output = Vec::new();
@@ -167,7 +376,7 @@ impl Decoder2 {
     fn feed_header(&mut self, input: &[u8]) -> Result2 {
         let (used, maybe_bytes) = self.acc.accumulate(input, HEADER_SIZE);
         if let Some(header_bytes) = maybe_bytes {
-            let len = hash::decode_len(header_bytes);
+            let len = hash::decode_len(*array_ref!(header_bytes, 0, HEADER_SIZE));
             self.len = Some(len);
             let total_chunks = 1 + len.saturating_sub(1) / CHUNK_SIZE as u64;
             self.parents_before_next_node = tree_height(total_chunks);
@@ -349,7 +558,7 @@ impl Decoder {
         let header_bytes = input.read_verify(HEADER_SIZE, &self.header_hash)?;
         self.header = Some(Region::make_root(
             &self.header_hash,
-            hash::decode_len(header_bytes),
+            hash::decode_len(*array_ref!(header_bytes, 0, HEADER_SIZE)),
         ));
         Ok((HEADER_SIZE, &[]))
     }

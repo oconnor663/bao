@@ -71,7 +71,7 @@ fn encode_post_order(mut input: &[u8]) -> (Vec<u8>, Hash) {
 
 fn flip_in_place(encoded: &mut [u8]) {
     let header = *array_ref!(encoded, encoded.len() - HEADER_SIZE, HEADER_SIZE);
-    let content_len = hash::decode_len(&header);
+    let content_len = hash::decode_len(header);
     let mut flipper = FlipperState::new(content_len);
     let mut read_cursor = encoded.len() - HEADER_SIZE;
     let mut write_cursor = encoded.len();

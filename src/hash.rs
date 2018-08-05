@@ -22,8 +22,8 @@ pub(crate) fn encode_len(len: u64) -> [u8; HEADER_SIZE] {
     len_bytes
 }
 
-pub(crate) fn decode_len(bytes: &[u8]) -> u64 {
-    LittleEndian::read_u64(bytes)
+pub(crate) fn decode_len(bytes: [u8; HEADER_SIZE]) -> u64 {
+    LittleEndian::read_u64(&bytes)
 }
 
 // The root node is hashed differently from interior nodes. It gets suffixed

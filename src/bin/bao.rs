@@ -24,12 +24,14 @@ fn encode(args: &Args) -> io::Result<()> {
         }
         io::stdout().write_all(output.get_ref())?;
     } else {
-        let mut writer = bao::encode::Writer::new(OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&args.arg_output)?);
+        let mut writer = bao::encode::Writer::new(
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&args.arg_output)?,
+        );
         if args.arg_input == "-" {
             io::copy(&mut stdin.lock(), &mut writer)?;
         } else {
