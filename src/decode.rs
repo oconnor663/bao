@@ -114,7 +114,8 @@ impl State {
         while let Some(&current_subtree) = self.stack.last() {
             // If the target is within the next chunk, the seek is finished. Note that there may be
             // more parent nodes in front of the chunk, but read will process them as usual.
-            if content_position < current_subtree.start + CHUNK_SIZE as u64 {
+            let current_chunk_size = cmp::min(current_subtree.len(), CHUNK_SIZE as u64);
+            if content_position < current_subtree.start + current_chunk_size {
                 return (self.encoded_offset, StateNext::Done);
             }
 
@@ -287,7 +288,9 @@ impl<T: Read> Reader<T> {
         skip: usize,
         finalization: Finalization,
     ) -> io::Result<()> {
-        debug_assert!(skip < size);
+        if !(skip == 0 && size == 0) {
+            debug_assert!(skip < size, "impossible skip offset");
+        }
         // Empty the buffer before doing any IO, so that in case of failure subsequent reads don't
         // think there's valid data there.
         self.buf_start = 0;
