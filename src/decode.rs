@@ -333,6 +333,7 @@ impl<T: Read> Read for Reader<T> {
 
 impl<T: Read + Seek> Seek for Reader<T> {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        println!("state size {}", self.state.stack.len());
         // Compute the current position, which need to handle SeekFrom::Current. This both accounts
         // for our buffer position, and also snapshots state.position() before the length loop
         // below, which could change it.
@@ -437,8 +438,10 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 #[cfg(test)]
 mod test {
     extern crate byteorder;
+    extern crate rand;
 
     use self::byteorder::{BigEndian, WriteBytesExt};
+    use self::rand::{prng::chacha::ChaChaRng, Rng, SeedableRng};
     use super::*;
     use encode::encode;
     use std::io::Cursor;
@@ -505,6 +508,40 @@ mod test {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_repeated_random_seeks() {
+        // A chunk number like this (37) with consecutive zeroes should exercise some of the more
+        // interesting geometry cases.
+        let input_len = 0b100101 * CHUNK_SIZE;
+        println!("input_len {}", input_len);
+        let mut prng = ChaChaRng::from_seed([0; 32]);
+        let input = make_test_input(input_len);
+        let (hash, encoded) = encode(&input);
+        let mut decoder = Reader::new(Cursor::new(&encoded), hash);
+        // Do ten thousand random seeks and chunk-sized reads.
+        for _ in 0..10_000 {
+            let seek = prng.gen_range(0, input_len + 1);
+            println!("seek {}", seek);
+            decoder
+                .seek(io::SeekFrom::Start(seek as u64))
+                .expect("seek error");
+            // Clone the encoder before reading, to test repeated seeks on the same encoder.
+            let mut output = Vec::new();
+            decoder
+                .clone()
+                .take(CHUNK_SIZE as u64)
+                .read_to_end(&mut output)
+                .expect("decoder error");
+            let input_start = cmp::min(seek, input_len);
+            let input_end = cmp::min(input_start + CHUNK_SIZE, input_len);
+            assert_eq!(
+                &input[input_start..input_end],
+                &output[..],
+                "output doesn't match input"
+            );
         }
     }
 }
