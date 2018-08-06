@@ -11,6 +11,9 @@ use hash::Finalization::{self, NotRoot, Root};
 use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 
 use std;
+use std::cmp;
+use std::io;
+use std::io::prelude::*;
 
 #[derive(Clone)]
 pub struct State2 {
@@ -239,6 +242,167 @@ impl Subtree {
                 finalization: self.finalization(content_length),
             }
         }
+    }
+}
+
+pub struct Reader<T: Read> {
+    inner: T,
+    state: State2,
+    buf: [u8; CHUNK_SIZE],
+    buf_start: usize,
+    buf_end: usize,
+}
+
+impl<T: Read> Reader<T> {
+    pub fn new(inner: T, root_hash: Hash) -> Self {
+        Self {
+            inner,
+            state: State2::new(root_hash),
+            buf: [0; CHUNK_SIZE],
+            buf_start: 0,
+            buf_end: 0,
+        }
+    }
+
+    fn buf_len(&self) -> usize {
+        self.buf_end - self.buf_start
+    }
+
+    fn read_header(&mut self) -> io::Result<()> {
+        let mut header = [0; HEADER_SIZE];
+        self.inner.read_exact(&mut header)?;
+        self.state.feed_header(header);
+        Ok(())
+    }
+
+    fn read_parent(&mut self) -> io::Result<()> {
+        let mut parent = [0; PARENT_SIZE];
+        self.inner.read_exact(&mut parent)?;
+        into_io(self.state.feed_parent(parent))
+    }
+
+    fn read_chunk(
+        &mut self,
+        size: usize,
+        skip: usize,
+        finalization: Finalization,
+    ) -> io::Result<()> {
+        // Clear the buffer before doing any IO, so that in case of failure subsequent reads don't
+        // think there's valid data in the buffer.
+        self.buf_start = 0;
+        self.buf_end = 0;
+        self.inner.read_exact(&mut self.buf[..size])?;
+        let hash = hash::hash_node(&self.buf[..size], finalization);
+        into_io(self.state.feed_subtree(hash))?;
+        self.buf_start = skip;
+        self.buf_end = size;
+        Ok(())
+    }
+}
+
+impl<T: Read> Read for Reader<T> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.buf_len() == 0 {
+            loop {
+                match self.state.read_next() {
+                    StateNext::Header => self.read_header()?,
+                    StateNext::Subtree { .. } => self.read_parent()?,
+                    StateNext::Chunk {
+                        size,
+                        skip,
+                        finalization,
+                    } => {
+                        self.read_chunk(size, skip, finalization)?;
+                    }
+                    StateNext::Done => return Ok(0), // EOF
+                }
+            }
+        }
+        let take = cmp::min(self.buf_len(), buf.len());
+        buf[..take].copy_from_slice(&self.buf[self.buf_start..self.buf_start + take]);
+        self.buf_start += take;
+        Ok(take)
+    }
+}
+
+impl<T: Read + Seek> Seek for Reader<T> {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        // First, read and verify the length if we haven't already.
+        let content_length = loop {
+            match self.state.len_next() {
+                Left(len) => break len,
+                Right(StateNext::Header) => self.read_header()?,
+                Right(StateNext::Subtree { .. }) => self.read_parent()?,
+                Right(StateNext::Chunk {
+                    size,
+                    skip,
+                    finalization,
+                }) => self.read_chunk(size, skip, finalization)?,
+                Right(StateNext::Done) => unreachable!(),
+            }
+        };
+
+        // Then, compute the absolute position of the seek.
+        let position = match pos {
+            io::SeekFrom::Start(pos) => pos,
+            io::SeekFrom::End(off) => add_offset(content_length, off)?,
+            io::SeekFrom::Current(off) => add_offset(self.state.position(), off)?,
+        };
+
+        // Finally, loop over the seek_next() method until it's done.
+        loop {
+            let (seek_offset, next) = self.state.seek_next(position);
+            let cast_offset = cast_offset(seek_offset)?;
+            self.inner.seek(io::SeekFrom::Start(cast_offset))?;
+            match next {
+                StateNext::Header => {
+                    self.read_header()?;
+                }
+                StateNext::Subtree { .. } => {
+                    self.read_parent()?;
+                }
+                StateNext::Chunk {
+                    size,
+                    skip,
+                    finalization,
+                } => {
+                    self.read_chunk(size, skip, finalization)?;
+                }
+                StateNext::Done => return Ok(self.state.position()),
+            }
+        }
+    }
+}
+
+fn into_io<T>(r: std::result::Result<T, ()>) -> io::Result<T> {
+    r.map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "hash mismatch"))
+}
+
+fn cast_offset(offset: u128) -> io::Result<u64> {
+    if offset > u64::max_value() as u128 {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "seek offset overflowed u64",
+        ))
+    } else {
+        Ok(offset as u64)
+    }
+}
+
+fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
+    let sum = position as i128 + offset as i128;
+    if sum < 0 {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "seek before beginning",
+        ))
+    } else if sum > u64::max_value() as i128 {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "seek target overflowed u64",
+        ))
+    } else {
+        Ok(sum as u64)
     }
 }
 
