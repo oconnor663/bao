@@ -16,8 +16,6 @@ extern crate hex;
 pub mod decode;
 pub mod encode;
 pub mod hash;
-pub mod io;
-mod unverified;
 
 #[cfg(test)]
 mod test {

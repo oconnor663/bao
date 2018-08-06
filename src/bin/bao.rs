@@ -54,7 +54,7 @@ fn decode(args: &Args) -> io::Result<()> {
         // TODO: THIS IS NOT CORRECT
         let header_hash = bao::hash::hash(&header_bytes);
         let chained_reader = io::Cursor::new(&header_bytes[..]).chain(stdin.lock());
-        let mut reader = bao::io::Reader::new(chained_reader, &header_hash);
+        let mut reader = bao::decode::Reader::new(chained_reader, header_hash);
         io::copy(&mut reader, &mut stdout.lock())?;
     } else {
         let hash_vec = hex::decode(&args.flag_hash).expect("valid hex");
@@ -66,7 +66,7 @@ fn decode(args: &Args) -> io::Result<()> {
             );
         };
         let hash_array = *array_ref!(&hash_vec, 0, bao::hash::HASH_SIZE);
-        let mut reader = bao::io::Reader::new(stdin.lock(), &hash_array);
+        let mut reader = bao::decode::Reader::new(stdin.lock(), hash_array);
         io::copy(&mut reader, &mut stdout.lock()).unwrap();
     }
     Ok(())
