@@ -333,7 +333,12 @@ impl<T: Read> Read for Reader<T> {
 
 impl<T: Read + Seek> Seek for Reader<T> {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
-        // First, read and verify the length if we haven't already.
+        // Compute the current position, which need to handle SeekFrom::Current. This both accounts
+        // for our buffer position, and also snapshots state.position() before the length loop
+        // below, which could change it.
+        let starting_position = self.state.position() - self.buf_len() as u64;
+
+        // Read and verify the length if we haven't already.
         let content_length = loop {
             match self.state.len_next() {
                 Left(len) => break len,
@@ -347,11 +352,11 @@ impl<T: Read + Seek> Seek for Reader<T> {
             }
         };
 
-        // Then, compute the absolute position of the seek.
+        // Compute the absolute position of the seek.
         let position = match pos {
             io::SeekFrom::Start(pos) => pos,
             io::SeekFrom::End(off) => add_offset(content_length, off)?,
-            io::SeekFrom::Current(off) => add_offset(self.state.position(), off)?,
+            io::SeekFrom::Current(off) => add_offset(starting_position, off)?,
         };
 
         // Now, before entering the main loop, empty the buffer. It's important to do this after
@@ -481,18 +486,24 @@ mod test {
             let (hash, encoded) = encode(&input);
             for &seek in hash::TEST_CASES {
                 println!("seek {}", seek);
-                let mut decoder = Reader::new(Cursor::new(&encoded), hash);
-                let mut output = Vec::new();
-                decoder
-                    .seek(io::SeekFrom::Start(seek as u64))
-                    .expect("seek error");
-                decoder.read_to_end(&mut output).expect("decoder error");
-                let input_start = cmp::min(seek, input.len());
-                assert_eq!(
-                    &input[input_start..],
-                    &output[..],
-                    "output doesn't match input"
-                );
+                // Test all three types of seeking.
+                let mut seek_froms = Vec::new();
+                seek_froms.push(io::SeekFrom::Start(seek as u64));
+                seek_froms.push(io::SeekFrom::End(seek as i64 - input_len as i64));
+                seek_froms.push(io::SeekFrom::Current(seek as i64));
+                for seek_from in seek_froms {
+                    println!("seek_from {:?}", seek_from);
+                    let mut decoder = Reader::new(Cursor::new(&encoded), hash);
+                    let mut output = Vec::new();
+                    decoder.seek(seek_from).expect("seek error");
+                    decoder.read_to_end(&mut output).expect("decoder error");
+                    let input_start = cmp::min(seek, input.len());
+                    assert_eq!(
+                        &input[input_start..],
+                        &output[..],
+                        "output doesn't match input"
+                    );
+                }
             }
         }
     }
