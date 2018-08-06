@@ -302,6 +302,7 @@ impl<T: Read> Reader<T> {
 
 impl<T: Read> Read for Reader<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // If we need more data, loop on read_next() until we read a chunk.
         if self.buf_len() == 0 {
             loop {
                 match self.state.read_next() {
@@ -313,6 +314,7 @@ impl<T: Read> Read for Reader<T> {
                         finalization,
                     } => {
                         self.read_chunk(size, skip, finalization)?;
+                        break;
                     }
                     StateNext::Done => return Ok(0), // EOF
                 }
@@ -403,5 +405,24 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
         ))
     } else {
         Ok(sum as u64)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use encode::encode;
+
+    #[test]
+    fn test_read() {
+        for &case in hash::TEST_CASES {
+            println!("case {}", case);
+            let input = vec![0; case];
+            let (hash, encoded) = encode(&input);
+            let mut decoder = Reader::new(&encoded[..], hash);
+            let mut output = Vec::new();
+            decoder.read_to_end(&mut output).expect("decoder error");
+            assert_eq!(input, output, "output doesn't match input");
+        }
     }
 }
