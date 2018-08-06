@@ -41,7 +41,6 @@ impl State {
     }
 
     fn reset_to_root(&mut self) {
-        self.content_position = 0;
         self.encoded_offset = HEADER_SIZE as u128;
         self.stack.clear();
         self.stack.push(Subtree {
@@ -199,6 +198,7 @@ pub enum StateNext {
         skip: usize,
         finalization: Finalization,
     },
+    // TODO: Get rid of done, and use an Option instead.
     Done,
 }
 
@@ -287,6 +287,7 @@ impl<T: Read> Reader<T> {
         skip: usize,
         finalization: Finalization,
     ) -> io::Result<()> {
+        debug_assert!(skip < size);
         // Empty the buffer before doing any IO, so that in case of failure subsequent reads don't
         // think there's valid data there.
         self.buf_start = 0;
