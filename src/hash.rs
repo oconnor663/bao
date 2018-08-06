@@ -131,6 +131,7 @@ pub fn hash_parallel(input: &[u8]) -> Hash {
 /// that could be hashed in the real world, and implementations that are starved for stack space
 /// could cut that buffer in half and still be able to hash about 17 terabytes (`2^32` times the
 /// 4096-byte chunk size).
+#[derive(Clone, Debug)]
 pub struct State {
     subtrees: ArrayVec<[Hash; MAX_DEPTH]>,
     subtree_count: u64,
@@ -233,6 +234,7 @@ impl State {
 
 /// A `std::io::Writer` interface to the incremental hasher. Most callers that can't use the
 /// all-at-once `hash` function should use this interface.
+#[derive(Clone, Debug)]
 pub struct Writer {
     chunk: blake2b::State,
     chunk_len: usize,

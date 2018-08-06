@@ -3,6 +3,7 @@ use blake2_c::blake2b;
 use hash::Finalization::{NotRoot, Root};
 use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 use std::cmp;
+use std::fmt;
 use std::io;
 use std::io::prelude::*;
 use std::io::SeekFrom::{Current, Start};
@@ -231,6 +232,13 @@ impl FlipperState {
     }
 }
 
+impl fmt::Debug for FlipperState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "FlipperState {{ parents: {}, content_len: {}, chunk_moved: {}, parents_needed: {}, parents_available: {} }}",
+               self.parents.len(), self.content_len, self.chunk_moved, self.parents_needed, self.parents_available)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum FlipperNext {
     FeedParent,
@@ -242,6 +250,7 @@ pub enum FlipperNext {
 /// Most callers should use this writer for incremental encoding. The writer makes no attempt to
 /// recover from IO errors, so callers that want to retry should start from the beginning with a new
 /// writer.
+#[derive(Clone, Debug)]
 pub struct Writer<T: Read + Write + Seek> {
     inner: T,
     chunk_len: usize,

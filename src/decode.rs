@@ -11,10 +11,11 @@ use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZ
 
 use std;
 use std::cmp;
+use std::fmt;
 use std::io;
 use std::io::prelude::*;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct State {
     stack: ArrayVec<[Subtree; MAX_DEPTH]>,
     root_hash: Hash,
@@ -244,6 +245,7 @@ impl Subtree {
     }
 }
 
+#[derive(Clone)]
 pub struct Reader<T: Read> {
     inner: T,
     state: State,
@@ -382,6 +384,16 @@ impl<T: Read + Seek> Seek for Reader<T> {
                 }
             }
         }
+    }
+}
+
+impl<T: Read> fmt::Debug for Reader<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Reader {{ inner: ..., state: {:?}, buf: [...], buf_start: {}, buf_end: {} }}",
+            self.state, self.buf_start, self.buf_end
+        )
     }
 }
 
