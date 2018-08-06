@@ -50,17 +50,17 @@ impl State {
         });
     }
 
-    pub fn read_next(&self) -> StateNext {
+    pub fn read_next(&self) -> Option<StateNext> {
         let content_length;
         match self.len_next() {
             Left(len) => content_length = len,
-            Right(next) => return next,
+            Right(next) => return Some(next),
         }
         if let Some(subtree) = self.stack.last() {
-            subtree.state_next(content_length, self.content_position)
+            Some(subtree.state_next(content_length, self.content_position))
         } else {
             assert!(self.length_verified, "unverified EOF");
-            StateNext::Done
+            None
         }
     }
 
@@ -82,13 +82,13 @@ impl State {
         }
     }
 
-    pub fn seek_next(&mut self, content_position: u64) -> (u128, StateNext) {
+    pub fn seek_next(&mut self, content_position: u64) -> (u128, Option<StateNext>) {
         // Get the current content length. This will lead us to read the header and verify the root
         // node, if we haven't already.
         let content_length;
         match self.len_next() {
             Left(len) => content_length = len,
-            Right(next) => return (self.encoded_offset, next),
+            Right(next) => return (self.encoded_offset, Some(next)),
         }
 
         // Record the target position, which we use in read_next() to compute the skip.
@@ -97,7 +97,7 @@ impl State {
         // If we're already past EOF, either reset or short circuit.
         if self.stack.is_empty() {
             if content_position >= content_length {
-                return (self.encoded_offset, StateNext::Done);
+                return (self.encoded_offset, None);
             } else {
                 self.reset_to_root();
             }
@@ -116,7 +116,7 @@ impl State {
             // more parent nodes in front of the chunk, but read will process them as usual.
             let current_chunk_size = cmp::min(current_subtree.len(), CHUNK_SIZE as u64);
             if content_position < current_subtree.start + current_chunk_size {
-                return (self.encoded_offset, StateNext::Done);
+                return (self.encoded_offset, None);
             }
 
             // If the target is outside the next chunk, but within the current subtree, then we
@@ -124,7 +124,7 @@ impl State {
             if content_position < current_subtree.end {
                 return (
                     self.encoded_offset,
-                    current_subtree.state_next(content_length, self.content_position),
+                    Some(current_subtree.state_next(content_length, self.content_position)),
                 );
             }
 
@@ -134,7 +134,7 @@ impl State {
         }
 
         // If we made it out the main loop, we're at EOF.
-        (self.encoded_offset, StateNext::Done)
+        (self.encoded_offset, None)
     }
 
     pub fn feed_header(&mut self, header: [u8; HEADER_SIZE]) {
@@ -199,8 +199,6 @@ pub enum StateNext {
         skip: usize,
         finalization: Finalization,
     },
-    // TODO: Get rid of done, and use an Option instead.
-    Done,
 }
 
 // TODO: Abolish this type!
@@ -310,17 +308,17 @@ impl<T: Read> Read for Reader<T> {
         if self.buf_len() == 0 {
             loop {
                 match self.state.read_next() {
-                    StateNext::Header => self.read_header()?,
-                    StateNext::Subtree { .. } => self.read_parent()?,
-                    StateNext::Chunk {
+                    Some(StateNext::Header) => self.read_header()?,
+                    Some(StateNext::Subtree { .. }) => self.read_parent()?,
+                    Some(StateNext::Chunk {
                         size,
                         skip,
                         finalization,
-                    } => {
+                    }) => {
                         self.read_chunk(size, skip, finalization)?;
                         break;
                     }
-                    StateNext::Done => return Ok(0), // EOF
+                    None => return Ok(0), // EOF
                 }
             }
         }
@@ -344,7 +342,6 @@ impl<T: Read + Seek> Seek for Reader<T> {
                     skip,
                     finalization,
                 }) => self.read_chunk(size, skip, finalization)?,
-                Right(StateNext::Done) => unreachable!(),
             }
         };
 
@@ -366,20 +363,20 @@ impl<T: Read + Seek> Seek for Reader<T> {
             let cast_offset = cast_offset(seek_offset)?;
             self.inner.seek(io::SeekFrom::Start(cast_offset))?;
             match next {
-                StateNext::Header => {
+                Some(StateNext::Header) => {
                     self.read_header()?;
                 }
-                StateNext::Subtree { .. } => {
+                Some(StateNext::Subtree { .. }) => {
                     self.read_parent()?;
                 }
-                StateNext::Chunk {
+                Some(StateNext::Chunk {
                     size,
                     skip,
                     finalization,
-                } => {
+                }) => {
                     self.read_chunk(size, skip, finalization)?;
                 }
-                StateNext::Done => {
+                None => {
                     debug_assert_eq!(position, self.state.position());
                     return Ok(position);
                 }
