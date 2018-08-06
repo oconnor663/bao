@@ -287,8 +287,8 @@ impl<T: Read> Reader<T> {
         skip: usize,
         finalization: Finalization,
     ) -> io::Result<()> {
-        // Clear the buffer before doing any IO, so that in case of failure subsequent reads don't
-        // think there's valid data in the buffer.
+        // Empty the buffer before doing any IO, so that in case of failure subsequent reads don't
+        // think there's valid data there.
         self.buf_start = 0;
         self.buf_end = 0;
         self.inner.read_exact(&mut self.buf[..size])?;
@@ -351,6 +351,11 @@ impl<T: Read + Seek> Seek for Reader<T> {
             io::SeekFrom::Current(off) => add_offset(self.state.position(), off)?,
         };
 
+        // Now, before entering the main loop, empty the buffer. It's important to do this after
+        // getting the length above, because that can fill the buffer as a side effect.
+        self.buf_start = 0;
+        self.buf_end = 0;
+
         // Finally, loop over the seek_next() method until it's done.
         loop {
             let (seek_offset, next) = self.state.seek_next(position);
@@ -370,7 +375,10 @@ impl<T: Read + Seek> Seek for Reader<T> {
                 } => {
                     self.read_chunk(size, skip, finalization)?;
                 }
-                StateNext::Done => return Ok(self.state.position()),
+                StateNext::Done => {
+                    debug_assert_eq!(position, self.state.position());
+                    return Ok(position);
+                }
             }
         }
     }
@@ -410,19 +418,69 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 
 #[cfg(test)]
 mod test {
+    extern crate byteorder;
+
+    use self::byteorder::{BigEndian, WriteBytesExt};
     use super::*;
     use encode::encode;
+    use std::io::Cursor;
+
+    fn make_test_input(len: usize) -> Vec<u8> {
+        // Fill the input with incrementing bytes, so that reads from different sections are very
+        // unlikely to accidentally match.
+        let mut ret = Vec::new();
+        let mut counter = 0u64;
+        while ret.len() < len {
+            if counter < u8::max_value() as u64 {
+                ret.write_u8(counter as u8).unwrap();
+            } else if counter < u16::max_value() as u64 {
+                ret.write_u16::<BigEndian>(counter as u16).unwrap();
+            } else if counter < u32::max_value() as u64 {
+                ret.write_u32::<BigEndian>(counter as u32).unwrap();
+            } else {
+                ret.write_u64::<BigEndian>(counter).unwrap();
+            }
+            counter += 1;
+        }
+        ret.truncate(len);
+        ret
+    }
 
     #[test]
     fn test_read() {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
-            let input = vec![0; case];
+            let input = make_test_input(case);
             let (hash, encoded) = encode(&input);
             let mut decoder = Reader::new(&encoded[..], hash);
             let mut output = Vec::new();
             decoder.read_to_end(&mut output).expect("decoder error");
             assert_eq!(input, output, "output doesn't match input");
+        }
+    }
+
+    #[test]
+    fn test_seek() {
+        for &input_len in hash::TEST_CASES {
+            println!();
+            println!("input_len {}", input_len);
+            let input = make_test_input(input_len);
+            let (hash, encoded) = encode(&input);
+            for &seek in hash::TEST_CASES {
+                println!("seek {}", seek);
+                let mut decoder = Reader::new(Cursor::new(&encoded), hash);
+                let mut output = Vec::new();
+                decoder
+                    .seek(io::SeekFrom::Start(seek as u64))
+                    .expect("seek error");
+                decoder.read_to_end(&mut output).expect("decoder error");
+                let input_start = cmp::min(seek, input.len());
+                assert_eq!(
+                    &input[input_start..],
+                    &output[..],
+                    "output doesn't match input"
+                );
+            }
         }
     }
 }
