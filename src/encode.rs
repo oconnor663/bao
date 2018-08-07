@@ -20,6 +20,19 @@ pub(crate) fn encoded_subtree_size(content_len: u64) -> u128 {
     content_len as u128 + (num_parents as u128 * PARENT_SIZE as u128)
 }
 
+pub(crate) fn count_chunks(content_len: u64) -> u64 {
+    // Two things to watch out for here: the 0-length input still counts as 1 chunk, and we don't
+    // want to overflow when content_len is u64::MAX_VALUE.
+    let full_chunks: u64 = content_len / CHUNK_SIZE as u64;
+    let has_partial_chunk: bool = (content_len % CHUNK_SIZE as u64) != 0;
+    cmp::max(1, full_chunks + has_partial_chunk as u64)
+}
+
+pub(crate) fn chunk_size(chunk: u64, content_len: u64) -> usize {
+    let chunk_start = chunk * CHUNK_SIZE as u64;
+    cmp::min(CHUNK_SIZE, (content_len - chunk_start) as usize)
+}
+
 /// Encode a given input all at once in memory.
 pub fn encode(input: &[u8]) -> (Hash, Vec<u8>) {
     let (mut output, hash) = encode_post_order(input);
@@ -105,21 +118,6 @@ fn flip_in_place(encoded: &mut [u8]) {
     }
 }
 
-fn count_chunks(content_len: u64) -> u64 {
-    if content_len == 0 {
-        1
-    } else if content_len % CHUNK_SIZE as u64 == 0 {
-        content_len / CHUNK_SIZE as u64
-    } else {
-        (content_len / CHUNK_SIZE as u64) + 1
-    }
-}
-
-fn chunk_size(chunk: u64, content_len: u64) -> usize {
-    let chunk_start = chunk * CHUNK_SIZE as u64;
-    cmp::min(CHUNK_SIZE, (content_len - chunk_start) as usize)
-}
-
 /// Prior to the final chunk, to calculate the number of post-order parent nodes for a chunk, we
 /// need to know the height of the subtree for which the chunk is the rightmost. This is the same as
 /// the number of trailing ones in the chunk index (counting from 0). For example, chunk number 11
@@ -128,15 +126,15 @@ fn chunk_size(chunk: u64, content_len: u64) -> usize {
 /// Note that this is closely related to the trick we're using in hash::State::needs_merge. The
 /// number of trailing zeroes at a given index is the same as the number of ones that switched off
 /// when we moved rightward from the previous index.
-fn post_order_parent_nodes_nonfinal(chunk: u64) -> usize {
-    (!chunk).trailing_zeros() as usize
+fn post_order_parent_nodes_nonfinal(chunk: u64) -> u8 {
+    (!chunk).trailing_zeros() as u8
 }
 
 /// The final chunk of a post order tree has to have a parent node for each of the not yet merged
 /// subtrees behind it. This is the same as the total number of ones in the chunk index (counting
 /// from 0).
-fn post_order_parent_nodes_final(chunk: u64) -> usize {
-    chunk.count_ones() as usize
+fn post_order_parent_nodes_final(chunk: u64) -> u8 {
+    chunk.count_ones() as u8
 }
 
 /// In pre-order there are a couple considerations for counting the number of parent nodes:
@@ -161,11 +159,12 @@ fn post_order_parent_nodes_final(chunk: u64) -> usize {
 /// subtree of the 3 remaining chunks. That means it still has 2 parent nodes, because a 3 chunk
 /// tree is still of height 2. But in the 5 chunk tree, chunk 4 has no parent nodes at all, because
 /// a 1 chunk tree is of height 0.
-fn pre_order_parent_nodes(chunk: u64, total_chunks: u64) -> usize {
+pub(crate) fn pre_order_parent_nodes(chunk: u64, content_len: u64) -> u8 {
+    let total_chunks = count_chunks(content_len);
     let remaining = total_chunks - chunk;
     let starting_bound = 64 - (remaining - 1).leading_zeros();
     let interior_bound = chunk.trailing_zeros();
-    cmp::min(starting_bound, interior_bound) as usize
+    cmp::min(starting_bound, interior_bound) as u8
 }
 
 #[derive(Clone)]
@@ -173,8 +172,8 @@ pub struct FlipperState {
     parents: ArrayVec<[hash::ParentNode; MAX_DEPTH]>,
     content_len: u64,
     chunk_moved: u64,
-    parents_needed: usize,
-    parents_available: usize,
+    parents_needed: u8,
+    parents_available: u8,
 }
 
 impl FlipperState {
@@ -209,9 +208,8 @@ impl FlipperState {
         debug_assert!(self.chunk_moved > 0);
         debug_assert_eq!(self.parents_available, 0);
         debug_assert_eq!(self.parents_needed, 0);
-        let total_chunks = count_chunks(self.content_len);
         self.chunk_moved -= 1;
-        self.parents_available = pre_order_parent_nodes(self.chunk_moved, total_chunks);
+        self.parents_available = pre_order_parent_nodes(self.chunk_moved, self.content_len);
         if self.chunk_moved > 0 {
             self.parents_needed = post_order_parent_nodes_nonfinal(self.chunk_moved - 1);
         }
@@ -400,8 +398,8 @@ mod test {
 
     // This is another way to calculate the number of parent nodes, which takes longer but is less
     // magical. We use it for testing below.
-    fn make_pre_post_list(total_chunks: u64) -> Vec<(usize, usize)> {
-        fn recurse(start: u64, size: u64, answers: &mut Vec<(usize, usize)>) {
+    fn make_pre_post_list(total_chunks: u64) -> Vec<(u8, u8)> {
+        fn recurse(start: u64, size: u64, answers: &mut Vec<(u8, u8)>) {
             assert!(size > 0);
             if size == 1 {
                 return;
@@ -433,10 +431,11 @@ mod test {
     #[test]
     fn test_parent_nodes() {
         for total_chunks in 1..100 {
+            let content_len = total_chunks * CHUNK_SIZE as u64;
             let pre_post_list = make_pre_post_list(total_chunks);
             for chunk in 0..total_chunks {
                 let (expected_pre, expected_post) = pre_post_list[chunk as usize];
-                let pre = pre_order_parent_nodes(chunk, total_chunks);
+                let pre = pre_order_parent_nodes(chunk, content_len);
                 let post = if chunk < total_chunks - 1 {
                     post_order_parent_nodes_nonfinal(chunk)
                 } else {
