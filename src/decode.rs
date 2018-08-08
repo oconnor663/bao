@@ -474,7 +474,8 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let (hash, encoded) = encode::encode(&input);
+            let mut encoded = Vec::new();
+            let hash = encode::encode_to_vec(&input, &mut encoded);
             let mut decoder = Reader::new(&encoded[..], hash);
             let mut output = Vec::new();
             decoder.read_to_end(&mut output).expect("decoder error");
@@ -488,7 +489,8 @@ mod test {
             println!();
             println!("input_len {}", input_len);
             let input = make_test_input(input_len);
-            let (hash, encoded) = encode::encode(&input);
+            let mut encoded = Vec::new();
+            let hash = encode::encode_to_vec(&input, &mut encoded);
             for &seek in hash::TEST_CASES {
                 println!("seek {}", seek);
                 // Test all three types of seeking.
@@ -521,7 +523,8 @@ mod test {
         println!("input_len {}", input_len);
         let mut prng = ChaChaRng::from_seed([0; 32]);
         let input = make_test_input(input_len);
-        let (hash, encoded) = encode::encode(&input);
+        let mut encoded = Vec::new();
+        let hash = encode::encode_to_vec(&input, &mut encoded);
         let mut decoder = Reader::new(Cursor::new(&encoded), hash);
         // Do ten thousand random seeks and chunk-sized reads.
         for _ in 0..10_000 {
@@ -555,7 +558,8 @@ mod test {
         // distinguish the state "just decoded the zero length" from the state "verified the hash
         // of the empty root node", and a decoder must not return EOF before the latter.
 
-        let (zero_hash, zero_encoded) = encode::encode(b"");
+        let mut zero_encoded = Vec::new();
+        let zero_hash = encode::encode_to_vec(b"", &mut zero_encoded);
         let one_hash = hash::hash(b"x");
 
         // Decoding the empty tree with the right hash should succeed.
@@ -582,7 +586,8 @@ mod test {
 
             println!("case {}", case);
             let input = make_test_input(case);
-            let (hash, mut encoded) = encode::encode(&input);
+            let mut encoded = Vec::new();
+            let hash = encode::encode_to_vec(&input, &mut encoded);
             println!("encoded len {}", encoded.len());
 
             // Tweak a bit at the start of a chunk about halfway through. Loop over prior parent
@@ -628,7 +633,8 @@ mod test {
         // even if the caller attempts to seek past the end of the file before reading anything.
         for &case in hash::TEST_CASES {
             let input = vec![0; case];
-            let (hash, encoded) = encode::encode(&input);
+            let mut encoded = Vec::new();
+            let hash = encode::encode_to_vec(&input, &mut encoded);
             let mut bad_hash = hash;
             bad_hash[0] ^= 1;
 

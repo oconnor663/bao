@@ -1,12 +1,87 @@
 use arrayvec::ArrayVec;
 use blake2_c::blake2b;
-use hash::Finalization::{NotRoot, Root};
-use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
+use hash::Finalization::{self, NotRoot, Root};
+use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
+use rayon;
 use std::cmp;
 use std::fmt;
 use std::io;
 use std::io::prelude::*;
 use std::io::SeekFrom::{Current, Start};
+
+pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
+    let content_len = input.len() as u64;
+    assert_eq!(
+        output.len() as u128,
+        encoded_size(content_len),
+        "output is the wrong length"
+    );
+    output[..HEADER_SIZE].copy_from_slice(&hash::encode_len(content_len));
+    if input.len() <= hash::MAX_SINGLE_THREADED {
+        encode_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
+    } else {
+        encode_recurse_rayon(input, &mut output[HEADER_SIZE..], Root(content_len))
+    }
+}
+
+pub fn encode_single_threaded(input: &[u8], output: &mut [u8]) -> Hash {
+    let content_len = input.len() as u64;
+    assert_eq!(
+        output.len() as u128,
+        encoded_size(content_len),
+        "output is the wrong length"
+    );
+    output[..HEADER_SIZE].copy_from_slice(&hash::encode_len(content_len));
+    encode_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
+}
+
+pub fn encode_to_vec(input: &[u8], output: &mut Vec<u8>) -> Hash {
+    let start = output.len();
+    output.resize(start + encoded_size(input.len() as u64) as usize, 0);
+    encode(input, &mut output[start..])
+}
+
+fn encode_recurse(input: &[u8], output: &mut [u8], finalization: Finalization) -> Hash {
+    debug_assert_eq!(
+        output.len() as u128,
+        encoded_subtree_size(input.len() as u64)
+    );
+    if input.len() <= CHUNK_SIZE {
+        output.copy_from_slice(input);
+        return hash::hash_node(input, finalization);
+    }
+    let left_len = hash::left_len(input.len() as u64);
+    let (left_in, right_in) = input.split_at(left_len as usize);
+    let (parent_out, rest) = output.split_at_mut(PARENT_SIZE);
+    let (left_out, right_out) = rest.split_at_mut(encoded_subtree_size(left_len) as usize);
+    let left_hash = encode_recurse(left_in, left_out, NotRoot);
+    let right_hash = encode_recurse(right_in, right_out, NotRoot);
+    parent_out[..HASH_SIZE].copy_from_slice(&left_hash);
+    parent_out[HASH_SIZE..].copy_from_slice(&right_hash);
+    hash::parent_hash(&left_hash, &right_hash, finalization)
+}
+
+fn encode_recurse_rayon(input: &[u8], output: &mut [u8], finalization: Finalization) -> Hash {
+    debug_assert_eq!(
+        output.len() as u128,
+        encoded_subtree_size(input.len() as u64)
+    );
+    if input.len() <= CHUNK_SIZE {
+        output.copy_from_slice(input);
+        return hash::hash_node(input, finalization);
+    }
+    let left_len = hash::left_len(input.len() as u64);
+    let (left_in, right_in) = input.split_at(left_len as usize);
+    let (parent_out, rest) = output.split_at_mut(PARENT_SIZE);
+    let (left_out, right_out) = rest.split_at_mut(encoded_subtree_size(left_len) as usize);
+    let (left_hash, right_hash) = rayon::join(
+        || encode_recurse_rayon(left_in, left_out, NotRoot),
+        || encode_recurse_rayon(right_in, right_out, NotRoot),
+    );
+    parent_out[..HASH_SIZE].copy_from_slice(&left_hash);
+    parent_out[HASH_SIZE..].copy_from_slice(&right_hash);
+    hash::parent_hash(&left_hash, &right_hash, finalization)
+}
 
 pub fn encoded_size(content_len: u64) -> u128 {
     encoded_subtree_size(content_len) + HEADER_SIZE as u128
@@ -31,91 +106,6 @@ pub(crate) fn count_chunks(content_len: u64) -> u64 {
 pub(crate) fn chunk_size(chunk: u64, content_len: u64) -> usize {
     let chunk_start = chunk * CHUNK_SIZE as u64;
     cmp::min(CHUNK_SIZE, (content_len - chunk_start) as usize)
-}
-
-/// Encode a given input all at once in memory.
-pub fn encode(input: &[u8]) -> (Hash, Vec<u8>) {
-    let (mut output, hash) = encode_post_order(input);
-    flip_in_place(&mut output);
-    (hash, output)
-}
-
-fn encode_post_order(mut input: &[u8]) -> (Vec<u8>, Hash) {
-    let encoded_len = hash::encode_len(input.len() as u64);
-    let finalization = Root(input.len() as u64);
-    // Overflow should be practically impossible in this u128->usize cast, and also passing a small
-    // value to with_capacity only results in a performance penalty.
-    let mut ret = Vec::with_capacity(encoded_size(input.len() as u64) as usize);
-    // For short inputs, we assemble the encoding directly.
-    if input.len() <= CHUNK_SIZE {
-        ret.extend_from_slice(input);
-        ret.extend_from_slice(&encoded_len);
-        return (ret, hash::hash_node(input, finalization));
-    }
-    // For longer inputs, we create a State object and loop over it.
-    let mut state = hash::State::new();
-    loop {
-        // For each chunk of input, both append it to the encoded output, and push its hash into the
-        // State object.
-        let current_chunk_size = cmp::min(CHUNK_SIZE, input.len());
-        ret.extend_from_slice(&input[..current_chunk_size]);
-        let chunk_hash = hash::hash_node(&input[..current_chunk_size], NotRoot);
-        state.push_subtree(chunk_hash);
-        input = &input[current_chunk_size..];
-        if !input.is_empty() {
-            // After each chunk, lay out any post-order parent nodes.
-            while let Some(parent) = state.merge_parent() {
-                ret.extend_from_slice(&parent);
-            }
-        } else {
-            // After the final chunk, again lay out post-order parent nodes. Calling merge_finish
-            // instead of merge_parent here informs the state that it should roll up any remaining
-            // partial subtrees, because there's no more input.
-            loop {
-                let (parent, maybe_root) = state.merge_finish(finalization);
-                ret.extend_from_slice(&parent);
-                if let Some(root) = maybe_root {
-                    ret.extend_from_slice(&encoded_len);
-                    return (ret, root);
-                }
-            }
-        }
-    }
-}
-
-fn flip_in_place(encoded: &mut [u8]) {
-    let header = *array_ref!(encoded, encoded.len() - HEADER_SIZE, HEADER_SIZE);
-    let content_len = hash::decode_len(header);
-    let mut flipper = FlipperState::new(content_len);
-    let mut read_cursor = encoded.len() - HEADER_SIZE;
-    let mut write_cursor = encoded.len();
-    loop {
-        match flipper.next() {
-            FlipperNext::FeedParent => {
-                let parent = *array_ref!(encoded, read_cursor - PARENT_SIZE, PARENT_SIZE);
-                read_cursor -= PARENT_SIZE;
-                flipper.feed_parent(parent);
-            }
-            FlipperNext::TakeParent => {
-                let parent = flipper.take_parent();
-                encoded[write_cursor - PARENT_SIZE..write_cursor].copy_from_slice(&parent);
-                write_cursor -= PARENT_SIZE;
-            }
-            FlipperNext::Chunk(size) => {
-                let mut chunk = [0; CHUNK_SIZE];
-                chunk[..size].copy_from_slice(&encoded[read_cursor - size..read_cursor]);
-                read_cursor -= size;
-                encoded[write_cursor - size..write_cursor].copy_from_slice(&chunk[..size]);
-                write_cursor -= size;
-                flipper.chunk_moved();
-            }
-            FlipperNext::Done => {
-                debug_assert_eq!(HEADER_SIZE, write_cursor);
-                encoded[..HEADER_SIZE].copy_from_slice(&header);
-                return;
-            }
-        }
-    }
 }
 
 /// Prior to the final chunk, to calculate the number of post-order parent nodes for a chunk, we
@@ -169,7 +159,7 @@ pub(crate) fn pre_order_parent_nodes(chunk: u64, content_len: u64) -> u8 {
 
 #[derive(Clone)]
 pub struct FlipperState {
-    parents: ArrayVec<[hash::ParentNode; MAX_DEPTH]>,
+    parents: ArrayVec<[hash::ParentNode; hash::MAX_DEPTH]>,
     content_len: u64,
     chunk_moved: u64,
     parents_needed: u8,
@@ -364,7 +354,8 @@ mod test {
     fn test_encoded_size() {
         for &case in hash::TEST_CASES {
             let input = vec![0; case];
-            let (_, encoded) = encode(&input);
+            let mut encoded = Vec::new();
+            encode_to_vec(&input, &mut encoded);
             assert_eq!(encoded.len() as u128, encoded_size(case as u64));
             assert_eq!(encoded.len(), encoded.capacity());
         }
@@ -376,7 +367,8 @@ mod test {
             println!("starting case {}", case);
             let input = vec![9; case];
             let expected_hash = hash::hash(&input);
-            let (encoded_hash, _) = encode(&input);
+            let mut encoded = Vec::new();
+            let encoded_hash = encode_to_vec(&input, &mut encoded);
             assert_eq!(expected_hash, encoded_hash, "hash mismatch");
         }
     }
@@ -386,7 +378,8 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("starting case {}", case);
             let input = vec![9; case];
-            let (_, encoded) = encode(&input);
+            let mut encoded = Vec::new();
+            encode_to_vec(&input, &mut encoded);
             let output = cmd!("python3", "./python/bao.py", "encode")
                 .input(input)
                 .stdout_capture()
@@ -460,7 +453,8 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = vec![0; case];
-            let (expected_hash, expected_encoded) = encode(&input);
+            let mut expected_encoded = Vec::new();
+            let expected_hash = encode_to_vec(&input, &mut expected_encoded);
             let mut writer_encoded = Vec::new();
             let writer_hash;
             {

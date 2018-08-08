@@ -41,23 +41,19 @@ fn bench_bao_hash_long(b: &mut Bencher) {
     b.iter(|| bao::hash::hash(LONG));
 }
 
-fn hash_serial(input: &[u8]) -> bao::hash::Hash {
-    bao::hash::hash_recurse(input, bao::hash::Finalization::Root(input.len() as u64))
-}
-
 #[bench]
 fn bench_bao_hash_serial_short(b: &mut Bencher) {
-    b.iter(|| hash_serial(SHORT))
+    b.iter(|| bao::hash::hash_single_threaded(SHORT))
 }
 
 #[bench]
 fn bench_bao_hash_serial_medium(b: &mut Bencher) {
-    b.iter(|| hash_serial(MEDIUM))
+    b.iter(|| bao::hash::hash_single_threaded(MEDIUM))
 }
 
 #[bench]
 fn bench_bao_hash_serial_long(b: &mut Bencher) {
-    b.iter(|| hash_serial(LONG))
+    b.iter(|| bao::hash::hash_single_threaded(LONG))
 }
 
 #[bench]
@@ -85,4 +81,44 @@ fn bench_bao_hash_writer_long(b: &mut Bencher) {
         writer.write_all(LONG).unwrap();
         writer.finish()
     });
+}
+
+fn output_vec(input: &[u8]) -> Vec<u8> {
+    vec![0; bao::encode::encoded_size(input.len() as u64) as usize]
+}
+
+#[bench]
+fn bench_bao_encode_short(b: &mut Bencher) {
+    let mut output = output_vec(SHORT);
+    b.iter(|| bao::encode::encode(SHORT, &mut output));
+}
+
+#[bench]
+fn bench_bao_encode_medium(b: &mut Bencher) {
+    let mut output = output_vec(MEDIUM);
+    b.iter(|| bao::encode::encode(MEDIUM, &mut output));
+}
+
+#[bench]
+fn bench_bao_encode_long(b: &mut Bencher) {
+    let mut output = output_vec(LONG);
+    b.iter(|| bao::encode::encode(LONG, &mut output));
+}
+
+#[bench]
+fn bench_bao_encode_short_serial(b: &mut Bencher) {
+    let mut output = output_vec(SHORT);
+    b.iter(|| bao::encode::encode_single_threaded(SHORT, &mut output));
+}
+
+#[bench]
+fn bench_bao_encode_medium_serial(b: &mut Bencher) {
+    let mut output = output_vec(MEDIUM);
+    b.iter(|| bao::encode::encode_single_threaded(MEDIUM, &mut output));
+}
+
+#[bench]
+fn bench_bao_encode_long_serial(b: &mut Bencher) {
+    let mut output = output_vec(LONG);
+    b.iter(|| bao::encode::encode_single_threaded(LONG, &mut output));
 }

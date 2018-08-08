@@ -11,6 +11,7 @@ pub(crate) const PARENT_SIZE: usize = 64;
 pub(crate) const HEADER_SIZE: usize = 8;
 pub(crate) const CHUNK_SIZE: usize = 4096;
 pub(crate) const MAX_DEPTH: usize = 64;
+pub(crate) const MAX_SINGLE_THREADED: usize = 4 * CHUNK_SIZE;
 
 pub type Hash = [u8; HASH_SIZE];
 pub type ParentNode = [u8; 2 * HASH_SIZE];
@@ -109,11 +110,16 @@ pub fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
 /// [Rayon](https://crates.io/crates/rayon).
 pub fn hash(input: &[u8]) -> Hash {
     // Below about 4 chunks, the overhead of parallelizing isn't worth it.
-    if input.len() <= CHUNK_SIZE * 4 {
+    if input.len() <= MAX_SINGLE_THREADED {
         hash_recurse(input, Root(input.len() as u64))
     } else {
         hash_recurse_rayon(input, Root(input.len() as u64))
     }
+}
+
+/// Mostly for benchmarks.
+pub fn hash_single_threaded(input: &[u8]) -> Hash {
+    hash_recurse(input, Finalization::Root(input.len() as u64))
 }
 
 /// A minimal state object for incrementally hashing input. Most callers should use the `Writer`
