@@ -83,7 +83,7 @@ fn try_mmap_stdin() -> io::Result<memmap::Mmap> {
 
 fn hash(_args: &Args) -> io::Result<()> {
     let hash = match try_mmap_stdin() {
-        Ok(mmap) => bao::hash::hash_parallel(&mmap),
+        Ok(mmap) => bao::hash::hash(&mmap),
         Err(_) => {
             let stdin = io::stdin();
             let mut stdin_lock = stdin.lock();

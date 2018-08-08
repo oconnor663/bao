@@ -8,7 +8,7 @@ use std::io::prelude::*;
 use test::Bencher;
 
 const SHORT: &[u8] = b"hello world";
-const MEDIUM: &[u8] = &[0; 4096 * 3];
+const MEDIUM: &[u8] = &[0; 4096 * 4 + 1];
 const LONG: &[u8] = &[0; 1_000_000];
 
 #[bench]
@@ -41,19 +41,23 @@ fn bench_bao_hash_long(b: &mut Bencher) {
     b.iter(|| bao::hash::hash(LONG));
 }
 
-#[bench]
-fn bench_bao_hash_parallel_short(b: &mut Bencher) {
-    b.iter(|| bao::hash::hash_parallel(SHORT));
+fn hash_serial(input: &[u8]) -> bao::hash::Hash {
+    bao::hash::hash_recurse(input, bao::hash::Finalization::Root(input.len() as u64))
 }
 
 #[bench]
-fn bench_bao_hash_parallel_medium(b: &mut Bencher) {
-    b.iter(|| bao::hash::hash_parallel(MEDIUM));
+fn bench_bao_hash_serial_short(b: &mut Bencher) {
+    b.iter(|| hash_serial(SHORT))
 }
 
 #[bench]
-fn bench_bao_hash_parallel_long(b: &mut Bencher) {
-    b.iter(|| bao::hash::hash_parallel(LONG));
+fn bench_bao_hash_serial_medium(b: &mut Bencher) {
+    b.iter(|| hash_serial(MEDIUM))
+}
+
+#[bench]
+fn bench_bao_hash_serial_long(b: &mut Bencher) {
+    b.iter(|| hash_serial(LONG))
 }
 
 #[bench]

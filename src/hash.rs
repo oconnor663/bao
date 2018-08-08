@@ -80,7 +80,7 @@ pub(crate) fn left_len(content_len: u64) -> u64 {
     largest_power_of_two(full_chunks) * CHUNK_SIZE as u64
 }
 
-pub(crate) fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
+pub fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_node(input, finalization);
     }
@@ -93,27 +93,27 @@ pub(crate) fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
     parent_hash(&left_hash, &right_hash, finalization)
 }
 
-/// Hash a slice of input bytes all at once.
-pub fn hash(input: &[u8]) -> Hash {
-    hash_recurse(input, Root(input.len() as u64))
-}
-
-pub(crate) fn hash_recurse_parallel(input: &[u8], finalization: Finalization) -> Hash {
+pub fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_node(input, finalization);
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
     let (left_hash, right_hash) = rayon::join(
-        || hash_recurse_parallel(left, NotRoot),
-        || hash_recurse_parallel(right, NotRoot),
+        || hash_recurse_rayon(left, NotRoot),
+        || hash_recurse_rayon(right, NotRoot),
     );
     parent_hash(&left_hash, &right_hash, finalization)
 }
 
-/// Hash a slice of input bytes all at once, using multiple threads via
+/// Hash a slice of input bytes all at once. Above about 16 kilobytes, this will parallelize using
 /// [Rayon](https://crates.io/crates/rayon).
-pub fn hash_parallel(input: &[u8]) -> Hash {
-    hash_recurse_parallel(input, Root(input.len() as u64))
+pub fn hash(input: &[u8]) -> Hash {
+    // Below about 4 chunks, the overhead of parallelizing isn't worth it.
+    if input.len() <= CHUNK_SIZE * 4 {
+        hash_recurse(input, Root(input.len() as u64))
+    } else {
+        hash_recurse_rayon(input, Root(input.len() as u64))
+    }
 }
 
 /// A minimal state object for incrementally hashing input. Most callers should use the `Writer`
@@ -372,13 +372,15 @@ mod test {
     }
 
     #[test]
-    fn test_parallel() {
+    fn test_serial_vs_parallel() {
         for &case in TEST_CASES {
             println!("case {}", case);
             let input = vec![0x42; case];
-            let hash_serial = hash(&input);
-            let hash_parallel = hash_parallel(&input);
+            let hash_serial = hash_recurse(&input, Root(case as u64));
+            let hash_parallel = hash_recurse_rayon(&input, Root(case as u64));
+            let hash_highlevel = hash(&input);
             assert_eq!(hash_serial, hash_parallel, "hashes don't match");
+            assert_eq!(hash_serial, hash_highlevel, "hashes don't match");
         }
     }
 
