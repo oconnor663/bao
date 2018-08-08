@@ -440,9 +440,13 @@ mod test {
 
     use self::byteorder::{BigEndian, WriteBytesExt};
     use self::rand::{prng::chacha::ChaChaRng, Rng, SeedableRng};
-    use super::*;
-    use encode::encode;
+    use std::io;
+    use std::io::prelude::*;
     use std::io::Cursor;
+
+    use super::*;
+    use encode;
+    use hash;
 
     fn make_test_input(len: usize) -> Vec<u8> {
         // Fill the input with incrementing bytes, so that reads from different sections are very
@@ -470,7 +474,7 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let (hash, encoded) = encode(&input);
+            let (hash, encoded) = encode::encode(&input);
             let mut decoder = Reader::new(&encoded[..], hash);
             let mut output = Vec::new();
             decoder.read_to_end(&mut output).expect("decoder error");
@@ -484,7 +488,7 @@ mod test {
             println!();
             println!("input_len {}", input_len);
             let input = make_test_input(input_len);
-            let (hash, encoded) = encode(&input);
+            let (hash, encoded) = encode::encode(&input);
             for &seek in hash::TEST_CASES {
                 println!("seek {}", seek);
                 // Test all three types of seeking.
@@ -517,7 +521,7 @@ mod test {
         println!("input_len {}", input_len);
         let mut prng = ChaChaRng::from_seed([0; 32]);
         let input = make_test_input(input_len);
-        let (hash, encoded) = encode(&input);
+        let (hash, encoded) = encode::encode(&input);
         let mut decoder = Reader::new(Cursor::new(&encoded), hash);
         // Do ten thousand random seeks and chunk-sized reads.
         for _ in 0..10_000 {
@@ -540,6 +544,106 @@ mod test {
                 &output[..],
                 "output doesn't match input"
             );
+        }
+    }
+
+    #[test]
+    fn test_invalid_zero_length() {
+        // There are different ways of structuring a decoder, and many of them are vulnerable to a
+        // mistake where as soon as the decoder reads zero length, it believes it's finished. But
+        // it's not finished, because it hasn't verified the hash! There must be something to
+        // distinguish the state "just decoded the zero length" from the state "verified the hash
+        // of the empty root node", and a decoder must not return EOF before the latter.
+
+        let (zero_hash, zero_encoded) = encode::encode(b"");
+        let one_hash = hash::hash(b"x");
+
+        // Decoding the empty tree with the right hash should succeed.
+        let mut output = Vec::new();
+        let mut decoder = Reader::new(&*zero_encoded, zero_hash);
+        decoder.read_to_end(&mut output).unwrap();
+        assert_eq!(&output, &[]);
+
+        // Decoding the empty tree with any other hash should fail.
+        let mut output = Vec::new();
+        let mut decoder = Reader::new(&*zero_encoded, one_hash);
+        let result = decoder.read_to_end(&mut output);
+        assert!(result.is_err(), "a bad hash is supposed to fail!");
+        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn test_seeking_around_invalid_data() {
+        for &case in hash::TEST_CASES {
+            // Skip the cases with only one chunk, so that the root stays valid.
+            if case <= CHUNK_SIZE {
+                continue;
+            }
+
+            println!("case {}", case);
+            let input = make_test_input(case);
+            let (hash, mut encoded) = encode::encode(&input);
+            println!("encoded len {}", encoded.len());
+
+            // Tweak a bit at the start of a chunk about halfway through. Loop over prior parent
+            // nodes and chunks to figure out where the target chunk actually starts.
+            let tweak_chunk = (case / CHUNK_SIZE / 2) as u64;
+            let tweak_position = tweak_chunk as usize * CHUNK_SIZE;
+            println!("tweak position {}", tweak_position);
+            let mut tweak_encoded_offset = HEADER_SIZE;
+            for chunk in 0..tweak_chunk {
+                tweak_encoded_offset +=
+                    encode::pre_order_parent_nodes(chunk, case as u64) as usize * PARENT_SIZE;
+                tweak_encoded_offset += CHUNK_SIZE;
+            }
+            tweak_encoded_offset +=
+                encode::pre_order_parent_nodes(tweak_chunk, case as u64) as usize * PARENT_SIZE;
+            println!("tweak encoded offset {}", tweak_encoded_offset);
+            encoded[tweak_encoded_offset] ^= 1;
+
+            // Read all the bits up to that tweak. Because it's right after a chunk boundary, the
+            // read should succeed.
+            let mut decoder = Reader::new(Cursor::new(&encoded), hash);
+            let mut output = vec![0; tweak_position as usize];
+            decoder.read_exact(&mut output).unwrap();
+            assert_eq!(&input[..tweak_position], &*output);
+
+            // Further reads at this point should fail.
+            let mut buf = [0; CHUNK_SIZE];
+            let res = decoder.read(&mut buf);
+            assert_eq!(res.unwrap_err().kind(), io::ErrorKind::InvalidData);
+
+            // But now if we seek past the bad chunk, things should succeed again.
+            let new_start = tweak_position + CHUNK_SIZE;
+            decoder.seek(io::SeekFrom::Start(new_start as u64)).unwrap();
+            let mut output = Vec::new();
+            decoder.read_to_end(&mut output).unwrap();
+            assert_eq!(&input[new_start..], &*output);
+        }
+    }
+
+    #[test]
+    fn test_invalid_hash_with_eof_seek() {
+        // Similar to above, the decoder must keep track of whether it's validated the root node,
+        // even if the caller attempts to seek past the end of the file before reading anything.
+        for &case in hash::TEST_CASES {
+            let input = vec![0; case];
+            let (hash, encoded) = encode::encode(&input);
+            let mut bad_hash = hash;
+            bad_hash[0] ^= 1;
+
+            // Seeking past the end of a tree should succeed with the right hash.
+            let mut output = Vec::new();
+            let mut decoder = Reader::new(Cursor::new(&encoded), hash);
+            decoder.seek(io::SeekFrom::Start(case as u64)).unwrap();
+            decoder.read_to_end(&mut output).unwrap();
+            assert_eq!(&output, &[]);
+
+            // Seeking past the end of a tree should fail if the root hash is wrong.
+            let mut decoder = Reader::new(Cursor::new(&encoded), bad_hash);
+            let result = decoder.seek(io::SeekFrom::Start(case as u64));
+            assert!(result.is_err(), "a bad hash is supposed to fail!");
+            assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
         }
     }
 }
