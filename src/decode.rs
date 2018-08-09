@@ -47,7 +47,7 @@ pub fn decode_recurse(
 ) -> Result<(), ()> {
     let content_len = output.len();
     if content_len <= CHUNK_SIZE {
-        let computed_hash = hash::hash_node(encoded, finalization);
+        let computed_hash = hash::hash_node(&encoded[..content_len], finalization);
         if !constant_time_eq(&hash, &computed_hash) {
             return Err(());
         }
@@ -76,7 +76,7 @@ pub fn decode_recurse_rayon(
 ) -> Result<(), ()> {
     let content_len = output.len();
     if content_len <= CHUNK_SIZE {
-        let computed_hash = hash::hash_node(encoded, finalization);
+        let computed_hash = hash::hash_node(&encoded[..content_len], finalization);
         if !constant_time_eq(&hash, &computed_hash) {
             return Err(());
         }
@@ -557,7 +557,7 @@ mod test {
     }
 
     #[test]
-    fn test_serial_vs_parallel() {
+    fn test_decoders() {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
@@ -589,20 +589,63 @@ mod test {
             let mut output = vec![0; case];
             decode_single_threaded(&encoded, &mut output, hash).unwrap();
             assert_eq!(input, output);
+
+            let mut output = Vec::new();
+            let mut decoder = Reader::new(&encoded[..], hash);
+            decoder.read_to_end(&mut output).unwrap();
+            assert_eq!(input, output);
         }
     }
 
     #[test]
-    fn test_reader() {
+    fn test_decoders_corrupted() {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
             let mut encoded = Vec::new();
             let hash = encode::encode_to_vec(&input, &mut encoded);
-            let mut decoder = Reader::new(&encoded[..], hash);
-            let mut output = Vec::new();
-            decoder.read_to_end(&mut output).expect("decoder error");
-            assert_eq!(input, output, "output doesn't match input");
+            // Don't tweak the header in this test, because that usually causes a panic.
+            let mut tweaks = Vec::new();
+            if encoded.len() > HEADER_SIZE {
+                tweaks.push(HEADER_SIZE);
+            }
+            if encoded.len() > HEADER_SIZE + PARENT_SIZE {
+                tweaks.push(HEADER_SIZE + PARENT_SIZE);
+            }
+            if encoded.len() > CHUNK_SIZE {
+                tweaks.push(CHUNK_SIZE);
+            }
+            for tweak in tweaks {
+                println!("tweak {}", tweak);
+                let mut bad_encoded = encoded.clone();
+                bad_encoded[tweak] ^= 1;
+
+                let mut output = vec![0; case];
+                let res = decode_recurse(
+                    &bad_encoded[HEADER_SIZE..],
+                    &mut output,
+                    hash,
+                    Root(case as u64),
+                );
+                assert!(res.is_err());
+
+                let mut output = vec![0; case];
+                let res = decode_recurse_rayon(
+                    &bad_encoded[HEADER_SIZE..],
+                    &mut output,
+                    hash,
+                    Root(case as u64),
+                );
+                assert!(res.is_err());
+
+                let mut output = vec![0; case];
+                let res = decode(&bad_encoded, &mut output, hash);
+                assert!(res.is_err());
+
+                let mut output = vec![0; case];
+                let res = decode_single_threaded(&bad_encoded, &mut output, hash);
+                assert!(res.is_err());
+            }
         }
     }
 
