@@ -649,8 +649,8 @@ mod test {
         let mut encoded = Vec::new();
         let hash = encode::encode_to_vec(&input, &mut encoded);
         let mut decoder = Reader::new(Cursor::new(&encoded), hash);
-        // Do ten thousand random seeks and chunk-sized reads.
-        for _ in 0..10_000 {
+        // Do a thousand random seeks and chunk-sized reads.
+        for _ in 0..1000 {
             let seek = prng.gen_range(0, input_len + 1);
             println!("seek {}", seek);
             decoder
