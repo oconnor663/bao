@@ -520,6 +520,20 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
     }
 }
 
+pub fn hash_from_encoded<T: Read>(mut reader: T) -> io::Result<Hash> {
+    let mut buf = [0; CHUNK_SIZE];
+    reader.read_exact(&mut buf[..HEADER_SIZE])?;
+    let content_len = hash::decode_len(*array_ref!(buf, 0, HEADER_SIZE));
+    let node;
+    if content_len <= CHUNK_SIZE as u64 {
+        node = &mut buf[..content_len as usize];
+    } else {
+        node = &mut buf[..PARENT_SIZE];
+    }
+    reader.read_exact(node)?;
+    Ok(hash::hash_node(node, Root(content_len)))
+}
+
 #[cfg(test)]
 mod test {
     extern crate byteorder;
@@ -798,7 +812,7 @@ mod test {
         // Similar to above, the decoder must keep track of whether it's validated the root node,
         // even if the caller attempts to seek past the end of the file before reading anything.
         for &case in hash::TEST_CASES {
-            let input = vec![0; case];
+            let input = make_test_input(case);
             let mut encoded = Vec::new();
             let hash = encode::encode_to_vec(&input, &mut encoded);
             let mut bad_hash = hash;
@@ -816,6 +830,18 @@ mod test {
             let result = decoder.seek(io::SeekFrom::Start(case as u64));
             assert!(result.is_err(), "a bad hash is supposed to fail!");
             assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
+        }
+    }
+
+    #[test]
+    fn test_hash_of_encoded() {
+        for &case in hash::TEST_CASES {
+            println!("case {}", case);
+            let input = make_test_input(case);
+            let mut encoded = Vec::new();
+            let hash = encode::encode_to_vec(&input, &mut encoded);
+            let inferred_hash = hash_from_encoded(Cursor::new(&*encoded)).unwrap();
+            assert_eq!(hash, inferred_hash, "hashes don't match");
         }
     }
 }
