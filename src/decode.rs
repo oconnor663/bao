@@ -1,4 +1,5 @@
 extern crate constant_time_eq;
+extern crate rayon;
 
 use self::constant_time_eq::constant_time_eq;
 use arrayvec::ArrayVec;
@@ -7,11 +8,97 @@ use encode;
 use hash::Finalization::{self, NotRoot, Root};
 use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 
-use std;
 use std::cmp;
 use std::fmt;
 use std::io;
 use std::io::prelude::*;
+
+pub fn decode(encoded: &[u8], output: &mut [u8], hash: Hash) -> Result<(), ()> {
+    let content_len = hash::decode_len(*array_ref!(encoded, 0, HEADER_SIZE));
+    // Note that trailing garbage in the encoding is allowed.
+    assert_eq!(
+        output.len() as u64,
+        content_len,
+        "output is the wrong length"
+    );
+    if content_len <= hash::MAX_SINGLE_THREADED as u64 {
+        decode_recurse(&encoded[HEADER_SIZE..], output, hash, Root(content_len))
+    } else {
+        decode_recurse_rayon(&encoded[HEADER_SIZE..], output, hash, Root(content_len))
+    }
+}
+
+pub fn decode_single_threaded(encoded: &[u8], output: &mut [u8], hash: Hash) -> Result<(), ()> {
+    let content_len = hash::decode_len(*array_ref!(encoded, 0, HEADER_SIZE));
+    // Note that trailing garbage in the encoding is allowed.
+    assert_eq!(
+        output.len() as u64,
+        content_len,
+        "output is the wrong length"
+    );
+    decode_recurse(&encoded[HEADER_SIZE..], output, hash, Root(content_len))
+}
+
+pub fn decode_recurse(
+    encoded: &[u8],
+    output: &mut [u8],
+    hash: Hash,
+    finalization: Finalization,
+) -> Result<(), ()> {
+    let content_len = output.len();
+    if content_len <= CHUNK_SIZE {
+        let computed_hash = hash::hash_node(encoded, finalization);
+        if !constant_time_eq(&hash, &computed_hash) {
+            return Err(());
+        }
+        output.copy_from_slice(&encoded[..content_len]);
+        return Ok(());
+    }
+    let left_hash = *array_ref!(encoded, 0, HASH_SIZE);
+    let right_hash = *array_ref!(encoded, HASH_SIZE, HASH_SIZE);
+    let computed_hash = hash::parent_hash(&left_hash, &right_hash, finalization);
+    if !constant_time_eq(&hash, &computed_hash) {
+        return Err(());
+    }
+    let left_len = hash::left_len(content_len as u64);
+    let (left_output, right_output) = output.split_at_mut(left_len as usize);
+    let left_encoded_len = encode::encoded_subtree_size(left_len);
+    let (left_encoded, right_encoded) = encoded[PARENT_SIZE..].split_at(left_encoded_len as usize);
+    decode_recurse(left_encoded, left_output, left_hash, NotRoot)?;
+    decode_recurse(right_encoded, right_output, right_hash, NotRoot)
+}
+
+pub fn decode_recurse_rayon(
+    encoded: &[u8],
+    output: &mut [u8],
+    hash: Hash,
+    finalization: Finalization,
+) -> Result<(), ()> {
+    let content_len = output.len();
+    if content_len <= CHUNK_SIZE {
+        let computed_hash = hash::hash_node(encoded, finalization);
+        if !constant_time_eq(&hash, &computed_hash) {
+            return Err(());
+        }
+        output.copy_from_slice(&encoded[..content_len]);
+        return Ok(());
+    }
+    let left_hash = *array_ref!(encoded, 0, HASH_SIZE);
+    let right_hash = *array_ref!(encoded, HASH_SIZE, HASH_SIZE);
+    let computed_hash = hash::parent_hash(&left_hash, &right_hash, finalization);
+    if !constant_time_eq(&hash, &computed_hash) {
+        return Err(());
+    }
+    let left_len = hash::left_len(content_len as u64);
+    let (left_output, right_output) = output.split_at_mut(left_len as usize);
+    let left_encoded_len = encode::encoded_subtree_size(left_len);
+    let (left_encoded, right_encoded) = encoded[PARENT_SIZE..].split_at(left_encoded_len as usize);
+    let (left_result, right_result) = rayon::join(
+        || decode_recurse(left_encoded, left_output, left_hash, NotRoot),
+        || decode_recurse(right_encoded, right_output, right_hash, NotRoot),
+    );
+    left_result.and(right_result)
+}
 
 #[derive(Clone, Debug)]
 pub struct State {
@@ -162,7 +249,7 @@ impl State {
         self.reset_to_root();
     }
 
-    pub fn feed_parent(&mut self, parent: hash::ParentNode) -> std::result::Result<(), ()> {
+    pub fn feed_parent(&mut self, parent: hash::ParentNode) -> Result<(), ()> {
         assert!(self.upcoming_parents > 0, "too many calls to feed_parent");
         let content_len = self.content_len.expect("feed_parent before header");
         let finalization = if self.at_root {
@@ -187,7 +274,7 @@ impl State {
         Ok(())
     }
 
-    pub fn feed_chunk(&mut self, chunk_hash: Hash) -> std::result::Result<(), ()> {
+    pub fn feed_chunk(&mut self, chunk_hash: Hash) -> Result<(), ()> {
         let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
         if !constant_time_eq(&chunk_hash, &expected_hash) {
             return Err(());
@@ -401,7 +488,7 @@ impl<T: Read> fmt::Debug for Reader<T> {
     }
 }
 
-fn into_io<T>(r: std::result::Result<T, ()>) -> io::Result<T> {
+fn into_io<T>(r: Result<T, ()>) -> io::Result<T> {
     r.map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "hash mismatch"))
 }
 
@@ -470,7 +557,43 @@ mod test {
     }
 
     #[test]
-    fn test_read() {
+    fn test_serial_vs_parallel() {
+        for &case in hash::TEST_CASES {
+            println!("case {}", case);
+            let input = make_test_input(case);
+            let mut encoded = Vec::new();
+            let hash = { encode::encode_to_vec(&input, &mut encoded) };
+
+            let mut output = vec![0; case];
+            decode_recurse(
+                &encoded[HEADER_SIZE..],
+                &mut output,
+                hash,
+                Root(case as u64),
+            ).unwrap();
+            assert_eq!(input, output);
+
+            let mut output = vec![0; case];
+            decode_recurse_rayon(
+                &encoded[HEADER_SIZE..],
+                &mut output,
+                hash,
+                Root(case as u64),
+            ).unwrap();
+            assert_eq!(input, output);
+
+            let mut output = vec![0; case];
+            decode(&encoded, &mut output, hash).unwrap();
+            assert_eq!(input, output);
+
+            let mut output = vec![0; case];
+            decode_single_threaded(&encoded, &mut output, hash).unwrap();
+            assert_eq!(input, output);
+        }
+    }
+
+    #[test]
+    fn test_reader() {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);

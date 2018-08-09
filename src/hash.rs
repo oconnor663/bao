@@ -7,7 +7,7 @@ use std::io;
 use std::mem;
 
 pub const HASH_SIZE: usize = 32;
-pub(crate) const PARENT_SIZE: usize = 64;
+pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
 pub(crate) const HEADER_SIZE: usize = 8;
 pub(crate) const CHUNK_SIZE: usize = 4096;
 pub(crate) const MAX_DEPTH: usize = 64;
@@ -385,8 +385,10 @@ mod test {
             let hash_serial = hash_recurse(&input, Root(case as u64));
             let hash_parallel = hash_recurse_rayon(&input, Root(case as u64));
             let hash_highlevel = hash(&input);
+            let hash_highlevel_single = hash_single_threaded(&input);
             assert_eq!(hash_serial, hash_parallel, "hashes don't match");
             assert_eq!(hash_serial, hash_highlevel, "hashes don't match");
+            assert_eq!(hash_serial, hash_highlevel_single, "hashes don't match");
         }
     }
 

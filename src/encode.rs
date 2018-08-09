@@ -362,14 +362,32 @@ mod test {
     }
 
     #[test]
-    fn check_hash() {
+    fn test_serial_vs_parallel() {
         for &case in hash::TEST_CASES {
-            println!("starting case {}", case);
-            let input = vec![9; case];
+            let input = vec![0; case];
             let expected_hash = hash::hash(&input);
-            let mut encoded = Vec::new();
-            let encoded_hash = encode_to_vec(&input, &mut encoded);
-            assert_eq!(expected_hash, encoded_hash, "hash mismatch");
+
+            let mut serial_output = vec![0; encoded_subtree_size(case as u64) as usize];
+            let serial_hash = encode_recurse(&input, &mut serial_output, Root(case as u64));
+
+            let mut parallel_output = vec![0; encoded_subtree_size(case as u64) as usize];
+            let parallel_hash =
+                encode_recurse_rayon(&input, &mut parallel_output, Root(case as u64));
+
+            let mut highlevel_output = vec![0; encoded_size(case as u64) as usize];
+            let highlevel_hash = encode(&input, &mut highlevel_output);
+
+            let mut highlevel_single_output = vec![0; encoded_size(case as u64) as usize];
+            let highlevel_single_hash = encode(&input, &mut highlevel_single_output);
+
+            assert_eq!(expected_hash, serial_hash);
+            assert_eq!(expected_hash, parallel_hash);
+            assert_eq!(expected_hash, highlevel_hash);
+            assert_eq!(expected_hash, highlevel_single_hash);
+
+            assert_eq!(serial_output, parallel_output);
+            assert_eq!(highlevel_output, highlevel_single_output);
+            assert_eq!(*serial_output, highlevel_output[HEADER_SIZE..]);
         }
     }
 
