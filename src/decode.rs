@@ -94,8 +94,8 @@ pub fn decode_recurse_rayon(
     let left_encoded_len = encode::encoded_subtree_size(left_len);
     let (left_encoded, right_encoded) = encoded[PARENT_SIZE..].split_at(left_encoded_len as usize);
     let (left_result, right_result) = rayon::join(
-        || decode_recurse(left_encoded, left_output, left_hash, NotRoot),
-        || decode_recurse(right_encoded, right_output, right_hash, NotRoot),
+        || decode_recurse_rayon(left_encoded, left_output, left_hash, NotRoot),
+        || decode_recurse_rayon(right_encoded, right_output, right_hash, NotRoot),
     );
     left_result.and(right_result)
 }
