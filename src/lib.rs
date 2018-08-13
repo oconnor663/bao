@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate arrayref;
 extern crate arrayvec;
-extern crate blake2_c;
+extern crate blake2b_simd;
 extern crate byteorder;
 extern crate crossbeam;
 extern crate num_cpus;

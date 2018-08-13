@@ -1,5 +1,5 @@
 use arrayvec::ArrayVec;
-use blake2_c::blake2b;
+use blake2b_simd;
 use byteorder::{ByteOrder, LittleEndian};
 use rayon;
 use std::cmp;
@@ -27,6 +27,12 @@ pub(crate) fn decode_len(bytes: [u8; HEADER_SIZE]) -> u64 {
     LittleEndian::read_u64(&bytes)
 }
 
+pub(crate) fn new_blake2b_state() -> blake2b_simd::State {
+    blake2b_simd::Params::new()
+        .hash_length(HASH_SIZE)
+        .to_state()
+}
+
 // The root node is hashed differently from interior nodes. It gets suffixed
 // with the length of the entire input, and we set the Blake2 final node flag.
 // That means that no root hash can ever collide with an interior hash, or with
@@ -38,7 +44,7 @@ pub enum Finalization {
 }
 use self::Finalization::{NotRoot, Root};
 
-pub(crate) fn finalize_hash(state: &mut blake2b::State, finalization: Finalization) -> Hash {
+pub(crate) fn finalize_hash(state: &mut blake2b_simd::State, finalization: Finalization) -> Hash {
     // For the root node, we hash in the length as a suffix, and we set the
     // Blake2 last node flag. One of the reasons for this design is that we
     // don't need to know a given node is the root until the very end, so we
@@ -48,18 +54,18 @@ pub(crate) fn finalize_hash(state: &mut blake2b::State, finalization: Finalizati
         state.set_last_node(true);
     }
     let blake_digest = state.finalize();
-    *array_ref!(blake_digest.bytes, 0, HASH_SIZE)
+    *array_ref!(blake_digest.as_bytes(), 0, HASH_SIZE)
 }
 
 pub(crate) fn hash_node(chunk: &[u8], finalization: Finalization) -> Hash {
     debug_assert!(chunk.len() <= CHUNK_SIZE);
-    let mut state = blake2b::State::new(HASH_SIZE);
+    let mut state = new_blake2b_state();
     state.update(chunk);
     finalize_hash(&mut state, finalization)
 }
 
 pub(crate) fn parent_hash(left_hash: &Hash, right_hash: &Hash, finalization: Finalization) -> Hash {
-    let mut state = blake2b::State::new(HASH_SIZE);
+    let mut state = new_blake2b_state();
     state.update(left_hash);
     state.update(right_hash);
     finalize_hash(&mut state, finalization)
@@ -242,7 +248,7 @@ impl State {
 /// all-at-once `hash` function should use this interface.
 #[derive(Clone, Debug)]
 pub struct Writer {
-    chunk: blake2b::State,
+    chunk: blake2b_simd::State,
     chunk_len: usize,
     total_len: u64,
     state: State,
@@ -251,7 +257,7 @@ pub struct Writer {
 impl Writer {
     pub fn new() -> Self {
         Self {
-            chunk: blake2b::State::new(HASH_SIZE),
+            chunk: new_blake2b_state(),
             chunk_len: 0,
             total_len: 0,
             state: State::new(),
@@ -278,7 +284,7 @@ impl io::Write for Writer {
             if self.chunk_len == CHUNK_SIZE {
                 let chunk_hash = finalize_hash(&mut self.chunk, NotRoot);
                 self.state.push_subtree(chunk_hash);
-                self.chunk = blake2b::State::new(HASH_SIZE);
+                self.chunk = new_blake2b_state();
                 self.chunk_len = 0;
             }
 

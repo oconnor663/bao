@@ -1,5 +1,5 @@
 use arrayvec::ArrayVec;
-use blake2_c::blake2b;
+use blake2b_simd;
 use hash::Finalization::{self, NotRoot, Root};
 use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
 use rayon;
@@ -243,7 +243,7 @@ pub struct Writer<T: Read + Write + Seek> {
     inner: T,
     chunk_len: usize,
     total_len: u64,
-    chunk_state: blake2b::State,
+    chunk_state: blake2b_simd::State,
     tree_state: hash::State,
 }
 
@@ -253,7 +253,7 @@ impl<T: Read + Write + Seek> Writer<T> {
             inner,
             chunk_len: 0,
             total_len: 0,
-            chunk_state: blake2b::State::new(HASH_SIZE),
+            chunk_state: hash::new_blake2b_state(),
             tree_state: hash::State::new(),
         }
     }
@@ -325,7 +325,7 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
         }
         if self.chunk_len == CHUNK_SIZE {
             let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
-            self.chunk_state = blake2b::State::new(HASH_SIZE);
+            self.chunk_state = hash::new_blake2b_state();
             self.chunk_len = 0;
             self.tree_state.push_subtree(chunk_hash);
             while let Some(parent) = self.tree_state.merge_parent() {

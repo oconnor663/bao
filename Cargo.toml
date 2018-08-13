@@ -10,7 +10,7 @@ repository = "https://github.com/oconnor663/bao"
 arrayref = "0.3.4"
 arrayvec = "0.4.7"
 byteorder = "1.2.4"
-blake2_c = "0.3.1"
+blake2b_simd = "0.2.0"
 constant_time_eq = "0.1.3"
 crossbeam = "0.4.1"
 docopt = "1.0.0"
@@ -26,6 +26,3 @@ serde_derive = "1.0.70"
 [dev-dependencies]
 rand = "0.5.4"
 duct = "0.11.0"
-
-[features]
-native = ["blake2_c/native"]
