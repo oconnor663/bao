@@ -351,6 +351,32 @@ impl<T: Read> Reader<T> {
         }
     }
 
+    /// Return the total length of the stream, according the header. This doesn't require the
+    /// underlying reader to implement `Seek`. Note that this is not the remaining length, which
+    /// will be different if the reader has already advanced.
+    pub fn len(&mut self) -> io::Result<u64> {
+        loop {
+            match self.state.len_next() {
+                LenNext::Len(len) => return Ok(len),
+                LenNext::Next(next) => match next {
+                    StateNext::Header => self.read_header()?,
+                    StateNext::Parent => self.read_parent()?,
+                    StateNext::Chunk {
+                        size,
+                        skip,
+                        finalization,
+                    } => {
+                        // Note that reading a chunk (which we need to do to verify the hash if
+                        // there are no parent nodes at all) advances the reader. However, because
+                        // this can only happen at the beginning, and we buffer the last chunk
+                        // read, the caller won't skip any data.
+                        self.read_chunk(size, skip, finalization)?;
+                    }
+                },
+            }
+        }
+    }
+
     fn buf_len(&self) -> usize {
         self.buf_end - self.buf_start
     }
@@ -842,6 +868,30 @@ mod test {
             let hash = encode::encode_to_vec(&input, &mut encoded);
             let inferred_hash = hash_from_encoded(Cursor::new(&*encoded)).unwrap();
             assert_eq!(hash, inferred_hash, "hashes don't match");
+        }
+    }
+
+    #[test]
+    fn test_len_then_read() {
+        for &case in hash::TEST_CASES {
+            println!("case {}", case);
+            let input = make_test_input(case);
+            let mut encoded = Vec::new();
+            let hash = encode::encode_to_vec(&input, &mut encoded);
+            let mut decoder = Reader::new(&*encoded, hash);
+
+            // Read the len and make sure it's correct.
+            let len = decoder.len().unwrap();
+            assert_eq!(case as u64, len, "len mismatch");
+
+            // Read all the output and make sure we didn't miss any.
+            let mut output = Vec::new();
+            decoder.read_to_end(&mut output).unwrap();
+            assert_eq!(input, output, "missed output");
+
+            // Check the len again just to be safe.
+            let len = decoder.len().unwrap();
+            assert_eq!(case as u64, len, "len mismatch");
         }
     }
 }
