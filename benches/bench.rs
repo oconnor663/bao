@@ -5,6 +5,7 @@ extern crate blake2b_simd;
 extern crate test;
 
 use std::io::prelude::*;
+use std::io::Cursor;
 use test::Bencher;
 
 const SHORT: &[u8] = b"hello world";
@@ -139,6 +140,42 @@ fn bench_bao_encode_serial_long(b: &mut Bencher) {
     b.bytes = LONG.len() as u64;
     let mut output = output_vec(LONG);
     b.iter(|| bao::encode::encode_single_threaded(LONG, &mut output));
+}
+
+#[bench]
+fn bench_bao_encode_writer_short(b: &mut Bencher) {
+    b.bytes = SHORT.len() as u64;
+    let mut output = Vec::with_capacity(bao::encode::encoded_size(SHORT.len() as u64) as usize);
+    b.iter(|| {
+        output.clear();
+        let mut writer = bao::encode::Writer::new(Cursor::new(&mut output));
+        writer.write_all(SHORT).unwrap();
+        writer.finish().unwrap()
+    });
+}
+
+#[bench]
+fn bench_bao_encode_writer_medium(b: &mut Bencher) {
+    b.bytes = MEDIUM.len() as u64;
+    let mut output = Vec::with_capacity(bao::encode::encoded_size(MEDIUM.len() as u64) as usize);
+    b.iter(|| {
+        output.clear();
+        let mut writer = bao::encode::Writer::new(Cursor::new(&mut output));
+        writer.write_all(MEDIUM).unwrap();
+        writer.finish().unwrap()
+    });
+}
+
+#[bench]
+fn bench_bao_encode_writer_long(b: &mut Bencher) {
+    b.bytes = LONG.len() as u64;
+    let mut output = Vec::with_capacity(bao::encode::encoded_size(LONG.len() as u64) as usize);
+    b.iter(|| {
+        output.clear();
+        let mut writer = bao::encode::Writer::new(Cursor::new(&mut output));
+        writer.write_all(LONG).unwrap();
+        writer.finish().unwrap()
+    });
 }
 
 #[bench]
