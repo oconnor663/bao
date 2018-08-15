@@ -10,11 +10,11 @@ use std::mem;
 use std::sync::mpsc;
 
 pub const HASH_SIZE: usize = 32;
-pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
-pub(crate) const HEADER_SIZE: usize = 8;
-pub(crate) const CHUNK_SIZE: usize = 4096;
-pub(crate) const MAX_DEPTH: usize = 64;
-pub(crate) const MAX_SINGLE_THREADED: usize = 4 * CHUNK_SIZE;
+pub const PARENT_SIZE: usize = 2 * HASH_SIZE;
+pub const HEADER_SIZE: usize = 8;
+pub const CHUNK_SIZE: usize = 4096;
+pub const MAX_DEPTH: usize = 64;
+pub const MAX_SINGLE_THREADED: usize = 4 * CHUNK_SIZE;
 
 pub type Hash = [u8; HASH_SIZE];
 pub type ParentNode = [u8; 2 * HASH_SIZE];
