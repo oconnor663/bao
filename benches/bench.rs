@@ -96,6 +96,36 @@ fn bench_bao_hash_writer_long(b: &mut Bencher) {
     });
 }
 
+#[bench]
+fn bench_bao_hash_rayonwriter_short(b: &mut Bencher) {
+    b.bytes = SHORT.len() as u64;
+    b.iter(|| {
+        let mut writer = bao::hash::RayonWriter::new();
+        writer.write_all(SHORT).unwrap();
+        writer.finish()
+    });
+}
+
+#[bench]
+fn bench_bao_hash_rayonwriter_medium(b: &mut Bencher) {
+    b.bytes = MEDIUM.len() as u64;
+    b.iter(|| {
+        let mut writer = bao::hash::RayonWriter::new();
+        writer.write_all(MEDIUM).unwrap();
+        writer.finish()
+    });
+}
+
+#[bench]
+fn bench_bao_hash_rayonwriter_long(b: &mut Bencher) {
+    b.bytes = LONG.len() as u64;
+    b.iter(|| {
+        let mut writer = bao::hash::RayonWriter::new();
+        writer.write_all(LONG).unwrap();
+        writer.finish()
+    });
+}
+
 fn output_vec(input: &[u8]) -> Vec<u8> {
     vec![0; bao::encode::encoded_size(input.len() as u64) as usize]
 }

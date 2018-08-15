@@ -1,10 +1,13 @@
 use arrayvec::ArrayVec;
 use blake2b_simd;
 use byteorder::{ByteOrder, LittleEndian};
+use num_cpus;
 use rayon;
 use std::cmp;
+use std::collections::VecDeque;
 use std::io;
 use std::mem;
+use std::sync::mpsc;
 
 pub const HASH_SIZE: usize = 32;
 pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
@@ -303,6 +306,94 @@ impl io::Write for Writer {
     }
 }
 
+lazy_static! {
+    static ref MAX_RECEIVERS: usize = num_cpus::get();
+}
+
+const JOB_SIZE: usize = 4 * CHUNK_SIZE;
+
+// TODO: Manually implement Clone by draining the receivers.
+#[derive(Debug)]
+pub struct RayonWriter {
+    state: State,
+    buf: Vec<u8>,
+    total_len: u64,
+    receivers: VecDeque<mpsc::Receiver<(Hash, Vec<u8>)>>,
+    max_receivers: usize,
+}
+
+impl RayonWriter {
+    pub fn new() -> Self {
+        Self {
+            state: State::new(),
+            // Use new() instead of with_capacity() to avoid a big allocation in the small case.
+            buf: Vec::new(),
+            total_len: 0,
+            receivers: VecDeque::new(),
+            max_receivers: *MAX_RECEIVERS,
+        }
+    }
+
+    /// After feeding all the input bytes to `write`, return the root hash. The writer cannot be
+    /// used after this.
+    pub fn finish(&mut self) -> Hash {
+        if self.total_len <= JOB_SIZE as u64 {
+            // TODO: experiment with serial vs join here
+            return hash_recurse(&mut self.buf, Root(self.total_len));
+        }
+        let last_job_hash = hash_recurse(&mut self.buf, NotRoot);
+        for receiver in self.receivers.drain(..) {
+            let (hash, _) = receiver.recv().expect("worker hung up");
+            self.state.push_subtree(hash);
+        }
+        self.state.push_subtree(last_job_hash);
+        self.state.finish(Root(self.total_len))
+    }
+}
+
+impl io::Write for RayonWriter {
+    fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
+        let input_len = input.len();
+        while !input.is_empty() {
+            if self.buf.len() == JOB_SIZE {
+                // First, get our hands on a new buffer. If we haven't maxed out the outstanding
+                // receivers, just create a fresh one. Otherwise, await a receiver and reuse the
+                // buffer it gives back to us.
+                let new_buf;
+                if self.receivers.len() < self.max_receivers {
+                    new_buf = Vec::with_capacity(JOB_SIZE);
+                } else {
+                    let receiver = self.receivers.pop_front().unwrap();
+                    let (hash, mut received_buf) = receiver.recv().expect("worker hung up");
+                    self.state.push_subtree(hash);
+                    received_buf.clear();
+                    new_buf = received_buf;
+                }
+
+                // Now swap the buffers and send the full one to a new job.
+                let full_buf = mem::replace(&mut self.buf, new_buf);
+                let (sender, receiver) = mpsc::channel();
+                self.receivers.push_back(receiver);
+                rayon::spawn(move || {
+                    let hash = hash_recurse(&full_buf, NotRoot);
+                    sender.send((hash, full_buf)).expect("main hung up");
+                });
+            }
+
+            let want = JOB_SIZE - self.buf.len();
+            let take = cmp::min(want, input.len());
+            self.buf.extend_from_slice(&input[..take]);
+            self.total_len += take as u64;
+            input = &input[take..];
+        }
+        Ok(input_len)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 // Interesting input lengths to run tests on.
 #[cfg(test)]
 pub(crate) const TEST_CASES: &[usize] = &[
@@ -430,10 +521,35 @@ mod test {
             println!("case {}", case);
             let input = vec![0x42; case];
             let expected = hash(&input);
+
             let mut writer = Writer::new();
             writer.write_all(&input).unwrap();
             let found = writer.finish();
             assert_eq!(expected, found, "hashes don't match");
+        }
+    }
+
+    #[test]
+    fn test_rayon_writer() {
+        let mut cases = TEST_CASES.to_vec();
+        cases.push(JOB_SIZE - 1);
+        cases.push(JOB_SIZE);
+        cases.push(JOB_SIZE + 1);
+        cases.push(*MAX_RECEIVERS * JOB_SIZE - 1);
+        cases.push(*MAX_RECEIVERS * JOB_SIZE);
+        cases.push(*MAX_RECEIVERS * JOB_SIZE + 1);
+        cases.push(2 * *MAX_RECEIVERS * JOB_SIZE - 1);
+        cases.push(2 * *MAX_RECEIVERS * JOB_SIZE);
+        cases.push(2 * *MAX_RECEIVERS * JOB_SIZE + 1);
+        for case in cases {
+            println!("case {}", case);
+            let input = vec![0x42; case];
+            let expected = hash(&input);
+
+            let mut rayon_writer = RayonWriter::new();
+            rayon_writer.write_all(&input).unwrap();
+            let rayon_found = rayon_writer.finish();
+            assert_eq!(expected, rayon_found, "hashes don't match");
         }
     }
 }
