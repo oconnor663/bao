@@ -1,13 +1,13 @@
 use arrayvec::ArrayVec;
 use blake2b_simd;
 use byteorder::{ByteOrder, LittleEndian};
+use crossbeam_channel as channel;
 use num_cpus;
 use rayon;
 use std::cmp;
 use std::collections::VecDeque;
 use std::io;
 use std::mem;
-use std::sync::mpsc;
 
 pub const HASH_SIZE: usize = 32;
 pub const PARENT_SIZE: usize = 2 * HASH_SIZE;
@@ -318,7 +318,7 @@ pub struct RayonWriter {
     state: State,
     buf: Vec<u8>,
     total_len: u64,
-    receivers: VecDeque<mpsc::Receiver<(Hash, Vec<u8>)>>,
+    receivers: VecDeque<channel::Receiver<(Hash, Vec<u8>)>>,
     max_receivers: usize,
 }
 
@@ -372,11 +372,11 @@ impl io::Write for RayonWriter {
 
                 // Now swap the buffers and send the full one to a new job.
                 let full_buf = mem::replace(&mut self.buf, new_buf);
-                let (sender, receiver) = mpsc::channel();
+                let (sender, receiver) = channel::bounded(1);
                 self.receivers.push_back(receiver);
                 rayon::spawn(move || {
                     let hash = hash_recurse(&full_buf, NotRoot);
-                    sender.send((hash, full_buf)).expect("main hung up");
+                    sender.send((hash, full_buf));
                 });
             }
 
