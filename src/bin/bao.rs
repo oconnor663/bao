@@ -3,7 +3,7 @@ extern crate arrayref;
 extern crate bao;
 extern crate docopt;
 extern crate hex;
-extern crate libc;
+extern crate os_pipe;
 #[macro_use]
 extern crate serde_derive;
 extern crate memmap;
@@ -11,7 +11,6 @@ extern crate memmap;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::prelude::*;
-use std::mem::ManuallyDrop;
 
 fn encode(args: &Args) -> io::Result<()> {
     let stdin = io::stdin();
@@ -72,13 +71,9 @@ fn decode(args: &Args) -> io::Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
 fn try_mmap_stdin() -> io::Result<memmap::Mmap> {
-    use std::os::unix::prelude::*;
-    unsafe {
-        let dummy_file = ManuallyDrop::new(File::from_raw_fd(libc::STDIN_FILENO));
-        memmap::Mmap::map(&dummy_file)
-    }
+    let stdin_file = os_pipe::dup_stdin()?.into();
+    unsafe { memmap::Mmap::map(&stdin_file) }
 }
 
 fn hash(_args: &Args) -> io::Result<()> {
