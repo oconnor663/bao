@@ -7,7 +7,7 @@ use std::cmp;
 use std::fmt;
 use std::io;
 use std::io::prelude::*;
-use std::io::SeekFrom::{Current, Start};
+use std::io::SeekFrom::{End, Start};
 
 pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
     let content_len = input.len() as u64;
@@ -235,6 +235,49 @@ pub enum FlipperNext {
     Done,
 }
 
+fn flip_post_order_stream<T: Read + Write + Seek>(stream: &mut T) -> io::Result<()> {
+    let mut write_cursor = stream.seek(End(0))?;
+    let mut read_cursor = write_cursor - HEADER_SIZE as u64;
+    let mut header = [0; HEADER_SIZE];
+    stream.seek(Start(read_cursor))?;
+    stream.read_exact(&mut header)?;
+    let content_len = hash::decode_len(header);
+    let mut flipper = FlipperState::new(content_len);
+    loop {
+        match flipper.next() {
+            FlipperNext::FeedParent => {
+                let mut parent = [0; PARENT_SIZE];
+                stream.seek(Start(read_cursor - PARENT_SIZE as u64))?;
+                stream.read_exact(&mut parent)?;
+                read_cursor -= PARENT_SIZE as u64;
+                flipper.feed_parent(parent);
+            }
+            FlipperNext::TakeParent => {
+                let parent = flipper.take_parent();
+                stream.seek(Start(write_cursor - PARENT_SIZE as u64))?;
+                stream.write_all(&parent)?;
+                write_cursor -= PARENT_SIZE as u64;
+            }
+            FlipperNext::Chunk(size) => {
+                let mut chunk = [0; CHUNK_SIZE];
+                stream.seek(Start(read_cursor - size as u64))?;
+                stream.read_exact(&mut chunk[..size])?;
+                read_cursor -= size as u64;
+                stream.seek(Start(write_cursor - size as u64))?;
+                stream.write_all(&chunk[..size])?;
+                write_cursor -= size as u64;
+                flipper.chunk_moved();
+            }
+            FlipperNext::Done => {
+                debug_assert_eq!(HEADER_SIZE as u64, write_cursor);
+                stream.seek(Start(0))?;
+                stream.write_all(&header)?;
+                return Ok(());
+            }
+        }
+    }
+}
+
 /// Most callers should use this writer for incremental encoding. The writer makes no attempt to
 /// recover from IO errors, so callers that want to retry should start from the beginning with a new
 /// writer.
@@ -278,42 +321,9 @@ impl<T: Read + Write + Seek> Writer<T> {
         self.inner.write_all(&hash::encode_len(self.total_len))?;
 
         // Then flip the tree to be pre-order.
-        let mut flipper = FlipperState::new(self.total_len);
-        let mut write_cursor = self.inner.seek(Current(0))?;
-        let mut read_cursor = write_cursor - HEADER_SIZE as u64;
-        loop {
-            match flipper.next() {
-                FlipperNext::FeedParent => {
-                    let mut parent = [0; PARENT_SIZE];
-                    self.inner.seek(Start(read_cursor - PARENT_SIZE as u64))?;
-                    self.inner.read_exact(&mut parent)?;
-                    read_cursor -= PARENT_SIZE as u64;
-                    flipper.feed_parent(parent);
-                }
-                FlipperNext::TakeParent => {
-                    let parent = flipper.take_parent();
-                    self.inner.seek(Start(write_cursor - PARENT_SIZE as u64))?;
-                    self.inner.write_all(&parent)?;
-                    write_cursor -= PARENT_SIZE as u64;
-                }
-                FlipperNext::Chunk(size) => {
-                    let mut chunk = [0; CHUNK_SIZE];
-                    self.inner.seek(Start(read_cursor - size as u64))?;
-                    self.inner.read_exact(&mut chunk[..size])?;
-                    read_cursor -= size as u64;
-                    self.inner.seek(Start(write_cursor - size as u64))?;
-                    self.inner.write_all(&chunk[..size])?;
-                    write_cursor -= size as u64;
-                    flipper.chunk_moved();
-                }
-                FlipperNext::Done => {
-                    debug_assert_eq!(HEADER_SIZE as u64, write_cursor);
-                    self.inner.seek(Start(0))?;
-                    self.inner.write_all(&hash::encode_len(self.total_len))?;
-                    return Ok(root_hash);
-                }
-            }
-        }
+        flip_post_order_stream(&mut self.inner)?;
+
+        Ok(root_hash)
     }
 }
 
