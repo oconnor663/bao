@@ -306,11 +306,14 @@ impl io::Write for Writer {
     }
 }
 
+// There is a lot of noise when we try to benchmark the optimal values of MAX_JOBS and JOB_SIZE.
+// The only consistently important thing seems to be that MAX_JOBS is greater than the number of
+// CPUs.
 lazy_static! {
-    static ref MAX_RECEIVERS: usize = num_cpus::get();
+    static ref MAX_JOBS: usize = 2 * num_cpus::get();
 }
 
-const JOB_SIZE: usize = 4 * CHUNK_SIZE;
+const JOB_SIZE: usize = 1 << 16;
 
 // TODO: Manually implement Clone by draining the receivers.
 #[derive(Debug)]
@@ -319,7 +322,8 @@ pub struct RayonWriter {
     buf: Vec<u8>,
     total_len: u64,
     receivers: VecDeque<channel::Receiver<(Hash, Vec<u8>)>>,
-    max_receivers: usize,
+    buf_size: usize,
+    max_jobs: usize,
 }
 
 impl RayonWriter {
@@ -330,15 +334,24 @@ impl RayonWriter {
             buf: Vec::new(),
             total_len: 0,
             receivers: VecDeque::new(),
-            max_receivers: *MAX_RECEIVERS,
+            buf_size: JOB_SIZE,
+            max_jobs: *MAX_JOBS,
         }
+    }
+
+    pub fn new_benchmarking(job_size: usize, max_jobs: usize) -> Self {
+        assert_eq!(0, job_size % CHUNK_SIZE);
+        assert_eq!(1, (job_size / CHUNK_SIZE).count_ones());
+        let mut writer = Self::new();
+        writer.buf_size = job_size;
+        writer.max_jobs = max_jobs;
+        writer
     }
 
     /// After feeding all the input bytes to `write`, return the root hash. The writer cannot be
     /// used after this.
     pub fn finish(&mut self) -> Hash {
         if self.total_len <= JOB_SIZE as u64 {
-            // TODO: experiment with serial vs join here
             return hash_recurse(&mut self.buf, Root(self.total_len));
         }
         let last_job_hash = hash_recurse(&mut self.buf, NotRoot);
@@ -360,7 +373,7 @@ impl io::Write for RayonWriter {
                 // receivers, just create a fresh one. Otherwise, await a receiver and reuse the
                 // buffer it gives back to us.
                 let new_buf;
-                if self.receivers.len() < self.max_receivers {
+                if self.receivers.len() < self.max_jobs {
                     new_buf = Vec::with_capacity(JOB_SIZE);
                 } else {
                     let receiver = self.receivers.pop_front().unwrap();
@@ -372,9 +385,11 @@ impl io::Write for RayonWriter {
 
                 // Now swap the buffers and send the full one to a new job.
                 let full_buf = mem::replace(&mut self.buf, new_buf);
+                // Performance: crossbeam-channel seems to beat std::mpsc here.
                 let (sender, receiver) = channel::bounded(1);
                 self.receivers.push_back(receiver);
                 rayon::spawn(move || {
+                    // Performance: hash_recursive_rayon seems to be slower here.
                     let hash = hash_recurse(&full_buf, NotRoot);
                     sender.send((hash, full_buf));
                 });
@@ -535,12 +550,12 @@ mod test {
         cases.push(JOB_SIZE - 1);
         cases.push(JOB_SIZE);
         cases.push(JOB_SIZE + 1);
-        cases.push(*MAX_RECEIVERS * JOB_SIZE - 1);
-        cases.push(*MAX_RECEIVERS * JOB_SIZE);
-        cases.push(*MAX_RECEIVERS * JOB_SIZE + 1);
-        cases.push(2 * *MAX_RECEIVERS * JOB_SIZE - 1);
-        cases.push(2 * *MAX_RECEIVERS * JOB_SIZE);
-        cases.push(2 * *MAX_RECEIVERS * JOB_SIZE + 1);
+        cases.push(*MAX_JOBS * JOB_SIZE - 1);
+        cases.push(*MAX_JOBS * JOB_SIZE);
+        cases.push(*MAX_JOBS * JOB_SIZE + 1);
+        cases.push(2 * *MAX_JOBS * JOB_SIZE - 1);
+        cases.push(2 * *MAX_JOBS * JOB_SIZE);
+        cases.push(2 * *MAX_JOBS * JOB_SIZE + 1);
         for case in cases {
             println!("case {}", case);
             let input = vec![0x42; case];

@@ -16,7 +16,7 @@ const SHORT: usize = blake2b_simd::BLOCKBYTES - hash::HEADER_SIZE;
 // Same as short, but for a single chunk of input.
 const MEDIUM: usize = hash::CHUNK_SIZE - hash::HEADER_SIZE;
 
-const LONG: usize = 1_000_000;
+const LONG: usize = 10_000_000;
 
 fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
     b.bytes = size as u64;
