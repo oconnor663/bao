@@ -310,10 +310,10 @@ impl io::Write for Writer {
 // The only consistently important thing seems to be that MAX_JOBS is greater than the number of
 // CPUs.
 lazy_static! {
-    static ref MAX_JOBS: usize = 2 * num_cpus::get();
+    pub static ref MAX_JOBS: usize = 2 * num_cpus::get();
 }
 
-const JOB_SIZE: usize = 1 << 16;
+pub const JOB_SIZE: usize = 1 << 16;
 
 // TODO: Manually implement Clone by draining the receivers.
 #[derive(Debug)]
@@ -322,7 +322,7 @@ pub struct RayonWriter {
     buf: Vec<u8>,
     total_len: u64,
     receivers: VecDeque<channel::Receiver<(Hash, Vec<u8>)>>,
-    buf_size: usize,
+    job_size: usize,
     max_jobs: usize,
 }
 
@@ -334,7 +334,7 @@ impl RayonWriter {
             buf: Vec::new(),
             total_len: 0,
             receivers: VecDeque::new(),
-            buf_size: JOB_SIZE,
+            job_size: JOB_SIZE,
             max_jobs: *MAX_JOBS,
         }
     }
@@ -343,7 +343,7 @@ impl RayonWriter {
         assert_eq!(0, job_size % CHUNK_SIZE);
         assert_eq!(1, (job_size / CHUNK_SIZE).count_ones());
         let mut writer = Self::new();
-        writer.buf_size = job_size;
+        writer.job_size = job_size;
         writer.max_jobs = max_jobs;
         writer
     }
@@ -351,7 +351,7 @@ impl RayonWriter {
     /// After feeding all the input bytes to `write`, return the root hash. The writer cannot be
     /// used after this.
     pub fn finish(&mut self) -> Hash {
-        if self.total_len <= JOB_SIZE as u64 {
+        if self.total_len <= self.job_size as u64 {
             return hash_recurse(&mut self.buf, Root(self.total_len));
         }
         let last_job_hash = hash_recurse(&mut self.buf, NotRoot);
@@ -368,13 +368,13 @@ impl io::Write for RayonWriter {
     fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
         let input_len = input.len();
         while !input.is_empty() {
-            if self.buf.len() == JOB_SIZE {
+            if self.buf.len() == self.job_size {
                 // First, get our hands on a new buffer. If we haven't maxed out the outstanding
                 // receivers, just create a fresh one. Otherwise, await a receiver and reuse the
                 // buffer it gives back to us.
                 let new_buf;
                 if self.receivers.len() < self.max_jobs {
-                    new_buf = Vec::with_capacity(JOB_SIZE);
+                    new_buf = Vec::with_capacity(self.job_size);
                 } else {
                     let receiver = self.receivers.pop_front().unwrap();
                     let (hash, mut received_buf) = receiver.recv().expect("worker hung up");
@@ -395,7 +395,7 @@ impl io::Write for RayonWriter {
                 });
             }
 
-            let want = JOB_SIZE - self.buf.len();
+            let want = self.job_size - self.buf.len();
             let take = cmp::min(want, input.len());
             self.buf.extend_from_slice(&input[..take]);
             self.total_len += take as u64;
