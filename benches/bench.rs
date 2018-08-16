@@ -2,11 +2,14 @@
 
 extern crate bao;
 extern crate blake2b_simd;
+extern crate rand;
+extern crate tempfile;
 extern crate test;
 
 use bao::*;
+use rand::prelude::*;
 use std::io::prelude::*;
-use std::io::Cursor;
+use std::io::{Cursor, SeekFrom::Start};
 use test::Bencher;
 
 // The tiniest relvant benchmark is one that fills a single BLAKE2b block. But if we don't account
@@ -307,5 +310,105 @@ fn bench_bao_decode_reader_long(b: &mut Bencher) {
         output.clear();
         let mut decoder = decode::Reader::new(&*encoded, hash);
         decoder.read_to_end(&mut output).unwrap();
+    });
+}
+
+#[bench]
+fn bench_bao_seek_memory_no_read(b: &mut Bencher) {
+    let input = vec![0; LONG];
+    let mut encoded = Vec::new();
+    let hash = encode::encode_to_vec(&input, &mut encoded);
+    let mut rng = rand::XorShiftRng::from_seed(Default::default());
+    let mut reader = decode::Reader::new(Cursor::new(&encoded), hash);
+    b.iter(|| {
+        let seek_offset = rng.gen_range(0, input.len() as u64);
+        reader.seek(Start(seek_offset)).unwrap();
+    });
+}
+
+#[bench]
+fn bench_bao_seek_memory_one_read(b: &mut Bencher) {
+    let input = vec![0; LONG];
+    let mut encoded = Vec::new();
+    let hash = encode::encode_to_vec(&input, &mut encoded);
+    let mut rng = rand::XorShiftRng::from_seed(Default::default());
+    let mut reader = decode::Reader::new(Cursor::new(&encoded), hash);
+    let mut buf = [0];
+    b.iter(|| {
+        let seek_offset = rng.gen_range(0, input.len() as u64);
+        reader.seek(Start(seek_offset)).unwrap();
+        reader.read(&mut buf).unwrap();
+    });
+}
+
+#[bench]
+fn bench_bao_seek_file_no_read(b: &mut Bencher) {
+    let input = vec![0; LONG];
+    let mut encoded = Vec::new();
+    let hash = encode::encode_to_vec(&input, &mut encoded);
+
+    let mut file = tempfile::tempfile().expect("tempfile creation error");
+    file.write_all(&encoded).expect("file write error");
+    file.flush().expect("file flush error");
+    file.seek(Start(0)).expect("file seek error");
+
+    let mut rng = rand::XorShiftRng::from_seed(Default::default());
+    let mut reader = decode::Reader::new(file, hash);
+    b.iter(|| {
+        let seek_offset = rng.gen_range(0, input.len() as u64);
+        reader.seek(Start(seek_offset)).expect("seek error");
+    });
+}
+
+#[bench]
+fn bench_bao_seek_file_one_read(b: &mut Bencher) {
+    let input = vec![0; LONG];
+    let mut encoded = Vec::new();
+    let hash = encode::encode_to_vec(&input, &mut encoded);
+
+    let mut file = tempfile::tempfile().expect("tempfile creation error");
+    file.write_all(&encoded).expect("file write error");
+    file.flush().expect("file flush error");
+    file.seek(Start(0)).expect("file seek error");
+
+    let mut rng = rand::XorShiftRng::from_seed(Default::default());
+    let mut reader = decode::Reader::new(file, hash);
+    let mut buf = [0];
+    b.iter(|| {
+        let seek_offset = rng.gen_range(0, input.len() as u64);
+        reader.seek(Start(seek_offset)).expect("seek error");
+        reader.read(&mut buf).expect("read error");
+    });
+}
+
+#[bench]
+fn bench_raw_seek_file_no_read(b: &mut Bencher) {
+    let input = vec![0; LONG];
+    let mut file = tempfile::tempfile().expect("tempfile creation error");
+    file.write_all(&input).expect("file write error");
+    file.flush().expect("file flush error");
+    file.seek(Start(0)).expect("file seek error");
+
+    let mut rng = rand::XorShiftRng::from_seed(Default::default());
+    b.iter(|| {
+        let seek_offset = rng.gen_range(0, input.len() as u64);
+        file.seek(Start(seek_offset)).expect("seek error");
+    });
+}
+
+#[bench]
+fn bench_raw_seek_file_one_read(b: &mut Bencher) {
+    let input = vec![0; LONG];
+    let mut file = tempfile::tempfile().expect("tempfile creation error");
+    file.write_all(&input).expect("file write error");
+    file.flush().expect("file flush error");
+    file.seek(Start(0)).expect("file seek error");
+
+    let mut rng = rand::XorShiftRng::from_seed(Default::default());
+    let mut buf = [0];
+    b.iter(|| {
+        let seek_offset = rng.gen_range(0, input.len() as u64);
+        file.seek(Start(seek_offset)).expect("seek error");
+        file.read(&mut buf).expect("read error");
     });
 }
