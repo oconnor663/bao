@@ -31,7 +31,7 @@ bao_path = os.path.join(os.path.dirname(__file__), "bao.py")
 
 def bao(*args, input_bytes):
     return subprocess.run(
-        [bao_path, *args],
+        ["python3", bao_path, *args],
         input=input_bytes,
         stdout=subprocess.PIPE,
     ).stdout
