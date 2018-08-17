@@ -9,11 +9,12 @@ use hash::Finalization::{self, NotRoot, Root};
 use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 
 use std::cmp;
+use std::error::Error;
 use std::fmt;
 use std::io;
 use std::io::prelude::*;
 
-pub fn decode(encoded: &[u8], output: &mut [u8], hash: Hash) -> Result<(), ()> {
+pub fn decode(encoded: &[u8], output: &mut [u8], hash: Hash) -> Result<(), HashMismatch> {
     let content_len = hash::decode_len(*array_ref!(encoded, 0, HEADER_SIZE));
     // Note that trailing garbage in the encoding is allowed.
     assert_eq!(
@@ -28,7 +29,11 @@ pub fn decode(encoded: &[u8], output: &mut [u8], hash: Hash) -> Result<(), ()> {
     }
 }
 
-pub fn decode_single_threaded(encoded: &[u8], output: &mut [u8], hash: Hash) -> Result<(), ()> {
+pub fn decode_single_threaded(
+    encoded: &[u8],
+    output: &mut [u8],
+    hash: Hash,
+) -> Result<(), HashMismatch> {
     let content_len = hash::decode_len(*array_ref!(encoded, 0, HEADER_SIZE));
     // Note that trailing garbage in the encoding is allowed.
     assert_eq!(
@@ -44,12 +49,12 @@ pub fn decode_recurse(
     output: &mut [u8],
     hash: Hash,
     finalization: Finalization,
-) -> Result<(), ()> {
+) -> Result<(), HashMismatch> {
     let content_len = output.len();
     if content_len <= CHUNK_SIZE {
         let computed_hash = hash::hash_node(&encoded[..content_len], finalization);
         if !constant_time_eq(&hash, &computed_hash) {
-            return Err(());
+            return Err(HashMismatch);
         }
         output.copy_from_slice(&encoded[..content_len]);
         return Ok(());
@@ -58,7 +63,7 @@ pub fn decode_recurse(
     let right_hash = *array_ref!(encoded, HASH_SIZE, HASH_SIZE);
     let computed_hash = hash::parent_hash(&left_hash, &right_hash, finalization);
     if !constant_time_eq(&hash, &computed_hash) {
-        return Err(());
+        return Err(HashMismatch);
     }
     let left_len = hash::left_len(content_len as u64);
     let (left_output, right_output) = output.split_at_mut(left_len as usize);
@@ -73,12 +78,12 @@ pub fn decode_recurse_rayon(
     output: &mut [u8],
     hash: Hash,
     finalization: Finalization,
-) -> Result<(), ()> {
+) -> Result<(), HashMismatch> {
     let content_len = output.len();
     if content_len <= CHUNK_SIZE {
         let computed_hash = hash::hash_node(&encoded[..content_len], finalization);
         if !constant_time_eq(&hash, &computed_hash) {
-            return Err(());
+            return Err(HashMismatch);
         }
         output.copy_from_slice(&encoded[..content_len]);
         return Ok(());
@@ -87,7 +92,7 @@ pub fn decode_recurse_rayon(
     let right_hash = *array_ref!(encoded, HASH_SIZE, HASH_SIZE);
     let computed_hash = hash::parent_hash(&left_hash, &right_hash, finalization);
     if !constant_time_eq(&hash, &computed_hash) {
-        return Err(());
+        return Err(HashMismatch);
     }
     let left_len = hash::left_len(content_len as u64);
     let (left_output, right_output) = output.split_at_mut(left_len as usize);
@@ -249,7 +254,7 @@ impl State {
         self.reset_to_root();
     }
 
-    pub fn feed_parent(&mut self, parent: hash::ParentNode) -> Result<(), ()> {
+    pub fn feed_parent(&mut self, parent: hash::ParentNode) -> Result<(), HashMismatch> {
         assert!(self.upcoming_parents > 0, "too many calls to feed_parent");
         let content_len = self.content_len.expect("feed_parent before header");
         let finalization = if self.at_root {
@@ -260,7 +265,7 @@ impl State {
         let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
         let computed_hash = hash::hash_node(&parent, finalization);
         if !constant_time_eq(&expected_hash, &computed_hash) {
-            return Err(());
+            return Err(HashMismatch);
         }
         let left_child = *array_ref!(parent, 0, HASH_SIZE);
         let right_child = *array_ref!(parent, HASH_SIZE, HASH_SIZE);
@@ -274,10 +279,10 @@ impl State {
         Ok(())
     }
 
-    pub fn feed_chunk(&mut self, chunk_hash: Hash) -> Result<(), ()> {
+    pub fn feed_chunk(&mut self, chunk_hash: Hash) -> Result<(), HashMismatch> {
         let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
         if !constant_time_eq(&chunk_hash, &expected_hash) {
-            return Err(());
+            return Err(HashMismatch);
         }
         self.content_position = self.subtree_end();
         self.encoded_offset += encode::encoded_subtree_size(self.subtree_size());
@@ -329,6 +334,24 @@ pub enum StateNext {
 pub enum LenNext {
     Len(u64),
     Next(StateNext),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct HashMismatch;
+
+impl fmt::Display for HashMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Don't include the hash values themselves. They might be secret.
+        write!(f, "hash mismatch")
+    }
+}
+
+impl Error for HashMismatch {}
+
+impl From<HashMismatch> for io::Error {
+    fn from(_: HashMismatch) -> io::Error {
+        io::Error::new(io::ErrorKind::InvalidData, "hash mismatch")
+    }
 }
 
 #[derive(Clone)]
@@ -391,7 +414,8 @@ impl<T: Read> Reader<T> {
     fn read_parent(&mut self) -> io::Result<()> {
         let mut parent = [0; PARENT_SIZE];
         self.inner.read_exact(&mut parent)?;
-        into_io(self.state.feed_parent(parent))
+        self.state.feed_parent(parent)?;
+        Ok(())
     }
 
     fn read_chunk(
@@ -409,7 +433,7 @@ impl<T: Read> Reader<T> {
         self.buf_end = 0;
         self.inner.read_exact(&mut self.buf[..size])?;
         let hash = hash::hash_node(&self.buf[..size], finalization);
-        into_io(self.state.feed_chunk(hash))?;
+        self.state.feed_chunk(hash)?;
         self.buf_start = skip;
         self.buf_end = size;
         Ok(())
@@ -512,10 +536,6 @@ impl<T: Read> fmt::Debug for Reader<T> {
             self.state, self.buf_start, self.buf_end
         )
     }
-}
-
-fn into_io<T>(r: Result<T, ()>) -> io::Result<T> {
-    r.map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "hash mismatch"))
 }
 
 fn cast_offset(offset: u128) -> io::Result<u64> {
