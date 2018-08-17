@@ -1,13 +1,16 @@
 use arrayvec::ArrayVec;
 use blake2b_simd;
+use crossbeam_channel as channel;
 use hash::Finalization::{self, NotRoot, Root};
 use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
 use rayon;
 use std::cmp;
+use std::collections::VecDeque;
 use std::fmt;
 use std::io;
 use std::io::prelude::*;
 use std::io::SeekFrom::{End, Start};
+use std::mem;
 
 pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
     let content_len = input.len() as u64;
@@ -356,6 +359,153 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
     }
 }
 
+fn encode_subtree_to_writer_post_order<T: Write>(
+    writer: &mut T,
+    final_subtree: &[u8],
+    finalization: Finalization,
+) -> io::Result<Hash> {
+    if final_subtree.len() <= CHUNK_SIZE {
+        writer.write_all(final_subtree)?;
+        return Ok(hash::hash_node(final_subtree, finalization));
+    }
+    let left_len = hash::left_len(final_subtree.len() as u64) as usize;
+    let (left, right) = final_subtree.split_at(left_len);
+    let left_hash = encode_subtree_to_writer_post_order(writer, left, NotRoot)?;
+    let right_hash = encode_subtree_to_writer_post_order(writer, right, NotRoot)?;
+    writer.write_all(&left_hash)?;
+    writer.write_all(&right_hash)?;
+    Ok(hash::parent_hash(&left_hash, &right_hash, finalization))
+}
+
+// TODO: Manually implement Clone by draining the receivers.
+#[derive(Debug)]
+pub struct RayonWriter<T: Read + Write + Seek> {
+    inner: T,
+    state: hash::State,
+    buf: Vec<u8>,
+    total_len: u64,
+    receivers: VecDeque<channel::Receiver<(Hash, Vec<u8>, Vec<u8>)>>,
+    job_size: usize,
+    max_jobs: usize,
+}
+
+impl<T: Read + Write + Seek> RayonWriter<T> {
+    pub fn new(inner: T) -> Self {
+        Self {
+            inner: inner,
+            state: hash::State::new(),
+            // Use new() instead of with_capacity() to avoid a big allocation in the small case.
+            buf: Vec::new(),
+            total_len: 0,
+            receivers: VecDeque::new(),
+            job_size: *hash::JOB_SIZE,
+            max_jobs: *hash::MAX_JOBS,
+        }
+    }
+
+    /// After feeding all the input bytes to `write`, return the root hash. The writer cannot be
+    /// used after this.
+    pub fn finish(&mut self) -> io::Result<Hash> {
+        let root_hash;
+        if self.total_len <= self.job_size as u64 {
+            root_hash = encode_subtree_to_writer_post_order(
+                &mut self.inner,
+                &self.buf,
+                Root(self.total_len),
+            )?;
+        } else {
+            // Await the remaining workers and finish their chunks as we would in write().
+            for receiver in self.receivers.drain(..) {
+                let (hash, _, encoding_buf) = receiver.recv().expect("worker hung up");
+                self.inner.write_all(&encoding_buf)?;
+                self.state.push_subtree(hash);
+                while let Some(parent) = self.state.merge_parent() {
+                    self.inner.write_all(&parent)?;
+                }
+            }
+            // Encode the final subtree.
+            let final_subtree_hash =
+                encode_subtree_to_writer_post_order(&mut self.inner, &self.buf, NotRoot)?;
+            self.state.push_subtree(final_subtree_hash);
+            // Finalize the top level state and write out the trailing parents.
+            loop {
+                let (parent, maybe_root) = self.state.merge_finish(Root(self.total_len));
+                self.inner.write_all(&parent)?;
+                if let Some(hash) = maybe_root {
+                    root_hash = hash;
+                    break;
+                }
+            }
+        }
+        self.inner.write_all(&hash::encode_len(self.total_len))?;
+        flip_post_order_stream(&mut self.inner)?;
+        Ok(root_hash)
+    }
+
+    /// Extract the inner writer. Note that if you don't call `finish` first, the encoded output
+    /// will be junk, just as if you'd dropped the writer without finishing.
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
+}
+
+impl<T: Read + Write + Seek> io::Write for RayonWriter<T> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            // Without more bytes coming, we're not sure how to finalize.
+            return Ok(0);
+        }
+        if self.buf.len() == self.job_size {
+            // First, get our hands on a new pair of buffers. If we haven't maxed out the
+            // outstanding receivers, just create a fresh pair. Otherwise, await a receiver and
+            // reuse the buffers it gives back to us.
+            let new_buf;
+            let mut encoding_buf;
+            if self.receivers.len() < self.max_jobs {
+                new_buf = Vec::with_capacity(self.job_size);
+                let encoded_size = encoded_subtree_size(self.job_size as u64) as usize;
+                encoding_buf = Vec::with_capacity(encoded_size);
+            } else {
+                let receiver = self.receivers.pop_front().unwrap();
+                let (hash, mut recv_buf, mut recv_encoded_buf) =
+                    receiver.recv().expect("worker hung up");
+                self.inner.write_all(&recv_encoded_buf)?;
+                self.state.push_subtree(hash);
+                // The worker encoded some parents, but there may be more from the top level state.
+                while let Some(parent) = self.state.merge_parent() {
+                    self.inner.write_all(&parent)?;
+                }
+                recv_buf.clear();
+                new_buf = recv_buf;
+                recv_encoded_buf.clear();
+                encoding_buf = recv_encoded_buf;
+            }
+
+            // Now swap input buffer and send the full one to a new job.
+            let full_buf = mem::replace(&mut self.buf, new_buf);
+            let (sender, receiver) = channel::bounded(1);
+            self.receivers.push_back(receiver);
+            rayon::spawn(move || {
+                let capacity = encoding_buf.capacity();
+                let hash =
+                    encode_subtree_to_writer_post_order(&mut encoding_buf, &full_buf, NotRoot)
+                        .expect("vec write cannot fail");
+                debug_assert_eq!(capacity, encoding_buf.len());
+                sender.send((hash, full_buf, encoding_buf));
+            });
+        }
+        let want = self.job_size - self.buf.len();
+        let take = cmp::min(want, buf.len());
+        self.buf.extend_from_slice(&buf[..take]);
+        self.total_len += take as u64;
+        Ok(take)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -477,21 +627,35 @@ mod test {
     }
 
     #[test]
-    fn test_writer() {
+    fn test_writers() {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = vec![0; case];
             let mut expected_encoded = Vec::new();
             let expected_hash = encode_to_vec(&input, &mut expected_encoded);
-            let mut writer_encoded = Vec::new();
-            let writer_hash;
+
+            let mut serial_writer_encoded = Vec::new();
+            let serial_writer_hash;
             {
-                let mut writer = Writer::new(io::Cursor::new(&mut writer_encoded));
+                let mut writer = Writer::new(io::Cursor::new(&mut serial_writer_encoded));
                 writer.write_all(&input).unwrap();
-                writer_hash = writer.finish().unwrap();
+                serial_writer_hash = writer.finish().unwrap();
             }
-            assert_eq!(expected_hash, writer_hash, "hash mismatch");
-            assert_eq!(expected_encoded, writer_encoded, "encoded mismatch");
+            assert_eq!(expected_hash, serial_writer_hash, "hash mismatch");
+            assert_eq!(expected_encoded, serial_writer_encoded, "encoded mismatch");
+
+            let mut parallel_writer_encoded = Vec::new();
+            let parallel_writer_hash;
+            {
+                let mut writer = RayonWriter::new(io::Cursor::new(&mut parallel_writer_encoded));
+                writer.write_all(&input).unwrap();
+                parallel_writer_hash = writer.finish().unwrap();
+            }
+            assert_eq!(expected_hash, parallel_writer_hash, "hash mismatch");
+            assert_eq!(
+                expected_encoded, parallel_writer_encoded,
+                "encoded mismatch"
+            );
         }
     }
 }
