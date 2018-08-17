@@ -105,6 +105,27 @@ pub fn decode_recurse_rayon(
     left_result.and(right_result)
 }
 
+pub fn hash_from_encoded_nostd<F, E>(mut read_exact_fn: F) -> Result<Hash, E>
+where
+    F: FnMut(&mut [u8]) -> Result<(), E>,
+{
+    let mut buf = [0; CHUNK_SIZE];
+    read_exact_fn(&mut buf[..HEADER_SIZE])?;
+    let content_len = hash::decode_len(*array_ref!(buf, 0, HEADER_SIZE));
+    let node;
+    if content_len <= CHUNK_SIZE as u64 {
+        node = &mut buf[..content_len as usize];
+    } else {
+        node = &mut buf[..PARENT_SIZE];
+    }
+    read_exact_fn(node)?;
+    Ok(hash::hash_node(node, Root(content_len)))
+}
+
+pub fn hash_from_encoded<T: Read>(mut reader: T) -> io::Result<Hash> {
+    hash_from_encoded_nostd(|buf| reader.read_exact(buf))
+}
+
 #[derive(Clone, Debug)]
 pub struct State {
     stack: ArrayVec<[Hash; MAX_DEPTH]>,
@@ -566,20 +587,6 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
     }
 }
 
-pub fn hash_from_encoded<T: Read>(mut reader: T) -> io::Result<Hash> {
-    let mut buf = [0; CHUNK_SIZE];
-    reader.read_exact(&mut buf[..HEADER_SIZE])?;
-    let content_len = hash::decode_len(*array_ref!(buf, 0, HEADER_SIZE));
-    let node;
-    if content_len <= CHUNK_SIZE as u64 {
-        node = &mut buf[..content_len as usize];
-    } else {
-        node = &mut buf[..PARENT_SIZE];
-    }
-    reader.read_exact(node)?;
-    Ok(hash::hash_node(node, Root(content_len)))
-}
-
 #[cfg(test)]
 mod test {
     extern crate byteorder;
@@ -880,7 +887,7 @@ mod test {
     }
 
     #[test]
-    fn test_hash_of_encoded() {
+    fn test_hash_from_encoded() {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
