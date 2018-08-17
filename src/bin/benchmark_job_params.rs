@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::io::prelude::*;
 use std::time::{Duration, Instant};
 
-const INPUT_SIZE: usize = 10_000_000;
+const INPUT_SIZE: usize = 100_000_000;
 const RUNS: usize = 10;
 const SLEEP_MS: u64 = 0;
 
@@ -20,7 +20,7 @@ const JOB_SIZES: &[usize] = &[
     1 << 18,
 ];
 
-const JOBS_MAXES: &[usize] = &[12, 16, 24, 32];
+const JOBS_MAXES: &[usize] = &[12, 16, 32, 64, 128];
 
 fn secs_float(time: Duration) -> f64 {
     time.as_secs() as f64 + time.subsec_nanos() as f64 / 1_000_000_000f64

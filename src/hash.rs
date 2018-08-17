@@ -306,14 +306,11 @@ impl io::Write for Writer {
     }
 }
 
-// There is a lot of noise when we try to benchmark the optimal values of MAX_JOBS and JOB_SIZE.
-// The only consistently important thing seems to be that MAX_JOBS is greater than the number of
-// CPUs.
+// benchmark_job_params.rs helps to tune these parameters.
 lazy_static! {
     pub static ref MAX_JOBS: usize = 2 * num_cpus::get();
+    pub static ref JOB_SIZE: usize = 65536; // 2^16
 }
-
-pub const JOB_SIZE: usize = 1 << 16;
 
 // TODO: Manually implement Clone by draining the receivers.
 #[derive(Debug)]
@@ -334,7 +331,7 @@ impl RayonWriter {
             buf: Vec::new(),
             total_len: 0,
             receivers: VecDeque::new(),
-            job_size: JOB_SIZE,
+            job_size: *JOB_SIZE,
             max_jobs: *MAX_JOBS,
         }
     }
@@ -547,15 +544,15 @@ mod test {
     #[test]
     fn test_rayon_writer() {
         let mut cases = TEST_CASES.to_vec();
-        cases.push(JOB_SIZE - 1);
-        cases.push(JOB_SIZE);
-        cases.push(JOB_SIZE + 1);
-        cases.push(*MAX_JOBS * JOB_SIZE - 1);
-        cases.push(*MAX_JOBS * JOB_SIZE);
-        cases.push(*MAX_JOBS * JOB_SIZE + 1);
-        cases.push(2 * *MAX_JOBS * JOB_SIZE - 1);
-        cases.push(2 * *MAX_JOBS * JOB_SIZE);
-        cases.push(2 * *MAX_JOBS * JOB_SIZE + 1);
+        cases.push(*JOB_SIZE - 1);
+        cases.push(*JOB_SIZE);
+        cases.push(*JOB_SIZE + 1);
+        cases.push(*MAX_JOBS * *JOB_SIZE - 1);
+        cases.push(*MAX_JOBS * *JOB_SIZE);
+        cases.push(*MAX_JOBS * *JOB_SIZE + 1);
+        cases.push(2 * *MAX_JOBS * *JOB_SIZE - 1);
+        cases.push(2 * *MAX_JOBS * *JOB_SIZE);
+        cases.push(2 * *MAX_JOBS * *JOB_SIZE + 1);
         for case in cases {
             println!("case {}", case);
             let input = vec![0x42; case];
