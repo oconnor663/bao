@@ -308,7 +308,7 @@ impl io::Write for Writer {
 
 // benchmark_job_params.rs helps to tune these parameters.
 lazy_static! {
-    pub static ref MAX_JOBS: usize = 8 * num_cpus::get();
+    pub static ref MAX_JOBS: usize = 2 * num_cpus::get();
     pub static ref JOB_SIZE: usize = 65536; // 2^16
 }
 
@@ -316,9 +316,8 @@ lazy_static! {
 #[derive(Debug)]
 pub struct RayonWriter {
     state: State,
+    buf: Vec<u8>,
     total_len: u64,
-    current_buf: Vec<u8>,
-    free_bufs: Vec<Vec<u8>>,
     receivers: VecDeque<channel::Receiver<(Hash, Vec<u8>)>>,
     job_size: usize,
     max_jobs: usize,
@@ -328,10 +327,9 @@ impl RayonWriter {
     pub fn new() -> Self {
         Self {
             state: State::new(),
-            total_len: 0,
             // Use new() instead of with_capacity() to avoid a big allocation in the small case.
-            current_buf: Vec::new(),
-            free_bufs: Vec::new(),
+            buf: Vec::new(),
+            total_len: 0,
             receivers: VecDeque::new(),
             job_size: *JOB_SIZE,
             max_jobs: *MAX_JOBS,
@@ -347,35 +345,13 @@ impl RayonWriter {
         writer
     }
 
-    // Blocking on the very first channel would mean frequent context switches to the calling
-    // thread, which is substantial overhead. But blocking on the very last channel would starve
-    // the other worker threads for input, as they all slept waiting for the last one to finish.
-    // Instead, block on the middle receiver.
-    fn await_half(&mut self) -> Vec<u8> {
-        debug_assert_eq!(self.max_jobs, self.receivers.len());
-        let halfway = self.receivers.len() / 2;
-        // Await the halfway receiver.
-        let (halfway_hash, halfway_buf) = self.receivers[halfway].recv().expect("worker hung up");
-        // Remove and process all the prior receivers.
-        for receiver in self.receivers.drain(0..halfway) {
-            let (hash, mut received_buf) = receiver.recv().expect("worker hung up");
-            self.state.push_subtree(hash);
-            self.free_bufs.push(received_buf);
-        }
-        // Remove the halfway receiver and process the results we got from it above. Return its
-        // buffer directly to the caller.
-        self.receivers.pop_front();
-        self.state.push_subtree(halfway_hash);
-        halfway_buf
-    }
-
     /// After feeding all the input bytes to `write`, return the root hash. The writer cannot be
     /// used after this.
     pub fn finish(&mut self) -> Hash {
         if self.total_len <= self.job_size as u64 {
-            return hash_recurse(&mut self.current_buf, Root(self.total_len));
+            return hash_recurse(&mut self.buf, Root(self.total_len));
         }
-        let last_job_hash = hash_recurse(&mut self.current_buf, NotRoot);
+        let last_job_hash = hash_recurse(&mut self.buf, NotRoot);
         for receiver in self.receivers.drain(..) {
             let (hash, _) = receiver.recv().expect("worker hung up");
             self.state.push_subtree(hash);
@@ -389,25 +365,23 @@ impl io::Write for RayonWriter {
     fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
         let input_len = input.len();
         while !input.is_empty() {
-            if self.current_buf.len() == self.job_size {
-                // First, get our hands on a new buffer. If we have a free one, or if we have
-                // capacity to create a new one, use that. Otherwise, await half the outstanding
-                // receivers to free up buffers.
-                let mut new_buf;
-                if let Some(buf) = self.free_bufs.pop() {
-                    // A free buffer is already available.
-                    new_buf = buf;
-                } else if self.receivers.len() < self.max_jobs {
-                    // We have space to create new buffers.
+            if self.buf.len() == self.job_size {
+                // First, get our hands on a new buffer. If we haven't maxed out the outstanding
+                // receivers, just create a fresh one. Otherwise, await a receiver and reuse the
+                // buffer it gives back to us.
+                let new_buf;
+                if self.receivers.len() < self.max_jobs {
                     new_buf = Vec::with_capacity(self.job_size);
                 } else {
-                    // We need to await some existing buffers.
-                    new_buf = self.await_half();
+                    let receiver = self.receivers.pop_front().unwrap();
+                    let (hash, mut received_buf) = receiver.recv().expect("worker hung up");
+                    self.state.push_subtree(hash);
+                    received_buf.clear();
+                    new_buf = received_buf;
                 }
-                new_buf.clear();
 
                 // Now swap the buffers and send the full one to a new job.
-                let full_buf = mem::replace(&mut self.current_buf, new_buf);
+                let full_buf = mem::replace(&mut self.buf, new_buf);
                 // Performance: crossbeam-channel seems to beat std::mpsc here.
                 let (sender, receiver) = channel::bounded(1);
                 self.receivers.push_back(receiver);
@@ -418,9 +392,9 @@ impl io::Write for RayonWriter {
                 });
             }
 
-            let want = self.job_size - self.current_buf.len();
+            let want = self.job_size - self.buf.len();
             let take = cmp::min(want, input.len());
-            self.current_buf.extend_from_slice(&input[..take]);
+            self.buf.extend_from_slice(&input[..take]);
             self.total_len += take as u64;
             input = &input[take..];
         }
