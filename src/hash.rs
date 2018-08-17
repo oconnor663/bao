@@ -374,6 +374,8 @@ impl io::Write for RayonWriter {
                     new_buf = Vec::with_capacity(self.job_size);
                 } else {
                     let receiver = self.receivers.pop_front().unwrap();
+                    // Performance: Trying to do something clever with waiting for a later receiver
+                    // (e.g. the middle one), in order to sleep longer, doens't seem to help here.
                     let (hash, mut received_buf) = receiver.recv().expect("worker hung up");
                     self.state.push_subtree(hash);
                     received_buf.clear();
