@@ -502,6 +502,20 @@ impl<T: Read + Write + Seek> io::Write for RayonWriter<T> {
     }
 
     fn flush(&mut self) -> io::Result<()> {
+        // Drain all the outstanding receivers, and then flush the inner writer.
+        // TODO: Retain the allocated buffers.
+        // TODO: Test this.
+        // TODO: Deduplicate this.
+        for receiver in self.receivers.drain(..) {
+            let (hash, _, recv_encoded_buf) = receiver.recv().expect("worker hung up");
+            self.inner.write_all(&recv_encoded_buf)?;
+            self.state.push_subtree(hash);
+            // The worker encoded some parents, but there may be more from the top level state.
+            while let Some(parent) = self.state.merge_parent() {
+                self.inner.write_all(&parent)?;
+            }
+        }
+        self.inner.flush()?;
         Ok(())
     }
 }
