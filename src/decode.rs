@@ -177,7 +177,7 @@ impl State {
         if self.stack.is_empty() {
             // If we somehow return EOF without having verified the root node, then we don't know
             // if the content length we read matches the hash we started with. If it doesn't,
-            // that's a suprious EOF and a security issue.
+            // that's a spurious EOF and a security issue.
             assert!(self.length_verified, "unverified EOF");
             None
         } else if self.upcoming_parents > 0 {
@@ -425,6 +425,13 @@ impl<T: Read> Reader<T> {
         self.buf_end - self.buf_start
     }
 
+    fn clear_buf(&mut self) {
+        // Note that because seeking can move buf_start backwards, it's important that we set them
+        // both to exactly zero. It wouldn't be enough to just set buf_start = buf_end.
+        self.buf_start = 0;
+        self.buf_end = 0;
+    }
+
     fn read_header(&mut self) -> io::Result<()> {
         let mut header = [0; HEADER_SIZE];
         self.inner.read_exact(&mut header)?;
@@ -445,13 +452,13 @@ impl<T: Read> Reader<T> {
         skip: usize,
         finalization: Finalization,
     ) -> io::Result<()> {
-        if !(skip == 0 && size == 0) {
-            debug_assert!(skip < size, "impossible skip offset");
-        }
-        // Empty the buffer before doing any IO, so that in case of failure subsequent reads don't
-        // think there's valid data there.
-        self.buf_start = 0;
-        self.buf_end = 0;
+        debug_assert!(skip == 0 || skip < size, "impossible skip offset");
+        debug_assert_eq!(0, self.buf_len(), "read_chunk with nonempty buffer");
+        // Clear the buffer before doing any IO, so that if there's a failure subsequent reads and
+        // seeks don't think there's valid data there. Note that even though we just asserted that
+        // the buffer was empty above, we still need to clear it, because seek can move buf_start
+        // backwards.
+        self.clear_buf();
         self.inner.read_exact(&mut self.buf[..size])?;
         let hash = hash::hash_node(&self.buf[..size], finalization);
         self.state.feed_chunk(hash)?;
@@ -490,12 +497,8 @@ impl<T: Read> Read for Reader<T> {
 
 impl<T: Read + Seek> Seek for Reader<T> {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
-        // Compute the current position, which need to handle SeekFrom::Current. This both accounts
-        // for our buffer position, and also snapshots state.position() before the length loop
-        // below, which could change it.
-        let starting_position = self.state.position() - self.buf_len() as u64;
-
-        // Read and verify the length if we haven't already.
+        // Read and verify the length if we haven't already. Note that this might read a chunk,
+        // which would fill the buffer and change the State position.
         let content_len = loop {
             match self.state.len_next() {
                 LenNext::Len(len) => break len,
@@ -509,21 +512,32 @@ impl<T: Read + Seek> Seek for Reader<T> {
             }
         };
 
-        // Compute the absolute position of the seek.
-        let position = match pos {
+        // Compute our current position, and use that to compute the absolute target_position of
+        // the seek. Note an invariant here, which we'll also rely on below: If the buffer is
+        // non-empty, the State position is exactly the end of the buffer.
+        let starting_position = self.state.position() - self.buf_len() as u64;
+        let target_position = match pos {
             io::SeekFrom::Start(pos) => pos,
             io::SeekFrom::End(off) => add_offset(content_len, off)?,
             io::SeekFrom::Current(off) => add_offset(starting_position, off)?,
         };
 
-        // Now, before entering the main loop, empty the buffer. It's important to do this after
-        // getting the length above, because that can fill the buffer as a side effect.
-        self.buf_start = 0;
-        self.buf_end = 0;
+        // If the seek is entirely within the current buffer, just adjust buf_start. Note that
+        // we're relying on the position invariant from above: If the buffer is non-empty, then
+        // self.state.position() is exactly the end of the current buffer.
+        let buf_origin = self.state.position() - self.buf_end as u64;
+        if buf_origin <= target_position && target_position < self.state.position() {
+            self.buf_start = (target_position - buf_origin) as usize;
+            return Ok(target_position);
+        }
+
+        // Now, since we're entering the main seek loop, clear the buffer. Buffered input won't be
+        // valid at the new position.
+        self.clear_buf();
 
         // Finally, loop over the seek_next() method until it's done.
         loop {
-            let (seek_offset, next) = self.state.seek_next(position);
+            let (seek_offset, next) = self.state.seek_next(target_position);
             let cast_offset = cast_offset(seek_offset)?;
             self.inner.seek(io::SeekFrom::Start(cast_offset))?;
             match next {
@@ -541,8 +555,8 @@ impl<T: Read + Seek> Seek for Reader<T> {
                     self.read_chunk(size, skip, finalization)?;
                 }
                 None => {
-                    debug_assert_eq!(position, self.state.position());
-                    return Ok(position);
+                    debug_assert_eq!(target_position, self.state.position());
+                    return Ok(target_position);
                 }
             }
         }
