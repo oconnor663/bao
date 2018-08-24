@@ -66,24 +66,6 @@ fn bench_bao_hash_parallel_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_serial_short(b: &mut Bencher) {
-    let input = input(b, SHORT);
-    b.iter(|| hash::hash_single_threaded(&input))
-}
-
-#[bench]
-fn bench_bao_hash_serial_medium(b: &mut Bencher) {
-    let input = input(b, MEDIUM);
-    b.iter(|| hash::hash_single_threaded(&input))
-}
-
-#[bench]
-fn bench_bao_hash_serial_long(b: &mut Bencher) {
-    let input = input(b, LONG);
-    b.iter(|| hash::hash_single_threaded(&input))
-}
-
-#[bench]
 fn bench_bao_hash_writer_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     b.iter(|| {
@@ -162,27 +144,6 @@ fn bench_bao_encode_parallel_long(b: &mut Bencher) {
     let input = input(b, LONG);
     let mut output = vec![0; encode::encoded_size(input.len() as u64) as usize];
     b.iter(|| encode::encode(&input, &mut output));
-}
-
-#[bench]
-fn bench_bao_encode_serial_short(b: &mut Bencher) {
-    let input = input(b, SHORT);
-    let mut output = vec![0; encode::encoded_size(input.len() as u64) as usize];
-    b.iter(|| encode::encode_single_threaded(&input, &mut output));
-}
-
-#[bench]
-fn bench_bao_encode_serial_medium(b: &mut Bencher) {
-    let input = input(b, MEDIUM);
-    let mut output = vec![0; encode::encoded_size(input.len() as u64) as usize];
-    b.iter(|| encode::encode_single_threaded(&input, &mut output));
-}
-
-#[bench]
-fn bench_bao_encode_serial_long(b: &mut Bencher) {
-    let input = input(b, LONG);
-    let mut output = vec![0; encode::encoded_size(input.len() as u64) as usize];
-    b.iter(|| encode::encode_single_threaded(&input, &mut output));
 }
 
 #[bench]

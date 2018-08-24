@@ -27,17 +27,6 @@ pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
     }
 }
 
-pub fn encode_single_threaded(input: &[u8], output: &mut [u8]) -> Hash {
-    let content_len = input.len() as u64;
-    assert_eq!(
-        output.len() as u128,
-        encoded_size(content_len),
-        "output is the wrong length"
-    );
-    output[..HEADER_SIZE].copy_from_slice(&hash::encode_len(content_len));
-    encode_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
-}
-
 pub fn encode_to_vec(input: &[u8], output: &mut Vec<u8>) -> Hash {
     let start = output.len();
     output.resize(start + encoded_size(input.len() as u64) as usize, 0);
@@ -244,7 +233,7 @@ fn flip_post_order_stream<T: Read + Write + Seek>(stream: &mut T) -> io::Result<
     let mut header = [0; HEADER_SIZE];
     stream.seek(Start(read_cursor))?;
     stream.read_exact(&mut header)?;
-    let content_len = hash::decode_len(header);
+    let content_len = hash::decode_len(&header);
     let mut flipper = FlipperState::new(content_len);
     loop {
         match flipper.next() {

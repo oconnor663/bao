@@ -8,110 +8,180 @@ use encode;
 use hash::Finalization::{self, NotRoot, Root};
 use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 
+use std;
 use std::cmp;
-use std::error::Error;
 use std::fmt;
 use std::io;
 use std::io::prelude::*;
 
-pub fn decode(encoded: &[u8], output: &mut [u8], hash: Hash) -> Result<(), HashMismatch> {
-    let content_len = hash::decode_len(*array_ref!(encoded, 0, HEADER_SIZE));
-    // Note that trailing garbage in the encoding is allowed.
-    assert_eq!(
-        output.len() as u64,
-        content_len,
-        "output is the wrong length"
-    );
-    if content_len <= hash::MAX_SINGLE_THREADED as u64 {
-        decode_recurse(&encoded[HEADER_SIZE..], output, hash, Root(content_len))
+fn verify_hash(node_bytes: &[u8], hash: &Hash, finalization: Finalization) -> Result<()> {
+    let computed = hash::hash_node(node_bytes, finalization);
+    if constant_time_eq(hash, &computed) {
+        Ok(())
     } else {
-        decode_recurse_rayon(&encoded[HEADER_SIZE..], output, hash, Root(content_len))
+        Err(Error::HashMismatch)
     }
 }
 
-pub fn decode_single_threaded(
-    encoded: &[u8],
-    output: &mut [u8],
+struct Subtree {
+    offset: usize,
+    content_len: usize,
     hash: Hash,
-) -> Result<(), HashMismatch> {
-    let content_len = hash::decode_len(*array_ref!(encoded, 0, HEADER_SIZE));
-    // Note that trailing garbage in the encoding is allowed.
-    assert_eq!(
-        output.len() as u64,
+    finalization: Finalization,
+}
+
+enum Verified {
+    Parent { left: Subtree, right: Subtree },
+    Chunk { offset: usize, len: usize },
+}
+
+// Check that the top level of a subtree (which could be a single chunk) has a valid hash. This is
+// designed to be callable by single-threaded, multi-threaded, and in-place decode functions. Note
+// that it's legal for the subtree buffer to contain extra bytes after the parent node or chunk.
+// The slices and casts in this function assume the buffer is big enough for the content, which
+// should be checked by the caller with parse_and_check_content_len or known some other way.
+fn verify_one_level(buf: &[u8], subtree: &Subtree) -> Result<Verified> {
+    let &Subtree {
+        offset,
         content_len,
-        "output is the wrong length"
-    );
-    decode_recurse(&encoded[HEADER_SIZE..], output, hash, Root(content_len))
-}
-
-pub fn decode_recurse(
-    encoded: &[u8],
-    output: &mut [u8],
-    hash: Hash,
-    finalization: Finalization,
-) -> Result<(), HashMismatch> {
-    let content_len = output.len();
+        ref hash,
+        finalization,
+    } = subtree;
     if content_len <= CHUNK_SIZE {
-        let computed_hash = hash::hash_node(&encoded[..content_len], finalization);
-        if !constant_time_eq(&hash, &computed_hash) {
-            return Err(HashMismatch);
-        }
-        output.copy_from_slice(&encoded[..content_len]);
-        return Ok(());
+        let chunk = &buf[offset..][..content_len];
+        verify_hash(chunk, hash, finalization)?;
+        Ok(Verified::Chunk {
+            offset,
+            len: content_len,
+        })
+    } else {
+        let parent = array_ref!(buf, offset, PARENT_SIZE);
+        verify_hash(parent, hash, finalization)?;
+        let (left_hash, right_hash) = array_refs!(parent, HASH_SIZE, HASH_SIZE);
+        let left = Subtree {
+            offset: subtree.offset + PARENT_SIZE,
+            content_len: hash::left_len(content_len as u64) as usize,
+            hash: *left_hash,
+            finalization: NotRoot,
+        };
+        let right = Subtree {
+            offset: left.offset + encode::encoded_subtree_size(left.content_len as u64) as usize,
+            content_len: content_len - left.content_len,
+            hash: *right_hash,
+            finalization: NotRoot,
+        };
+        Ok(Verified::Parent { left, right })
     }
-    let left_hash = *array_ref!(encoded, 0, HASH_SIZE);
-    let right_hash = *array_ref!(encoded, HASH_SIZE, HASH_SIZE);
-    let computed_hash = hash::parent_hash(&left_hash, &right_hash, finalization);
-    if !constant_time_eq(&hash, &computed_hash) {
-        return Err(HashMismatch);
-    }
-    let left_len = hash::left_len(content_len as u64);
-    let (left_output, right_output) = output.split_at_mut(left_len as usize);
-    let left_encoded_len = encode::encoded_subtree_size(left_len);
-    let (left_encoded, right_encoded) = encoded[PARENT_SIZE..].split_at(left_encoded_len as usize);
-    decode_recurse(left_encoded, left_output, left_hash, NotRoot)?;
-    decode_recurse(right_encoded, right_output, right_hash, NotRoot)
 }
 
-pub fn decode_recurse_rayon(
-    encoded: &[u8],
-    output: &mut [u8],
-    hash: Hash,
-    finalization: Finalization,
-) -> Result<(), HashMismatch> {
-    let content_len = output.len();
-    if content_len <= CHUNK_SIZE {
-        let computed_hash = hash::hash_node(&encoded[..content_len], finalization);
-        if !constant_time_eq(&hash, &computed_hash) {
-            return Err(HashMismatch);
+fn decode_recurse(encoded: &[u8], subtree: &Subtree, output: &mut [u8]) -> Result<usize> {
+    match verify_one_level(encoded, subtree)? {
+        Verified::Chunk { offset, len } => {
+            output[..len].copy_from_slice(&encoded[offset..][..len]);
+            Ok(len)
         }
-        output.copy_from_slice(&encoded[..content_len]);
-        return Ok(());
+        Verified::Parent { left, right } => {
+            let (left_out, right_out) = output.split_at_mut(left.content_len);
+            let left_n = decode_recurse(encoded, &left, left_out)?;
+            let right_n = decode_recurse(encoded, &right, right_out)?;
+            Ok(left_n + right_n)
+        }
     }
-    let left_hash = *array_ref!(encoded, 0, HASH_SIZE);
-    let right_hash = *array_ref!(encoded, HASH_SIZE, HASH_SIZE);
-    let computed_hash = hash::parent_hash(&left_hash, &right_hash, finalization);
-    if !constant_time_eq(&hash, &computed_hash) {
-        return Err(HashMismatch);
-    }
-    let left_len = hash::left_len(content_len as u64);
-    let (left_output, right_output) = output.split_at_mut(left_len as usize);
-    let left_encoded_len = encode::encoded_subtree_size(left_len);
-    let (left_encoded, right_encoded) = encoded[PARENT_SIZE..].split_at(left_encoded_len as usize);
-    let (left_result, right_result) = rayon::join(
-        || decode_recurse_rayon(left_encoded, left_output, left_hash, NotRoot),
-        || decode_recurse_rayon(right_encoded, right_output, right_hash, NotRoot),
-    );
-    left_result.and(right_result)
 }
 
-pub fn hash_from_encoded_nostd<F, E>(mut read_exact_fn: F) -> Result<Hash, E>
+fn decode_recurse_rayon(encoded: &[u8], subtree: &Subtree, output: &mut [u8]) -> Result<usize> {
+    match verify_one_level(encoded, subtree)? {
+        Verified::Chunk { offset, len } => {
+            output[..len].copy_from_slice(&encoded[offset..][..len]);
+            Ok(len)
+        }
+        Verified::Parent { left, right } => {
+            let (left_out, right_out) = output.split_at_mut(left.content_len);
+            let (left_res, right_res) = rayon::join(
+                || decode_recurse_rayon(encoded, &left, left_out),
+                || decode_recurse_rayon(encoded, &right, right_out),
+            );
+            Ok(left_res? + right_res?)
+        }
+    }
+}
+
+fn decode_recurse_in_place(
+    encoded: &mut [u8],
+    subtree: &Subtree,
+    write_offset: usize,
+) -> Result<usize> {
+    match verify_one_level(encoded, subtree)? {
+        Verified::Chunk { offset, len } => {
+            // Copy the chunk from the encoded buffer to a temporary stack buffer, and then back to
+            // a different offset in the encoded buffer. Perhaps if Rust adds a copy_in_place
+            // method for slices (github.com/rust-lang/rust/pull/53652) we could skip this copy.
+            let mut chunk_copy = [0; CHUNK_SIZE];
+            chunk_copy[..len].copy_from_slice(&encoded[offset..][..len]);
+            encoded[write_offset..][..len].copy_from_slice(&mut chunk_copy[..len]);
+            Ok(len)
+        }
+        Verified::Parent { left, right } => {
+            let n1 = decode_recurse_in_place(encoded, &left, write_offset)?;
+            let n2 = decode_recurse_in_place(encoded, &right, write_offset + n1)?;
+            Ok(n1 + n2)
+        }
+    }
+}
+
+// Casting the content_len down to usize runs the risk that 1 and 2^32+1 might give the same result
+// on 32 bit systems, which would lead to apparent collisions. Check for that case, as well as the
+// more obvious cases where the buffer is too small for the content length, or too small to even
+// contain a header. Note that this doesn't verify any hashes.
+fn parse_and_check_content_len(encoded: &[u8]) -> Result<usize> {
+    if encoded.len() < HEADER_SIZE {
+        return Err(Error::Truncated);
+    }
+    let len = hash::decode_len(array_ref!(encoded, 0, HEADER_SIZE));
+    if (encoded.len() as u128) < encode::encoded_size(len) {
+        return Err(Error::Truncated);
+    }
+    Ok(len as usize)
+}
+
+fn root_subtree(content_len: usize, hash: &Hash) -> Subtree {
+    Subtree {
+        offset: HEADER_SIZE,
+        content_len,
+        hash: *hash,
+        finalization: Root(content_len as u64),
+    }
+}
+
+pub fn decode(encoded: &[u8], hash: &Hash, output: &mut [u8]) -> Result<usize> {
+    let content_len = parse_and_check_content_len(encoded)?;
+    if content_len <= hash::MAX_SINGLE_THREADED {
+        decode_recurse(encoded, &root_subtree(content_len, hash), output)
+    } else {
+        decode_recurse_rayon(encoded, &root_subtree(content_len, hash), output)
+    }
+}
+
+pub fn decode_in_place(encoded: &mut [u8], hash: &Hash) -> Result<usize> {
+    let content_len = parse_and_check_content_len(encoded)?;
+    decode_recurse_in_place(encoded, &root_subtree(content_len, hash), 0)
+}
+
+pub fn decode_to_vec(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
+    let content_len = parse_and_check_content_len(encoded)?;
+    // Unsafe code here could avoid the cost of initialization, but it's not much.
+    let mut out = vec![0; content_len];
+    decode(encoded, hash, &mut out)?;
+    Ok(out)
+}
+
+pub fn hash_from_encoded_nostd<F, E>(mut read_exact_fn: F) -> std::result::Result<Hash, E>
 where
-    F: FnMut(&mut [u8]) -> Result<(), E>,
+    F: FnMut(&mut [u8]) -> std::result::Result<(), E>,
 {
     let mut buf = [0; CHUNK_SIZE];
     read_exact_fn(&mut buf[..HEADER_SIZE])?;
-    let content_len = hash::decode_len(*array_ref!(buf, 0, HEADER_SIZE));
+    let content_len = hash::decode_len(array_ref!(buf, 0, HEADER_SIZE));
     let node;
     if content_len <= CHUNK_SIZE as u64 {
         node = &mut buf[..content_len as usize];
@@ -270,12 +340,12 @@ impl State {
 
     pub fn feed_header(&mut self, header: [u8; HEADER_SIZE]) {
         assert!(self.content_len.is_none(), "second call to feed_header");
-        let content_len = hash::decode_len(header);
+        let content_len = hash::decode_len(&header);
         self.content_len = Some(content_len);
         self.reset_to_root();
     }
 
-    pub fn feed_parent(&mut self, parent: hash::ParentNode) -> Result<(), HashMismatch> {
+    pub fn feed_parent(&mut self, parent: hash::ParentNode) -> Result<()> {
         assert!(self.upcoming_parents > 0, "too many calls to feed_parent");
         let content_len = self.content_len.expect("feed_parent before header");
         let finalization = if self.at_root {
@@ -286,7 +356,7 @@ impl State {
         let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
         let computed_hash = hash::hash_node(&parent, finalization);
         if !constant_time_eq(&expected_hash, &computed_hash) {
-            return Err(HashMismatch);
+            return Err(Error::HashMismatch);
         }
         let left_child = *array_ref!(parent, 0, HASH_SIZE);
         let right_child = *array_ref!(parent, HASH_SIZE, HASH_SIZE);
@@ -300,10 +370,10 @@ impl State {
         Ok(())
     }
 
-    pub fn feed_chunk(&mut self, chunk_hash: Hash) -> Result<(), HashMismatch> {
+    pub fn feed_chunk(&mut self, chunk_hash: Hash) -> Result<()> {
         let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
         if !constant_time_eq(&chunk_hash, &expected_hash) {
-            return Err(HashMismatch);
+            return Err(Error::HashMismatch);
         }
         self.content_position = self.subtree_end();
         self.encoded_offset += encode::encoded_subtree_size(self.subtree_size());
@@ -357,21 +427,31 @@ pub enum LenNext {
     Next(StateNext),
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct HashMismatch;
+type Result<T> = std::result::Result<T, Error>;
 
-impl fmt::Display for HashMismatch {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Error {
+    HashMismatch,
+    Truncated,
+}
+
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Don't include the hash values themselves. They might be secret.
-        write!(f, "hash mismatch")
+        match *self {
+            Error::HashMismatch => write!(f, "hash mismatch"),
+            Error::Truncated => write!(f, "truncated encoding"),
+        }
     }
 }
 
-impl Error for HashMismatch {}
+impl std::error::Error for Error {}
 
-impl From<HashMismatch> for io::Error {
-    fn from(_: HashMismatch) -> io::Error {
-        io::Error::new(io::ErrorKind::InvalidData, "hash mismatch")
+impl From<Error> for io::Error {
+    fn from(e: Error) -> io::Error {
+        match e {
+            Error::HashMismatch => io::Error::new(io::ErrorKind::InvalidData, "hash mismatch"),
+            Error::Truncated => io::Error::new(io::ErrorKind::UnexpectedEof, "truncated encoding"),
+        }
     }
 }
 
@@ -646,29 +726,23 @@ mod test {
             let hash = { encode::encode_to_vec(&input, &mut encoded) };
 
             let mut output = vec![0; case];
-            decode_recurse(
-                &encoded[HEADER_SIZE..],
-                &mut output,
-                hash,
-                Root(case as u64),
-            ).unwrap();
+            decode_recurse(&encoded, &root_subtree(input.len(), &hash), &mut output).unwrap();
             assert_eq!(input, output);
 
             let mut output = vec![0; case];
-            decode_recurse_rayon(
-                &encoded[HEADER_SIZE..],
-                &mut output,
-                hash,
-                Root(case as u64),
-            ).unwrap();
+            decode_recurse_rayon(&encoded, &root_subtree(input.len(), &hash), &mut output).unwrap();
             assert_eq!(input, output);
 
             let mut output = vec![0; case];
-            decode(&encoded, &mut output, hash).unwrap();
+            decode(&encoded, &hash, &mut output).unwrap();
             assert_eq!(input, output);
 
-            let mut output = vec![0; case];
-            decode_single_threaded(&encoded, &mut output, hash).unwrap();
+            let mut output = encoded.clone();
+            let n = decode_in_place(&mut output, &hash).unwrap();
+            output.truncate(n);
+            assert_eq!(input, output);
+
+            let output = decode_to_vec(&encoded, &hash).unwrap();
             assert_eq!(input, output);
 
             let mut output = Vec::new();
@@ -702,30 +776,28 @@ mod test {
                 bad_encoded[tweak] ^= 1;
 
                 let mut output = vec![0; case];
-                let res = decode_recurse(
-                    &bad_encoded[HEADER_SIZE..],
-                    &mut output,
-                    hash,
-                    Root(case as u64),
-                );
-                assert!(res.is_err());
+                let res =
+                    decode_recurse(&bad_encoded, &root_subtree(input.len(), &hash), &mut output);
+                assert_eq!(Error::HashMismatch, res.unwrap_err());
 
                 let mut output = vec![0; case];
                 let res = decode_recurse_rayon(
-                    &bad_encoded[HEADER_SIZE..],
+                    &bad_encoded,
+                    &root_subtree(input.len(), &hash),
                     &mut output,
-                    hash,
-                    Root(case as u64),
                 );
-                assert!(res.is_err());
+                assert_eq!(Error::HashMismatch, res.unwrap_err());
 
                 let mut output = vec![0; case];
-                let res = decode(&bad_encoded, &mut output, hash);
-                assert!(res.is_err());
+                let res = decode(&bad_encoded, &hash, &mut output);
+                assert_eq!(Error::HashMismatch, res.unwrap_err());
 
-                let mut output = vec![0; case];
-                let res = decode_single_threaded(&bad_encoded, &mut output, hash);
-                assert!(res.is_err());
+                let mut output = bad_encoded.clone();
+                let res = decode_in_place(&mut output, &hash);
+                assert_eq!(Error::HashMismatch, res.unwrap_err());
+
+                let res = decode_to_vec(&bad_encoded, &hash);
+                assert_eq!(Error::HashMismatch, res.unwrap_err());
             }
         }
     }

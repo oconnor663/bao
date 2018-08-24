@@ -17,7 +17,7 @@ pub const MAX_DEPTH: usize = 64;
 pub const MAX_SINGLE_THREADED: usize = 4 * CHUNK_SIZE;
 
 pub type Hash = [u8; HASH_SIZE];
-pub type ParentNode = [u8; 2 * HASH_SIZE];
+pub(crate) type ParentNode = [u8; 2 * HASH_SIZE];
 
 pub(crate) fn encode_len(len: u64) -> [u8; HEADER_SIZE] {
     debug_assert_eq!(mem::size_of_val(&len), HEADER_SIZE);
@@ -26,8 +26,8 @@ pub(crate) fn encode_len(len: u64) -> [u8; HEADER_SIZE] {
     len_bytes
 }
 
-pub(crate) fn decode_len(bytes: [u8; HEADER_SIZE]) -> u64 {
-    LittleEndian::read_u64(&bytes)
+pub(crate) fn decode_len(bytes: &[u8; HEADER_SIZE]) -> u64 {
+    LittleEndian::read_u64(bytes)
 }
 
 pub(crate) fn new_blake2b_state() -> blake2b_simd::State {
@@ -90,7 +90,7 @@ pub(crate) fn left_len(content_len: u64) -> u64 {
     largest_power_of_two(full_chunks) * CHUNK_SIZE as u64
 }
 
-pub fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
+fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_node(input, finalization);
     }
@@ -103,7 +103,7 @@ pub fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
     parent_hash(&left_hash, &right_hash, finalization)
 }
 
-pub fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
+fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_node(input, finalization);
     }
@@ -124,11 +124,6 @@ pub fn hash(input: &[u8]) -> Hash {
     } else {
         hash_recurse_rayon(input, Root(input.len() as u64))
     }
-}
-
-/// Mostly for benchmarks.
-pub fn hash_single_threaded(input: &[u8]) -> Hash {
-    hash_recurse(input, Finalization::Root(input.len() as u64))
 }
 
 /// A minimal state object for incrementally hashing input. Most callers should use the `Writer`
@@ -308,8 +303,8 @@ impl io::Write for Writer {
 
 // benchmark_job_params.rs helps to tune these parameters.
 lazy_static! {
-    pub static ref MAX_JOBS: usize = 2 * num_cpus::get();
-    pub static ref JOB_SIZE: usize = 65536; // 2^16
+    pub(crate) static ref MAX_JOBS: usize = 2 * num_cpus::get();
+    pub(crate) static ref JOB_SIZE: usize = 65536; // 2^16
 }
 
 // TODO: Manually implement Clone by draining the receivers.
@@ -496,10 +491,8 @@ mod test {
             let hash_serial = hash_recurse(&input, Root(case as u64));
             let hash_parallel = hash_recurse_rayon(&input, Root(case as u64));
             let hash_highlevel = hash(&input);
-            let hash_highlevel_single = hash_single_threaded(&input);
             assert_eq!(hash_serial, hash_parallel, "hashes don't match");
             assert_eq!(hash_serial, hash_highlevel, "hashes don't match");
-            assert_eq!(hash_serial, hash_highlevel_single, "hashes don't match");
         }
     }
 
