@@ -48,19 +48,19 @@ fn bench_blake2b_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_parallel_short(b: &mut Bencher) {
+fn bench_bao_hash_slice_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     b.iter(|| hash::hash(&input));
 }
 
 #[bench]
-fn bench_bao_hash_parallel_medium(b: &mut Bencher) {
+fn bench_bao_hash_slice_medium(b: &mut Bencher) {
     let input = input(b, MEDIUM);
     b.iter(|| hash::hash(&input));
 }
 
 #[bench]
-fn bench_bao_hash_parallel_long(b: &mut Bencher) {
+fn bench_bao_hash_slice_long(b: &mut Bencher) {
     let input = input(b, LONG);
     b.iter(|| hash::hash(&input));
 }
@@ -96,51 +96,21 @@ fn bench_bao_hash_writer_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_rayonwriter_short(b: &mut Bencher) {
-    let input = input(b, SHORT);
-    b.iter(|| {
-        let mut writer = hash::RayonWriter::new();
-        writer.write_all(&input).unwrap();
-        writer.finish()
-    });
-}
-
-#[bench]
-fn bench_bao_hash_rayonwriter_medium(b: &mut Bencher) {
-    let input = input(b, MEDIUM);
-    b.iter(|| {
-        let mut writer = hash::RayonWriter::new();
-        writer.write_all(&input).unwrap();
-        writer.finish()
-    });
-}
-
-#[bench]
-fn bench_bao_hash_rayonwriter_long(b: &mut Bencher) {
-    let input = input(b, LONG);
-    b.iter(|| {
-        let mut writer = hash::RayonWriter::new();
-        writer.write_all(&input).unwrap();
-        writer.finish()
-    });
-}
-
-#[bench]
-fn bench_bao_encode_parallel_short(b: &mut Bencher) {
+fn bench_bao_encode_slice_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     let mut output = vec![0; encode::encoded_size(input.len() as u64) as usize];
     b.iter(|| encode::encode(&input, &mut output));
 }
 
 #[bench]
-fn bench_bao_encode_parallel_medium(b: &mut Bencher) {
+fn bench_bao_encode_slice_medium(b: &mut Bencher) {
     let input = input(b, MEDIUM);
     let mut output = vec![0; encode::encoded_size(input.len() as u64) as usize];
     b.iter(|| encode::encode(&input, &mut output));
 }
 
 #[bench]
-fn bench_bao_encode_parallel_long(b: &mut Bencher) {
+fn bench_bao_encode_slice_long(b: &mut Bencher) {
     let input = input(b, LONG);
     let mut output = vec![0; encode::encoded_size(input.len() as u64) as usize];
     b.iter(|| encode::encode(&input, &mut output));
@@ -219,56 +189,30 @@ fn bench_bao_encode_rayonwriter_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_decode_parallel_short(b: &mut Bencher) {
+fn bench_bao_decode_slice_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     let mut encoded = Vec::new();
     let hash = encode::encode_to_vec(&input, &mut encoded);
     let mut output = vec![0; input.len()];
-    b.iter(|| decode::decode(&encoded, &mut output, hash));
+    b.iter(|| decode::decode(&encoded, &hash, &mut output));
 }
 
 #[bench]
-fn bench_bao_decode_parallel_medium(b: &mut Bencher) {
+fn bench_bao_decode_slice_medium(b: &mut Bencher) {
     let input = input(b, MEDIUM);
     let mut encoded = Vec::new();
     let hash = encode::encode_to_vec(&input, &mut encoded);
     let mut output = vec![0; input.len()];
-    b.iter(|| decode::decode(&encoded, &mut output, hash));
+    b.iter(|| decode::decode(&encoded, &hash, &mut output));
 }
 
 #[bench]
-fn bench_bao_decode_parallel_long(b: &mut Bencher) {
+fn bench_bao_decode_slice_long(b: &mut Bencher) {
     let input = input(b, LONG);
     let mut encoded = Vec::new();
     let hash = encode::encode_to_vec(&input, &mut encoded);
     let mut output = vec![0; input.len()];
-    b.iter(|| decode::decode(&encoded, &mut output, hash));
-}
-#[bench]
-fn bench_bao_decode_serial_short(b: &mut Bencher) {
-    let input = input(b, SHORT);
-    let mut encoded = Vec::new();
-    let hash = encode::encode_to_vec(&input, &mut encoded);
-    let mut output = vec![0; input.len()];
-    b.iter(|| decode::decode_single_threaded(&encoded, &mut output, hash));
-}
-
-#[bench]
-fn bench_bao_decode_serial_medium(b: &mut Bencher) {
-    let input = input(b, MEDIUM);
-    let mut encoded = Vec::new();
-    let hash = encode::encode_to_vec(&input, &mut encoded);
-    let mut output = vec![0; input.len()];
-    b.iter(|| decode::decode_single_threaded(&encoded, &mut output, hash));
-}
-
-#[bench]
-fn bench_bao_decode_serial_long(b: &mut Bencher) {
-    let input = input(b, LONG);
-    let mut encoded = Vec::new();
-    let hash = encode::encode_to_vec(&input, &mut encoded);
-    let mut output = vec![0; input.len()];
-    b.iter(|| decode::decode_single_threaded(&encoded, &mut output, hash));
+    b.iter(|| decode::decode(&encoded, &hash, &mut output));
 }
 
 #[bench]
@@ -375,37 +319,5 @@ fn bench_bao_seek_file_one_read(b: &mut Bencher) {
         let seek_offset = rng.gen_range(0, input.len() as u64);
         reader.seek(Start(seek_offset)).expect("seek error");
         reader.read(&mut buf).expect("read error");
-    });
-}
-
-#[bench]
-fn bench_raw_seek_file_no_read(b: &mut Bencher) {
-    let input = vec![0; LONG];
-    let mut file = tempfile::tempfile().expect("tempfile creation error");
-    file.write_all(&input).expect("file write error");
-    file.flush().expect("file flush error");
-    file.seek(Start(0)).expect("file seek error");
-
-    let mut rng = rand::XorShiftRng::from_seed(Default::default());
-    b.iter(|| {
-        let seek_offset = rng.gen_range(0, input.len() as u64);
-        file.seek(Start(seek_offset)).expect("seek error");
-    });
-}
-
-#[bench]
-fn bench_raw_seek_file_one_read(b: &mut Bencher) {
-    let input = vec![0; LONG];
-    let mut file = tempfile::tempfile().expect("tempfile creation error");
-    file.write_all(&input).expect("file write error");
-    file.flush().expect("file flush error");
-    file.seek(Start(0)).expect("file seek error");
-
-    let mut rng = rand::XorShiftRng::from_seed(Default::default());
-    let mut buf = [0];
-    b.iter(|| {
-        let seek_offset = rng.gen_range(0, input.len() as u64);
-        file.seek(Start(seek_offset)).expect("seek error");
-        file.read(&mut buf).expect("read error");
     });
 }

@@ -61,7 +61,7 @@ fn main() {
     let mut run_times = HashMap::<Run, Vec<f64>>::new();
     for run in shuffled_runs() {
         let start = Instant::now();
-        let mut writer = bao::hash::RayonWriter::new_benchmarking(run.job_size, run.max_jobs);
+        let mut writer = bao::hash::Writer::new_benchmarking(run.job_size, run.max_jobs);
         writer.write_all(&input).unwrap();
         writer.finish();
         let time = secs_float(Instant::now() - start);

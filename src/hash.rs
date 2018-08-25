@@ -6,6 +6,7 @@ use num_cpus;
 use rayon;
 use std::cmp;
 use std::collections::VecDeque;
+use std::fmt;
 use std::io;
 use std::mem;
 
@@ -126,6 +127,11 @@ pub fn hash(input: &[u8]) -> Hash {
     }
 }
 
+pub(crate) enum StateFinish {
+    Parent(ParentNode),
+    Root(Hash),
+}
+
 /// A minimal state object for incrementally hashing input. Most callers should use the `Writer`
 /// interface instead.
 ///
@@ -141,17 +147,17 @@ pub fn hash(input: &[u8]) -> Hash {
 /// that could be hashed in the real world, and implementations that are starved for stack space
 /// could cut that buffer in half and still be able to hash about 17 terabytes (`2^32` times the
 /// 4096-byte chunk size).
-#[derive(Clone, Debug)]
-pub struct State {
+#[derive(Clone)]
+pub(crate) struct State {
     subtrees: ArrayVec<[Hash; MAX_DEPTH]>,
-    subtree_count: u64,
+    total_len: u64,
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
             subtrees: ArrayVec::new(),
-            subtree_count: 0,
+            total_len: 0,
         }
     }
 
@@ -173,7 +179,8 @@ impl State {
     // propagating the carry bit. Each carry represents a place where two subtrees need to be
     // merged, and the final number of 1 bits is the same as the final number of subtrees.
     fn needs_merge(&self) -> bool {
-        self.subtrees.len() > self.subtree_count.count_ones() as usize
+        let chunks = self.total_len / CHUNK_SIZE as u64;
+        self.subtrees.len() > chunks.count_ones() as usize
     }
 
     /// Add a subtree hash to the state.
@@ -186,18 +193,18 @@ impl State {
     /// single chunks.
     ///
     /// In cases where the total input is a single chunk or less, including the case with no input
-    /// bytes at all, callers are expected to finalize that chunk and return the result *without*
-    /// calling into this state object. It's of course impossible to back out the input bytes and
-    /// re-finalize them.
-    pub fn push_subtree(&mut self, hash: Hash) {
+    /// bytes at all, callers are expected to finalize that chunk themselves before pushing. (Or
+    /// just ignore the State object entirely.) It's of course impossible to back out the input
+    /// bytes and re-finalize them.
+    pub fn push_subtree(&mut self, hash: &Hash, len: usize) {
         // Merge any subtrees that need to be merged before pushing. In the encoding case, the
         // caller will already have done this via merge_parent(), but in the hashing case the
         // caller doesn't care about the parent nodes.
         while self.needs_merge() {
             self.merge_inner(NotRoot);
         }
-        self.subtrees.push(hash);
-        self.subtree_count += 1;
+        self.subtrees.push(*hash);
+        self.total_len += len as u64;
     }
 
     /// Returns a `ParentNode` corresponding to a just-completed subtree, if any.
@@ -220,84 +227,33 @@ impl State {
     /// who need `ParentNode` bytes must call `merge_finish` in a loop after pushing the final
     /// subtree, until the second return value is `Some`. Callers who don't need parent nodes
     /// should use the simpler `finish` interface instead.
-    pub fn merge_finish(&mut self, finalization: Finalization) -> (ParentNode, Option<Hash>) {
-        assert!(self.subtrees.len() >= 2, "not enough subtrees");
+    pub fn merge_finish(&mut self) -> StateFinish {
         if self.subtrees.len() > 2 {
-            (self.merge_inner(NotRoot), None)
+            StateFinish::Parent(self.merge_inner(NotRoot))
+        } else if self.subtrees.len() == 2 {
+            let root_finalization = Root(self.total_len); // Appease borrowck.
+            StateFinish::Parent(self.merge_inner(root_finalization))
         } else {
-            let root_node = self.merge_inner(finalization);
-            let root_hash = self.subtrees.pop().unwrap();
-            (root_node, Some(root_hash))
+            StateFinish::Root(self.subtrees[0])
         }
     }
 
     /// A wrapper around `merge_finish` for callers who don't need the parent
     /// nodes.
-    pub fn finish(&mut self, finalization: Finalization) -> Hash {
-        loop {
-            if let (_, Some(root_hash)) = self.merge_finish(finalization) {
-                return root_hash;
-            }
-        }
-    }
-}
-
-/// A `std::io::Writer` interface to the incremental hasher. Most callers that can't use the
-/// all-at-once `hash` function should use this interface.
-#[derive(Clone, Debug)]
-pub struct Writer {
-    chunk: blake2b_simd::State,
-    chunk_len: usize,
-    total_len: u64,
-    state: State,
-}
-
-impl Writer {
-    pub fn new() -> Self {
-        Self {
-            chunk: new_blake2b_state(),
-            chunk_len: 0,
-            total_len: 0,
-            state: State::new(),
-        }
-    }
-
-    /// After feeding all the input bytes to `write`, return the root hash. The writer cannot be
-    /// used after this.
     pub fn finish(&mut self) -> Hash {
-        let finalization = Root(self.total_len);
-        if self.total_len <= CHUNK_SIZE as u64 {
-            return finalize_hash(&mut self.chunk, finalization);
+        loop {
+            match self.merge_finish() {
+                StateFinish::Parent(_) => {} // ignored
+                StateFinish::Root(root) => return root,
+            }
         }
-        let last_chunk_hash = finalize_hash(&mut self.chunk, NotRoot);
-        self.state.push_subtree(last_chunk_hash);
-        self.state.finish(finalization)
     }
 }
 
-impl io::Write for Writer {
-    fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
-        let input_len = input.len();
-        while !input.is_empty() {
-            if self.chunk_len == CHUNK_SIZE {
-                let chunk_hash = finalize_hash(&mut self.chunk, NotRoot);
-                self.state.push_subtree(chunk_hash);
-                self.chunk = new_blake2b_state();
-                self.chunk_len = 0;
-            }
-
-            let want = CHUNK_SIZE - self.chunk_len;
-            let take = cmp::min(want, input.len());
-            self.chunk.update(&input[..take]);
-            self.chunk_len += take;
-            self.total_len += take as u64;
-            input = &input[take..];
-        }
-        Ok(input_len)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
+impl fmt::Debug for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Avoid printing hashes, they might be secret.
+        write!(f, "State {{ ... }}")
     }
 }
 
@@ -307,27 +263,123 @@ lazy_static! {
     pub(crate) static ref JOB_SIZE: usize = 65536; // 2^16
 }
 
-// TODO: Manually implement Clone by draining the receivers.
-#[derive(Debug)]
-pub struct RayonWriter {
-    state: State,
+// TODO: The no_std version of this.
+struct Pipeline {
     buf: Vec<u8>,
-    total_len: u64,
     receivers: VecDeque<channel::Receiver<(Hash, Vec<u8>)>>,
     job_size: usize,
     max_jobs: usize,
+    first_job: bool,
+    final_job_sent: bool,
 }
 
-impl RayonWriter {
-    pub fn new() -> Self {
+impl Pipeline {
+    fn new() -> Self {
         Self {
-            state: State::new(),
             // Use new() instead of with_capacity() to avoid a big allocation in the small case.
             buf: Vec::new(),
-            total_len: 0,
             receivers: VecDeque::new(),
             job_size: *JOB_SIZE,
             max_jobs: *MAX_JOBS,
+            first_job: true,
+            final_job_sent: false,
+        }
+    }
+
+    fn send_one(&mut self, buf: Vec<u8>, finalization: Finalization) {
+        // Performance: crossbeam-channel seems to beat std::mpsc here.
+        let (sender, receiver) = channel::bounded(1);
+        self.receivers.push_back(receiver);
+        rayon::spawn(move || {
+            // Performance: hash_recursive_rayon seems to be slower here.
+            let hash = hash_recurse(&buf, finalization);
+            sender.send((hash, buf));
+        });
+        // Flag that finish_loop doesn't need to do root finalization.
+        self.first_job = false;
+    }
+
+    fn write_loop(&mut self, input: &[u8]) -> (usize, Option<(Hash, usize)>) {
+        // Avoid sending a buffer until we're sure there's more input.
+        if input.is_empty() {
+            return (0, None);
+        }
+
+        // If there's more input, and the buffer is full, send it off.
+        let mut maybe_output = None;
+        if self.buf.len() == self.job_size {
+            // First, get our hands on a new buffer. If we haven't maxed out the outstanding
+            // receivers, just create a fresh one. Otherwise, await a receiver and reuse the
+            // buffer it gives back to us.
+            let new_buf;
+            if self.receivers.len() < self.max_jobs {
+                new_buf = Vec::with_capacity(self.job_size);
+            } else {
+                let receiver = self.receivers.pop_front().unwrap();
+                // Performance: Trying to do something clever with waiting for a later receiver
+                // (e.g. the middle one), in order to sleep longer, doesn't seem to help here.
+                let (hash, mut received_buf) = receiver.recv().expect("worker hung up");
+                // That workers result will be the return value.
+                maybe_output = Some((hash, received_buf.len()));
+                received_buf.clear();
+                new_buf = received_buf;
+            }
+
+            // Now swap the buffers and send the full one to a new job.
+            let full_buf = mem::replace(&mut self.buf, new_buf);
+            self.send_one(full_buf, NotRoot);
+        }
+
+        // Now with space in the buffer, take as much input as we can.
+        let want = self.job_size - self.buf.len();
+        let take = cmp::min(want, input.len());
+        self.buf.extend_from_slice(&input[..take]);
+
+        // Return the number of consumed bytes, and a hash/len pair if we received one from a
+        // worker.
+        (take, maybe_output)
+    }
+
+    fn finish_loop(&mut self) -> Option<(Hash, usize)> {
+        if !self.final_job_sent {
+            self.final_job_sent = true;
+            let finalization = if self.first_job {
+                // The current buffer is the only subtree, so we have to finalize it.
+                Root(self.buf.len() as u64)
+            } else {
+                NotRoot
+            };
+            let final_buf = mem::replace(&mut self.buf, Vec::new());
+            self.send_one(final_buf, finalization);
+        }
+        if let Some(receiver) = self.receivers.pop_front() {
+            let (hash, buf) = receiver.recv().expect("worker hung up");
+            Some((hash, buf.len()))
+        } else {
+            None
+        }
+    }
+}
+
+impl fmt::Debug for Pipeline {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Avoid printing hashes, they might be secret.
+        write!(f, "Pipeline {{ ... }}")
+    }
+}
+
+// TODO: Manually implement Clone by draining the receivers.
+#[derive(Debug)]
+pub struct Writer {
+    state: State,
+    pipeline: Pipeline,
+}
+
+impl Writer {
+    pub fn new() -> Self {
+        Self {
+            state: State::new(),
+            pipeline: Pipeline::new(),
         }
     }
 
@@ -335,65 +387,30 @@ impl RayonWriter {
         assert_eq!(0, job_size % CHUNK_SIZE);
         assert_eq!(1, (job_size / CHUNK_SIZE).count_ones());
         let mut writer = Self::new();
-        writer.job_size = job_size;
-        writer.max_jobs = max_jobs;
+        writer.pipeline.job_size = job_size;
+        writer.pipeline.max_jobs = max_jobs;
         writer
     }
 
     /// After feeding all the input bytes to `write`, return the root hash. The writer cannot be
     /// used after this.
     pub fn finish(&mut self) -> Hash {
-        if self.total_len <= self.job_size as u64 {
-            return hash_recurse(&mut self.buf, Root(self.total_len));
+        while let Some((hash, len)) = self.pipeline.finish_loop() {
+            self.state.push_subtree(&hash, len);
         }
-        let last_job_hash = hash_recurse(&mut self.buf, NotRoot);
-        for receiver in self.receivers.drain(..) {
-            let (hash, _) = receiver.recv().expect("worker hung up");
-            self.state.push_subtree(hash);
-        }
-        self.state.push_subtree(last_job_hash);
-        self.state.finish(Root(self.total_len))
+        self.state.finish()
     }
 }
 
-impl io::Write for RayonWriter {
+impl io::Write for Writer {
     fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
         let input_len = input.len();
         while !input.is_empty() {
-            if self.buf.len() == self.job_size {
-                // First, get our hands on a new buffer. If we haven't maxed out the outstanding
-                // receivers, just create a fresh one. Otherwise, await a receiver and reuse the
-                // buffer it gives back to us.
-                let new_buf;
-                if self.receivers.len() < self.max_jobs {
-                    new_buf = Vec::with_capacity(self.job_size);
-                } else {
-                    let receiver = self.receivers.pop_front().unwrap();
-                    // Performance: Trying to do something clever with waiting for a later receiver
-                    // (e.g. the middle one), in order to sleep longer, doens't seem to help here.
-                    let (hash, mut received_buf) = receiver.recv().expect("worker hung up");
-                    self.state.push_subtree(hash);
-                    received_buf.clear();
-                    new_buf = received_buf;
-                }
-
-                // Now swap the buffers and send the full one to a new job.
-                let full_buf = mem::replace(&mut self.buf, new_buf);
-                // Performance: crossbeam-channel seems to beat std::mpsc here.
-                let (sender, receiver) = channel::bounded(1);
-                self.receivers.push_back(receiver);
-                rayon::spawn(move || {
-                    // Performance: hash_recursive_rayon seems to be slower here.
-                    let hash = hash_recurse(&full_buf, NotRoot);
-                    sender.send((hash, full_buf));
-                });
+            let (n, maybe_output) = self.pipeline.write_loop(input);
+            if let Some((hash, len)) = maybe_output {
+                self.state.push_subtree(&hash, len);
             }
-
-            let want = self.job_size - self.buf.len();
-            let take = cmp::min(want, input.len());
-            self.buf.extend_from_slice(&input[..take]);
-            self.total_len += take as u64;
-            input = &input[take..];
+            input = &input[n..];
         }
         Ok(input_len)
     }
@@ -496,19 +513,21 @@ mod test {
         }
     }
 
-    fn drive_state(input: &[u8]) -> Hash {
-        let finalization = Root(input.len() as u64);
-        if input.len() <= CHUNK_SIZE {
-            return hash_node(input, finalization);
-        }
+    fn drive_state(mut input: &[u8]) -> Hash {
         let mut state = State::new();
-        let chunk_hashes = input
-            .chunks(CHUNK_SIZE)
-            .map(|chunk| hash_node(chunk, NotRoot));
-        for chunk_hash in chunk_hashes {
-            state.push_subtree(chunk_hash);
+        let finalization = if input.len() <= CHUNK_SIZE {
+            Root(input.len() as u64)
+        } else {
+            NotRoot
+        };
+        while input.len() > CHUNK_SIZE {
+            let hash = hash_node(&input[..CHUNK_SIZE], NotRoot);
+            state.push_subtree(&hash, CHUNK_SIZE);
+            input = &input[CHUNK_SIZE..];
         }
-        state.finish(finalization)
+        let hash = hash_node(input, finalization);
+        state.push_subtree(&hash, input.len());
+        state.finish()
     }
 
     #[test]
@@ -524,20 +543,6 @@ mod test {
 
     #[test]
     fn test_writer() {
-        for &case in TEST_CASES {
-            println!("case {}", case);
-            let input = vec![0x42; case];
-            let expected = hash(&input);
-
-            let mut writer = Writer::new();
-            writer.write_all(&input).unwrap();
-            let found = writer.finish();
-            assert_eq!(expected, found, "hashes don't match");
-        }
-    }
-
-    #[test]
-    fn test_rayon_writer() {
         let mut cases = TEST_CASES.to_vec();
         cases.push(*JOB_SIZE - 1);
         cases.push(*JOB_SIZE);
@@ -553,10 +558,10 @@ mod test {
             let input = vec![0x42; case];
             let expected = hash(&input);
 
-            let mut rayon_writer = RayonWriter::new();
-            rayon_writer.write_all(&input).unwrap();
-            let rayon_found = rayon_writer.finish();
-            assert_eq!(expected, rayon_found, "hashes don't match");
+            let mut writer = Writer::new();
+            writer.write_all(&input).unwrap();
+            let found = writer.finish();
+            assert_eq!(expected, found, "hashes don't match");
         }
     }
 }

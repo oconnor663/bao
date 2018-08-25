@@ -300,13 +300,15 @@ impl<T: Read + Write + Seek> Writer<T> {
             root_hash = hash::finalize_hash(&mut self.chunk_state, Root(self.total_len));
         } else {
             let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
-            self.tree_state.push_subtree(chunk_hash);
+            self.tree_state
+                .push_subtree(&chunk_hash, self.chunk_state.count() as usize);
             loop {
-                let (parent, maybe_root) = self.tree_state.merge_finish(Root(self.total_len));
-                self.inner.write_all(&parent)?;
-                if let Some(hash) = maybe_root {
-                    root_hash = hash;
-                    break;
+                match self.tree_state.merge_finish() {
+                    hash::StateFinish::Parent(parent) => self.inner.write_all(&parent)?,
+                    hash::StateFinish::Root(root) => {
+                        root_hash = root;
+                        break;
+                    }
                 }
             }
         }
@@ -329,7 +331,7 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
             let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
             self.chunk_state = hash::new_blake2b_state();
             self.chunk_len = 0;
-            self.tree_state.push_subtree(chunk_hash);
+            self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
             while let Some(parent) = self.tree_state.merge_parent() {
                 self.inner.write_all(&parent)?;
             }
@@ -407,7 +409,7 @@ impl<T: Read + Write + Seek> RayonWriter<T> {
             for receiver in self.receivers.drain(..) {
                 let (hash, _, encoding_buf) = receiver.recv().expect("worker hung up");
                 self.inner.write_all(&encoding_buf)?;
-                self.state.push_subtree(hash);
+                self.state.push_subtree(&hash, self.job_size);
                 while let Some(parent) = self.state.merge_parent() {
                     self.inner.write_all(&parent)?;
                 }
@@ -415,14 +417,15 @@ impl<T: Read + Write + Seek> RayonWriter<T> {
             // Encode the final subtree.
             let final_subtree_hash =
                 encode_subtree_to_writer_post_order(&mut self.inner, &self.buf, NotRoot)?;
-            self.state.push_subtree(final_subtree_hash);
+            self.state.push_subtree(&final_subtree_hash, self.buf.len());
             // Finalize the top level state and write out the trailing parents.
             loop {
-                let (parent, maybe_root) = self.state.merge_finish(Root(self.total_len));
-                self.inner.write_all(&parent)?;
-                if let Some(hash) = maybe_root {
-                    root_hash = hash;
-                    break;
+                match self.state.merge_finish() {
+                    hash::StateFinish::Parent(parent) => self.inner.write_all(&parent)?,
+                    hash::StateFinish::Root(root) => {
+                        root_hash = root;
+                        break;
+                    }
                 }
             }
         }
@@ -459,7 +462,7 @@ impl<T: Read + Write + Seek> io::Write for RayonWriter<T> {
                 let (hash, mut recv_buf, mut recv_encoded_buf) =
                     receiver.recv().expect("worker hung up");
                 self.inner.write_all(&recv_encoded_buf)?;
-                self.state.push_subtree(hash);
+                self.state.push_subtree(&hash, self.job_size);
                 // The worker encoded some parents, but there may be more from the top level state.
                 while let Some(parent) = self.state.merge_parent() {
                     self.inner.write_all(&parent)?;
@@ -498,7 +501,7 @@ impl<T: Read + Write + Seek> io::Write for RayonWriter<T> {
         for receiver in self.receivers.drain(..) {
             let (hash, _, recv_encoded_buf) = receiver.recv().expect("worker hung up");
             self.inner.write_all(&recv_encoded_buf)?;
-            self.state.push_subtree(hash);
+            self.state.push_subtree(&hash, self.job_size);
             // The worker encoded some parents, but there may be more from the top level state.
             while let Some(parent) = self.state.merge_parent() {
                 self.inner.write_all(&parent)?;

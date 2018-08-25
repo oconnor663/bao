@@ -1,8 +1,6 @@
-extern crate constant_time_eq;
-extern crate rayon;
-
-use self::constant_time_eq::constant_time_eq;
 use arrayvec::ArrayVec;
+use constant_time_eq::constant_time_eq;
+use rayon;
 
 use encode;
 use hash::Finalization::{self, NotRoot, Root};

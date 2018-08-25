@@ -3,6 +3,7 @@ extern crate arrayref;
 extern crate arrayvec;
 extern crate blake2b_simd;
 extern crate byteorder;
+extern crate constant_time_eq;
 extern crate crossbeam;
 extern crate crossbeam_channel;
 #[macro_use]
