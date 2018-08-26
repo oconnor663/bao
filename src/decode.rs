@@ -1,5 +1,6 @@
 use arrayvec::ArrayVec;
 use constant_time_eq::constant_time_eq;
+use copy_in_place::copy_in_place;
 use rayon;
 
 use encode;
@@ -104,26 +105,49 @@ fn decode_recurse_rayon(encoded: &[u8], subtree: &Subtree, output: &mut [u8]) ->
     }
 }
 
-fn decode_recurse_in_place(
-    encoded: &mut [u8],
-    subtree: &Subtree,
-    write_offset: usize,
-) -> Result<usize> {
+fn verify_recurse(encoded: &[u8], subtree: &Subtree) -> Result<()> {
     match verify_one_level(encoded, subtree)? {
-        Verified::Chunk { offset, len } => {
-            // Copy the chunk from the encoded buffer to a temporary stack buffer, and then back to
-            // a different offset in the encoded buffer. Perhaps if Rust adds a copy_in_place
-            // method for slices (github.com/rust-lang/rust/pull/53652) we could skip this copy.
-            let mut chunk_copy = [0; CHUNK_SIZE];
-            chunk_copy[..len].copy_from_slice(&encoded[offset..][..len]);
-            encoded[write_offset..][..len].copy_from_slice(&mut chunk_copy[..len]);
-            Ok(len)
-        }
+        Verified::Chunk { .. } => Ok(()),
         Verified::Parent { left, right } => {
-            let n1 = decode_recurse_in_place(encoded, &left, write_offset)?;
-            let n2 = decode_recurse_in_place(encoded, &right, write_offset + n1)?;
-            Ok(n1 + n2)
+            verify_recurse(encoded, &left)?;
+            verify_recurse(encoded, &right)
         }
+    }
+}
+
+fn verify_recurse_rayon(encoded: &[u8], subtree: &Subtree) -> Result<()> {
+    match verify_one_level(encoded, subtree)? {
+        Verified::Chunk { .. } => Ok(()),
+        Verified::Parent { left, right } => {
+            let (left_res, right_res) = rayon::join(
+                || verify_recurse_rayon(encoded, &left),
+                || verify_recurse_rayon(encoded, &right),
+            );
+            left_res.and(right_res)
+        }
+    }
+}
+
+// This function doesn't perform any verification, and it should only be used after one of the
+// verify functions above.
+fn extract_in_place(
+    buf: &mut [u8],
+    mut read_offset: usize,
+    mut write_offset: usize,
+    content_len: usize,
+) {
+    if content_len <= CHUNK_SIZE {
+        // This function might eventually make its way into libcore:
+        // https://github.com/rust-lang/rust/pull/53652
+        copy_in_place(buf, read_offset, write_offset, content_len);
+    } else {
+        read_offset += PARENT_SIZE;
+        let left_len = hash::left_len(content_len as u64) as usize;
+        extract_in_place(buf, read_offset, write_offset, left_len);
+        read_offset += encode::encoded_subtree_size(left_len as u64) as usize;
+        write_offset += left_len;
+        let right_len = content_len - left_len;
+        extract_in_place(buf, read_offset, write_offset, right_len);
     }
 }
 
@@ -160,9 +184,19 @@ pub fn decode(encoded: &[u8], hash: &Hash, output: &mut [u8]) -> Result<usize> {
     }
 }
 
+/// This is slower than `decode`, because only the verification step can be done in parallel. All
+/// the memmoves have to be done in series.
 pub fn decode_in_place(encoded: &mut [u8], hash: &Hash) -> Result<usize> {
+    // Note that if you change anything in this function, you should probably
+    // also update benchmarks::decode_in_place_fake.
     let content_len = parse_and_check_content_len(encoded)?;
-    decode_recurse_in_place(encoded, &root_subtree(content_len, hash), 0)
+    if content_len <= hash::MAX_SINGLE_THREADED {
+        verify_recurse(encoded, &root_subtree(content_len, hash))?;
+    } else {
+        verify_recurse_rayon(encoded, &root_subtree(content_len, hash))?;
+    }
+    extract_in_place(encoded, HEADER_SIZE, 0, content_len);
+    Ok(content_len)
 }
 
 pub fn decode_to_vec(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
@@ -676,6 +710,27 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
         ))
     } else {
         Ok(sum as u64)
+    }
+}
+
+// This module is only exposed for writing benchmarks, and nothing here should
+// actually be used outside this crate.
+#[doc(hidden)]
+pub mod benchmarks {
+    use super::*;
+
+    // A limitation of the benchmarks runner is that you can't do per-run reinitialization that
+    // doesn't get measured. So we do an "in-place" decoding where the buffer we actually modify is
+    // garbage bytes, so that we don't trash the input in each run.
+    pub fn decode_in_place_fake(encoded: &[u8], hash: &Hash, fake_buf: &mut [u8]) -> Result<usize> {
+        let content_len = parse_and_check_content_len(encoded)?;
+        if content_len <= hash::MAX_SINGLE_THREADED {
+            verify_recurse(encoded, &root_subtree(content_len, hash))?;
+        } else {
+            verify_recurse_rayon(encoded, &root_subtree(content_len, hash))?;
+        }
+        extract_in_place(fake_buf, HEADER_SIZE, 0, content_len);
+        Ok(content_len)
     }
 }
 

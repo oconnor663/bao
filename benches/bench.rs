@@ -189,7 +189,7 @@ fn bench_bao_encode_rayonwriter_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_decode_slice_short(b: &mut Bencher) {
+fn bench_bao_decode_slice_out_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     let mut encoded = Vec::new();
     let hash = encode::encode_to_vec(&input, &mut encoded);
@@ -198,7 +198,7 @@ fn bench_bao_decode_slice_short(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_decode_slice_medium(b: &mut Bencher) {
+fn bench_bao_decode_slice_out_medium(b: &mut Bencher) {
     let input = input(b, MEDIUM);
     let mut encoded = Vec::new();
     let hash = encode::encode_to_vec(&input, &mut encoded);
@@ -207,12 +207,51 @@ fn bench_bao_decode_slice_medium(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_decode_slice_long(b: &mut Bencher) {
+fn bench_bao_decode_slice_out_long(b: &mut Bencher) {
     let input = input(b, LONG);
     let mut encoded = Vec::new();
     let hash = encode::encode_to_vec(&input, &mut encoded);
     let mut output = vec![0; input.len()];
     b.iter(|| decode::decode(&encoded, &hash, &mut output));
+}
+
+#[bench]
+fn bench_bao_decode_slice_in_place_short(b: &mut Bencher) {
+    let input = input(b, SHORT);
+    let mut encoded = Vec::new();
+    let hash = encode::encode_to_vec(&input, &mut encoded);
+    // For the purposes of this benchmark, we use a tweaked version of
+    // decode_in_place that doesn't actually trash the input.
+    let mut fake_buf = encoded.clone();
+    b.iter(|| {
+        decode::benchmarks::decode_in_place_fake(&encoded, &hash, &mut fake_buf).unwrap();
+    });
+}
+
+#[bench]
+fn bench_bao_decode_slice_in_place_medium(b: &mut Bencher) {
+    let input = input(b, MEDIUM);
+    let mut encoded = Vec::new();
+    let hash = encode::encode_to_vec(&input, &mut encoded);
+    // For the purposes of this benchmark, we use a tweaked version of
+    // decode_in_place that doesn't actually trash the input.
+    let mut fake_buf = encoded.clone();
+    b.iter(|| {
+        decode::benchmarks::decode_in_place_fake(&encoded, &hash, &mut fake_buf).unwrap();
+    });
+}
+
+#[bench]
+fn bench_bao_decode_slice_in_place_long(b: &mut Bencher) {
+    let input = input(b, LONG);
+    let mut encoded = Vec::new();
+    let hash = encode::encode_to_vec(&input, &mut encoded);
+    // For the purposes of this benchmark, we use a tweaked version of
+    // decode_in_place that doesn't actually trash the input.
+    let mut fake_buf = encoded.clone();
+    b.iter(|| {
+        decode::benchmarks::decode_in_place_fake(&encoded, &hash, &mut fake_buf).unwrap();
+    });
 }
 
 #[bench]
