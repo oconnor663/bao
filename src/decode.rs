@@ -802,6 +802,13 @@ mod test {
             let mut decoder = Reader::new(&encoded[..], hash);
             decoder.read_to_end(&mut output).unwrap();
             assert_eq!(input, output);
+
+            // Go ahead and test the fake benchmarking decoder because why not.
+            let output = encoded.clone();
+            let mut output_mut = encoded.clone();
+            let n = benchmarks::decode_in_place_fake(&output, &hash, &mut output_mut).unwrap();
+            output_mut.truncate(n);
+            assert_eq!(input, output_mut);
         }
     }
 
