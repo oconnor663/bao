@@ -257,12 +257,6 @@ impl fmt::Debug for State {
     }
 }
 
-// benchmark_job_params.rs helps to tune these parameters.
-lazy_static! {
-    pub(crate) static ref MAX_JOBS: usize = 2 * num_cpus::get();
-    pub(crate) static ref JOB_SIZE: usize = 65536; // 2^16
-}
-
 struct SinglePipeline {
     state: blake2b_simd::State,
     first_chunk: bool,
@@ -325,11 +319,79 @@ impl fmt::Debug for SinglePipeline {
     }
 }
 
+// benchmark_job_params.rs helps to tune these parameters.
+lazy_static! {
+    pub(crate) static ref MAX_JOBS: usize = 2 * num_cpus::get();
+    pub(crate) static ref JOB_SIZE: usize = 65536; // 2^16
+}
+
+struct RayonRunner<J, T>
+where
+    J: Default + Send + 'static,
+    T: Send + 'static,
+{
+    receivers: VecDeque<channel::Receiver<(J, T)>>,
+    max_jobs: usize,
+}
+
+impl<J, T> RayonRunner<J, T>
+where
+    J: Default + Send + 'static,
+    T: Send + 'static,
+{
+    fn new() -> Self {
+        Self {
+            receivers: VecDeque::new(),
+            max_jobs: *MAX_JOBS,
+        }
+    }
+
+    fn run<F>(&mut self, current: &mut J, do_work: F) -> Option<T>
+    where
+        F: FnOnce(&mut J) -> T + Send + 'static,
+    {
+        // First, get our hands on a fresh job object. If we haven't maxed out the outstanding
+        // receivers, just create a new one. Otherwise, await a receiver, report its result, and
+        // clear the job it was using.
+        let fresh_job;
+        let maybe_result;
+        if self.receivers.len() < self.max_jobs {
+            fresh_job = J::default();
+            maybe_result = None;
+        } else {
+            let receiver = self.receivers.pop_front().unwrap();
+            // Performance: Trying to do something clever with waiting for a later receiver
+            // (e.g. the middle one), in order to sleep longer, doesn't seem to help here.
+            let (job, result) = receiver.recv().expect("worker hung up");
+            fresh_job = job;
+            maybe_result = Some(result);
+        }
+        // Now swap the jobs and send off the full one.
+        let mut job_to_work = mem::replace(current, fresh_job);
+        // Performance: crossbeam-channel seems to beat std::mpsc here.
+        let (sender, receiver) = channel::bounded(1);
+        self.receivers.push_back(receiver);
+        rayon::spawn(move || {
+            let result = do_work(&mut job_to_work);
+            sender.send((job_to_work, result));
+        });
+        maybe_result
+    }
+
+    fn finish_loop(&mut self) -> Option<T> {
+        if let Some(receiver) = self.receivers.pop_front() {
+            let (_, result) = receiver.recv().expect("worker hung up");
+            Some(result)
+        } else {
+            None
+        }
+    }
+}
+
 struct RayonPipeline {
     buf: Vec<u8>,
-    receivers: VecDeque<channel::Receiver<(Hash, Vec<u8>)>>,
+    runner: RayonRunner<Vec<u8>, Hash>,
     job_size: usize,
-    max_jobs: usize,
     first_job: bool,
     final_value: Option<Hash>,
     final_returned: bool,
@@ -340,9 +402,8 @@ impl RayonPipeline {
         Self {
             // Use new() instead of with_capacity() to avoid a big allocation in the small case.
             buf: Vec::new(),
-            receivers: VecDeque::new(),
+            runner: RayonRunner::new(),
             job_size: *JOB_SIZE,
-            max_jobs: *MAX_JOBS,
             first_job: true,
             final_value: None,
             final_returned: false,
@@ -358,33 +419,14 @@ impl RayonPipeline {
         // If there's more input, and the buffer is full, send it off.
         let mut maybe_output = None;
         if self.buf.len() == self.job_size {
-            // First, get our hands on a new buffer. If we haven't maxed out the outstanding
-            // receivers, just create a fresh one. Otherwise, await a receiver and reuse the
-            // buffer it gives back to us.
-            let new_buf;
-            if self.receivers.len() < self.max_jobs {
-                new_buf = Vec::with_capacity(self.job_size);
-            } else {
-                let receiver = self.receivers.pop_front().unwrap();
-                // Performance: Trying to do something clever with waiting for a later receiver
-                // (e.g. the middle one), in order to sleep longer, doesn't seem to help here.
-                let (hash, mut received_buf) = receiver.recv().expect("worker hung up");
-                // That workers result will be the return value.
-                maybe_output = Some((hash, received_buf.len()));
-                received_buf.clear();
-                new_buf = received_buf;
+            let maybe_hash = self
+                .runner
+                .run(&mut self.buf, |buf| hash_recurse(&buf, NotRoot));
+            if let Some(hash) = maybe_hash {
+                maybe_output = Some((hash, self.job_size));
+                // The buf still contains previous job input, so we need to clear it.
+                self.buf.clear();
             }
-
-            // Now swap the buffers and send the full one to a new job.
-            let full_buf = mem::replace(&mut self.buf, new_buf);
-            // Performance: crossbeam-channel seems to beat std::mpsc here.
-            let (sender, receiver) = channel::bounded(1);
-            self.receivers.push_back(receiver);
-            rayon::spawn(move || {
-                // Performance: hash_recursive_rayon seems to be slower here.
-                let hash = hash_recurse(&full_buf, NotRoot);
-                sender.send((hash, full_buf));
-            });
             // Flag that finish_loop doesn't need to do root finalization.
             self.first_job = false;
         }
@@ -410,9 +452,8 @@ impl RayonPipeline {
             };
             self.final_value = Some(hash_recurse(&self.buf, finalization));
         }
-        if let Some(receiver) = self.receivers.pop_front() {
-            let (hash, buf) = receiver.recv().expect("worker hung up");
-            Some((hash, buf.len()))
+        if let Some(hash) = self.runner.finish_loop() {
+            Some((hash, self.job_size))
         } else if !self.final_returned {
             self.final_returned = true;
             Some((self.final_value.unwrap(), self.buf.len()))
@@ -478,7 +519,7 @@ impl Writer {
         assert_eq!(1, (job_size / CHUNK_SIZE).count_ones());
         let mut pipeline = RayonPipeline::new();
         pipeline.job_size = job_size;
-        pipeline.max_jobs = max_jobs;
+        pipeline.runner.max_jobs = max_jobs;
         let mut writer = Self::new();
         writer.pipeline = PipelineEnum::Rayon(pipeline);
         writer
