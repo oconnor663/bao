@@ -735,11 +735,34 @@ pub mod benchmarks {
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) fn make_test_input(len: usize) -> Vec<u8> {
     extern crate byteorder;
+    use byteorder::{BigEndian, WriteBytesExt};
+
+    // Fill the input with incrementing bytes, so that reads from different sections are very
+    // unlikely to accidentally match.
+    let mut ret = Vec::new();
+    let mut counter = 0u64;
+    while ret.len() < len {
+        if counter < u8::max_value() as u64 {
+            ret.write_u8(counter as u8).unwrap();
+        } else if counter < u16::max_value() as u64 {
+            ret.write_u16::<BigEndian>(counter as u16).unwrap();
+        } else if counter < u32::max_value() as u64 {
+            ret.write_u32::<BigEndian>(counter as u32).unwrap();
+        } else {
+            ret.write_u64::<BigEndian>(counter).unwrap();
+        }
+        counter += 1;
+    }
+    ret.truncate(len);
+    ret
+}
+
+#[cfg(test)]
+mod test {
     extern crate rand;
 
-    use self::byteorder::{BigEndian, WriteBytesExt};
     use self::rand::{prng::chacha::ChaChaRng, Rng, SeedableRng};
     use std::io;
     use std::io::prelude::*;
@@ -749,34 +772,12 @@ mod test {
     use encode;
     use hash;
 
-    fn make_test_input(len: usize) -> Vec<u8> {
-        // Fill the input with incrementing bytes, so that reads from different sections are very
-        // unlikely to accidentally match.
-        let mut ret = Vec::new();
-        let mut counter = 0u64;
-        while ret.len() < len {
-            if counter < u8::max_value() as u64 {
-                ret.write_u8(counter as u8).unwrap();
-            } else if counter < u16::max_value() as u64 {
-                ret.write_u16::<BigEndian>(counter as u16).unwrap();
-            } else if counter < u32::max_value() as u64 {
-                ret.write_u32::<BigEndian>(counter as u32).unwrap();
-            } else {
-                ret.write_u64::<BigEndian>(counter).unwrap();
-            }
-            counter += 1;
-        }
-        ret.truncate(len);
-        ret
-    }
-
     #[test]
     fn test_decoders() {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let mut encoded = Vec::new();
-            let hash = { encode::encode_to_vec(&input, &mut encoded) };
+            let (hash, encoded) = { encode::encode_to_vec(&input) };
 
             let mut output = vec![0; case];
             decode_recurse(&encoded, &root_subtree(input.len(), &hash), &mut output).unwrap();
@@ -817,8 +818,7 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let mut encoded = Vec::new();
-            let hash = encode::encode_to_vec(&input, &mut encoded);
+            let (hash, encoded) = encode::encode_to_vec(&input);
             // Don't tweak the header in this test, because that usually causes a panic.
             let mut tweaks = Vec::new();
             if encoded.len() > HEADER_SIZE {
@@ -868,8 +868,7 @@ mod test {
             println!();
             println!("input_len {}", input_len);
             let input = make_test_input(input_len);
-            let mut encoded = Vec::new();
-            let hash = encode::encode_to_vec(&input, &mut encoded);
+            let (hash, encoded) = encode::encode_to_vec(&input);
             for &seek in hash::TEST_CASES {
                 println!("seek {}", seek);
                 // Test all three types of seeking.
@@ -902,8 +901,7 @@ mod test {
         println!("input_len {}", input_len);
         let mut prng = ChaChaRng::from_seed([0; 32]);
         let input = make_test_input(input_len);
-        let mut encoded = Vec::new();
-        let hash = encode::encode_to_vec(&input, &mut encoded);
+        let (hash, encoded) = encode::encode_to_vec(&input);
         let mut decoder = Reader::new(Cursor::new(&encoded), hash);
         // Do a thousand random seeks and chunk-sized reads.
         for _ in 0..1000 {
@@ -937,8 +935,7 @@ mod test {
         // distinguish the state "just decoded the zero length" from the state "verified the hash
         // of the empty root node", and a decoder must not return EOF before the latter.
 
-        let mut zero_encoded = Vec::new();
-        let zero_hash = encode::encode_to_vec(b"", &mut zero_encoded);
+        let (zero_hash, zero_encoded) = encode::encode_to_vec(b"");
         let one_hash = hash::hash(b"x");
 
         // Decoding the empty tree with the right hash should succeed.
@@ -965,8 +962,7 @@ mod test {
 
             println!("case {}", case);
             let input = make_test_input(case);
-            let mut encoded = Vec::new();
-            let hash = encode::encode_to_vec(&input, &mut encoded);
+            let (hash, mut encoded) = encode::encode_to_vec(&input);
             println!("encoded len {}", encoded.len());
 
             // Tweak a bit at the start of a chunk about halfway through. Loop over prior parent
@@ -1012,8 +1008,7 @@ mod test {
         // even if the caller attempts to seek past the end of the file before reading anything.
         for &case in hash::TEST_CASES {
             let input = make_test_input(case);
-            let mut encoded = Vec::new();
-            let hash = encode::encode_to_vec(&input, &mut encoded);
+            let (hash, encoded) = encode::encode_to_vec(&input);
             let mut bad_hash = hash;
             bad_hash[0] ^= 1;
 
@@ -1037,8 +1032,7 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let mut encoded = Vec::new();
-            let hash = encode::encode_to_vec(&input, &mut encoded);
+            let (hash, encoded) = encode::encode_to_vec(&input);
             let inferred_hash = hash_from_encoded(Cursor::new(&*encoded)).unwrap();
             assert_eq!(hash, inferred_hash, "hashes don't match");
         }
@@ -1049,8 +1043,7 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let mut encoded = Vec::new();
-            let hash = encode::encode_to_vec(&input, &mut encoded);
+            let (hash, encoded) = encode::encode_to_vec(&input);
             let mut decoder = Reader::new(&*encoded, hash);
 
             // Read the len and make sure it's correct.

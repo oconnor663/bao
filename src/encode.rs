@@ -1,5 +1,6 @@
 use arrayvec::ArrayVec;
 use blake2b_simd;
+use copy_in_place::copy_in_place;
 use crossbeam_channel as channel;
 use hash::Finalization::{self, NotRoot, Root};
 use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
@@ -27,10 +28,32 @@ pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
     }
 }
 
-pub fn encode_to_vec(input: &[u8], output: &mut Vec<u8>) -> Hash {
-    let start = output.len();
-    output.resize(start + encoded_size(input.len() as u64) as usize, 0);
-    encode(input, &mut output[start..])
+/// `buf` must be exactly `encoded_size(content_len)`. This is slower than `encode`, because only
+/// the hashing can be done in parallel. All the memmoves have to be done in series.
+pub fn encode_in_place(buf: &mut [u8], content_len: usize) -> Hash {
+    // Note that if you change anything in this function, you should probably
+    // also update benchmarks::encode_in_place_fake.
+    assert_eq!(
+        buf.len() as u128,
+        encoded_size(content_len as u64),
+        "buf is the wrong length"
+    );
+    layout_chunks_in_place(buf, 0, HEADER_SIZE, content_len);
+    let (header, rest) = buf.split_at_mut(HEADER_SIZE);
+    header.copy_from_slice(&hash::encode_len(content_len as u64));
+    if content_len <= hash::MAX_SINGLE_THREADED {
+        write_parents_in_place(rest, content_len, Root(content_len as u64))
+    } else {
+        write_parents_in_place_rayon(rest, content_len, Root(content_len as u64))
+    }
+}
+
+pub fn encode_to_vec(input: &[u8]) -> (Hash, Vec<u8>) {
+    let size = encoded_size(input.len() as u64) as usize;
+    // Unsafe code here could avoid the cost of initialization, but it's not much.
+    let mut output = vec![0; size];
+    let hash = encode(input, &mut output);
+    (hash, output)
 }
 
 fn encode_recurse(input: &[u8], output: &mut [u8], finalization: Finalization) -> Hash {
@@ -73,6 +96,72 @@ fn encode_recurse_rayon(input: &[u8], output: &mut [u8], finalization: Finalizat
     parent_out[..HASH_SIZE].copy_from_slice(&left_hash);
     parent_out[HASH_SIZE..].copy_from_slice(&right_hash);
     hash::parent_hash(&left_hash, &right_hash, finalization)
+}
+
+// This function doesn't check for adequate space. Its caller should check.
+fn layout_chunks_in_place(
+    buf: &mut [u8],
+    read_offset: usize,
+    write_offset: usize,
+    content_len: usize,
+) {
+    if content_len <= CHUNK_SIZE {
+        copy_in_place(buf, read_offset, write_offset, content_len);
+    } else {
+        let left_len = hash::left_len(content_len as u64) as usize;
+        let left_write_offset = write_offset + PARENT_SIZE;
+        let right_len = content_len - left_len;
+        let right_read_offset = read_offset + left_len;
+        let right_write_offset = left_write_offset + encoded_subtree_size(left_len as u64) as usize;
+        // Encoding the left side will overwrite some of the space occupied by the right, so do the
+        // right side first.
+        layout_chunks_in_place(buf, right_read_offset, right_write_offset, right_len);
+        layout_chunks_in_place(buf, read_offset, left_write_offset, left_len);
+    }
+}
+
+// This function doesn't check for adequate space. Its caller should check.
+fn write_parents_in_place(buf: &mut [u8], content_len: usize, finalization: Finalization) -> Hash {
+    if content_len <= CHUNK_SIZE {
+        debug_assert_eq!(content_len, buf.len());
+        hash::hash_node(buf, finalization)
+    } else {
+        let left_len = hash::left_len(content_len as u64) as usize;
+        let right_len = content_len - left_len;
+        let split = encoded_subtree_size(left_len as u64) as usize;
+        let (parent, rest) = buf.split_at_mut(PARENT_SIZE);
+        let (left_slice, right_slice) = rest.split_at_mut(split);
+        let left_hash = write_parents_in_place(left_slice, left_len, NotRoot);
+        let right_hash = write_parents_in_place(right_slice, right_len, NotRoot);
+        *array_mut_ref!(parent, 0, HASH_SIZE) = left_hash;
+        *array_mut_ref!(parent, HASH_SIZE, HASH_SIZE) = right_hash;
+        hash::parent_hash(&left_hash, &right_hash, finalization)
+    }
+}
+
+// This function doesn't check for adequate space. Its caller should check.
+fn write_parents_in_place_rayon(
+    buf: &mut [u8],
+    content_len: usize,
+    finalization: Finalization,
+) -> Hash {
+    if content_len <= CHUNK_SIZE {
+        debug_assert_eq!(content_len, buf.len());
+        hash::hash_node(buf, finalization)
+    } else {
+        let left_len = hash::left_len(content_len as u64) as usize;
+        let right_len = content_len - left_len;
+        let split = encoded_subtree_size(left_len as u64) as usize;
+        let (parent, rest) = buf.split_at_mut(PARENT_SIZE);
+        let (left_slice, right_slice) = rest.split_at_mut(split);
+        let (left_hash, right_hash) = rayon::join(
+            || write_parents_in_place_rayon(left_slice, left_len, NotRoot),
+            || write_parents_in_place_rayon(right_slice, right_len, NotRoot),
+        );
+        *array_mut_ref!(parent, 0, HASH_SIZE) = left_hash;
+        *array_mut_ref!(parent, HASH_SIZE, HASH_SIZE) = right_hash;
+        hash::parent_hash(&left_hash, &right_hash, finalization)
+    }
 }
 
 pub fn encoded_size(content_len: u64) -> u128 {
@@ -515,22 +604,23 @@ impl<T: Read + Write + Seek> io::Write for RayonWriter<T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use decode::make_test_input;
 
     #[test]
     fn test_encoded_size() {
         for &case in hash::TEST_CASES {
-            let input = vec![0; case];
-            let mut encoded = Vec::new();
-            encode_to_vec(&input, &mut encoded);
+            let input = make_test_input(case);
+            let (_, encoded) = encode_to_vec(&input);
             assert_eq!(encoded.len() as u128, encoded_size(case as u64));
             assert_eq!(encoded.len(), encoded.capacity());
         }
     }
 
     #[test]
-    fn test_serial_vs_parallel() {
+    fn test_encode_functions() {
         for &case in hash::TEST_CASES {
-            let input = vec![0; case];
+            println!("case {}", case);
+            let input = make_test_input(case);
             let expected_hash = hash::hash(&input);
 
             let mut serial_output = vec![0; encoded_subtree_size(case as u64) as usize];
@@ -543,16 +633,17 @@ mod test {
             let mut highlevel_output = vec![0; encoded_size(case as u64) as usize];
             let highlevel_hash = encode(&input, &mut highlevel_output);
 
-            let mut highlevel_single_output = vec![0; encoded_size(case as u64) as usize];
-            let highlevel_single_hash = encode(&input, &mut highlevel_single_output);
+            let mut highlevel_in_place_output = input.clone();
+            highlevel_in_place_output.resize(encoded_size(case as u64) as usize, 0);
+            let highlevel_in_place_hash = encode_in_place(&mut highlevel_in_place_output, case);
 
             assert_eq!(expected_hash, serial_hash);
             assert_eq!(expected_hash, parallel_hash);
             assert_eq!(expected_hash, highlevel_hash);
-            assert_eq!(expected_hash, highlevel_single_hash);
+            assert_eq!(expected_hash, highlevel_in_place_hash);
 
             assert_eq!(serial_output, parallel_output);
-            assert_eq!(highlevel_output, highlevel_single_output);
+            assert_eq!(highlevel_output, highlevel_in_place_output);
             assert_eq!(*serial_output, highlevel_output[HEADER_SIZE..]);
         }
     }
@@ -562,8 +653,7 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("starting case {}", case);
             let input = vec![9; case];
-            let mut encoded = Vec::new();
-            encode_to_vec(&input, &mut encoded);
+            let (_, encoded) = encode_to_vec(&input);
             let output = cmd!("python3", "./python/bao.py", "encode")
                 .input(input)
                 .stdout_capture()
@@ -636,9 +726,8 @@ mod test {
     fn test_writers() {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
-            let input = vec![0; case];
-            let mut expected_encoded = Vec::new();
-            let expected_hash = encode_to_vec(&input, &mut expected_encoded);
+            let input = make_test_input(case);
+            let (expected_hash, expected_encoded) = encode_to_vec(&input);
 
             let mut serial_writer_encoded = Vec::new();
             let serial_writer_hash;
