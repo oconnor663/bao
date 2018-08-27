@@ -331,7 +331,8 @@ struct RayonPipeline {
     job_size: usize,
     max_jobs: usize,
     first_job: bool,
-    final_job_sent: bool,
+    final_value: Option<Hash>,
+    final_returned: bool,
 }
 
 impl RayonPipeline {
@@ -343,21 +344,9 @@ impl RayonPipeline {
             job_size: *JOB_SIZE,
             max_jobs: *MAX_JOBS,
             first_job: true,
-            final_job_sent: false,
+            final_value: None,
+            final_returned: false,
         }
-    }
-
-    fn send_one(&mut self, buf: Vec<u8>, finalization: Finalization) {
-        // Performance: crossbeam-channel seems to beat std::mpsc here.
-        let (sender, receiver) = channel::bounded(1);
-        self.receivers.push_back(receiver);
-        rayon::spawn(move || {
-            // Performance: hash_recursive_rayon seems to be slower here.
-            let hash = hash_recurse(&buf, finalization);
-            sender.send((hash, buf));
-        });
-        // Flag that finish_loop doesn't need to do root finalization.
-        self.first_job = false;
     }
 
     fn write_loop(&mut self, input: &[u8]) -> (usize, Option<(Hash, usize)>) {
@@ -388,7 +377,16 @@ impl RayonPipeline {
 
             // Now swap the buffers and send the full one to a new job.
             let full_buf = mem::replace(&mut self.buf, new_buf);
-            self.send_one(full_buf, NotRoot);
+            // Performance: crossbeam-channel seems to beat std::mpsc here.
+            let (sender, receiver) = channel::bounded(1);
+            self.receivers.push_back(receiver);
+            rayon::spawn(move || {
+                // Performance: hash_recursive_rayon seems to be slower here.
+                let hash = hash_recurse(&full_buf, NotRoot);
+                sender.send((hash, full_buf));
+            });
+            // Flag that finish_loop doesn't need to do root finalization.
+            self.first_job = false;
         }
 
         // Now with space in the buffer, take as much input as we can.
@@ -402,20 +400,22 @@ impl RayonPipeline {
     }
 
     fn finish_loop(&mut self) -> Option<(Hash, usize)> {
-        if !self.final_job_sent {
-            self.final_job_sent = true;
+        // Run the final job on the main thread. This keeps overhead low for small inputs.
+        if self.final_value.is_none() {
             let finalization = if self.first_job {
                 // The current buffer is the only subtree, so we have to finalize it.
                 Root(self.buf.len() as u64)
             } else {
                 NotRoot
             };
-            let final_buf = mem::replace(&mut self.buf, Vec::new());
-            self.send_one(final_buf, finalization);
+            self.final_value = Some(hash_recurse(&self.buf, finalization));
         }
         if let Some(receiver) = self.receivers.pop_front() {
             let (hash, buf) = receiver.recv().expect("worker hung up");
             Some((hash, buf.len()))
+        } else if !self.final_returned {
+            self.final_returned = true;
+            Some((self.final_value.unwrap(), self.buf.len()))
         } else {
             None
         }
