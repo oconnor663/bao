@@ -263,8 +263,69 @@ lazy_static! {
     pub(crate) static ref JOB_SIZE: usize = 65536; // 2^16
 }
 
-// TODO: The no_std version of this.
-struct Pipeline {
+struct SinglePipeline {
+    state: blake2b_simd::State,
+    first_chunk: bool,
+    final_returned: bool,
+}
+
+impl SinglePipeline {
+    fn new() -> Self {
+        Self {
+            state: new_blake2b_state(),
+            first_chunk: true,
+            final_returned: false,
+        }
+    }
+
+    fn write_loop(&mut self, input: &[u8]) -> (usize, Option<(Hash, usize)>) {
+        // Avoid sending a buffer until we're sure there's more input.
+        if input.is_empty() {
+            return (0, None);
+        }
+
+        // If the existing chunk is full, finish hashing it.
+        let mut maybe_output = None;
+        if self.state.count() as usize == CHUNK_SIZE {
+            let hash = finalize_hash(&mut self.state, NotRoot);
+            maybe_output = Some((hash, CHUNK_SIZE));
+            self.state = new_blake2b_state();
+            self.first_chunk = false;
+        }
+
+        // Now take as much input as we can.
+        let want = CHUNK_SIZE - self.state.count() as usize;
+        let take = cmp::min(want, input.len());
+        self.state.update(&input[..take]);
+
+        // Return the number of consumed bytes, and perhaps a chunk hash.
+        (take, maybe_output)
+    }
+
+    fn finish_loop(&mut self) -> Option<(Hash, usize)> {
+        if self.final_returned {
+            return None;
+        }
+        self.final_returned = true;
+        let finalization = if self.first_chunk {
+            // The current buffer is the only chunk, so we have to finalize it.
+            Root(self.state.count() as u64)
+        } else {
+            NotRoot
+        };
+        let hash = finalize_hash(&mut self.state, finalization);
+        Some((hash, self.state.count() as usize))
+    }
+}
+
+impl fmt::Debug for SinglePipeline {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Avoid printing hashes, they might be secret.
+        write!(f, "SinglePipeline {{ ... }}")
+    }
+}
+
+struct RayonPipeline {
     buf: Vec<u8>,
     receivers: VecDeque<channel::Receiver<(Hash, Vec<u8>)>>,
     job_size: usize,
@@ -273,7 +334,7 @@ struct Pipeline {
     final_job_sent: bool,
 }
 
-impl Pipeline {
+impl RayonPipeline {
     fn new() -> Self {
         Self {
             // Use new() instead of with_capacity() to avoid a big allocation in the small case.
@@ -361,10 +422,32 @@ impl Pipeline {
     }
 }
 
-impl fmt::Debug for Pipeline {
+impl fmt::Debug for RayonPipeline {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // Avoid printing hashes, they might be secret.
-        write!(f, "Pipeline {{ ... }}")
+        write!(f, "RayonPipeline {{ ... }}")
+    }
+}
+
+#[derive(Debug)]
+enum PipelineEnum {
+    Single(SinglePipeline),
+    Rayon(RayonPipeline),
+}
+
+impl PipelineEnum {
+    fn write_loop(&mut self, input: &[u8]) -> (usize, Option<(Hash, usize)>) {
+        match *self {
+            PipelineEnum::Single(ref mut p) => p.write_loop(input),
+            PipelineEnum::Rayon(ref mut p) => p.write_loop(input),
+        }
+    }
+
+    fn finish_loop(&mut self) -> Option<(Hash, usize)> {
+        match *self {
+            PipelineEnum::Single(ref mut p) => p.finish_loop(),
+            PipelineEnum::Rayon(ref mut p) => p.finish_loop(),
+        }
     }
 }
 
@@ -372,23 +455,32 @@ impl fmt::Debug for Pipeline {
 #[derive(Debug)]
 pub struct Writer {
     state: State,
-    pipeline: Pipeline,
+    pipeline: PipelineEnum,
 }
 
 impl Writer {
     pub fn new() -> Self {
         Self {
             state: State::new(),
-            pipeline: Pipeline::new(),
+            pipeline: PipelineEnum::Rayon(RayonPipeline::new()),
+        }
+    }
+
+    pub fn new_single_threaded() -> Self {
+        Self {
+            state: State::new(),
+            pipeline: PipelineEnum::Single(SinglePipeline::new()),
         }
     }
 
     pub fn new_benchmarking(job_size: usize, max_jobs: usize) -> Self {
         assert_eq!(0, job_size % CHUNK_SIZE);
         assert_eq!(1, (job_size / CHUNK_SIZE).count_ones());
+        let mut pipeline = RayonPipeline::new();
+        pipeline.job_size = job_size;
+        pipeline.max_jobs = max_jobs;
         let mut writer = Self::new();
-        writer.pipeline.job_size = job_size;
-        writer.pipeline.max_jobs = max_jobs;
+        writer.pipeline = PipelineEnum::Rayon(pipeline);
         writer
     }
 
@@ -559,6 +651,12 @@ mod test {
             let expected = hash(&input);
 
             let mut writer = Writer::new();
+            writer.write_all(&input).unwrap();
+            let found = writer.finish();
+            assert_eq!(expected, found, "hashes don't match");
+
+            // Do it again, single threaded.
+            let mut writer = Writer::new_single_threaded();
             writer.write_all(&input).unwrap();
             let found = writer.finish();
             assert_eq!(expected, found, "hashes don't match");
