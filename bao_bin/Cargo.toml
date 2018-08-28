@@ -1,0 +1,18 @@
+[package]
+name = "bao_bin"
+version = "0.1.0"
+authors = ["Jack O'Connor"]
+
+[[bin]]
+name = "bao"
+path = "src/main.rs"
+
+[dependencies]
+arrayref = "0.3.4"
+bao = { path = ".." }
+docopt = "1.0.1"
+hex = "0.3.2"
+memmap = "0.6.2"
+os_pipe = "0.7.0"
+serde = "1.0.75"
+serde_derive = "1.0.75"
