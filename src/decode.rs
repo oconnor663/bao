@@ -224,7 +224,7 @@ where
     Ok(hash::hash_node(node, Root(content_len)))
 }
 
-pub fn hash_from_encoded<T: Read>(mut reader: T) -> io::Result<Hash> {
+pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
     hash_from_encoded_nostd(|buf| reader.read_exact(buf))
 }
 
@@ -1033,7 +1033,7 @@ mod test {
             println!("case {}", case);
             let input = make_test_input(case);
             let (hash, encoded) = encode::encode_to_vec(&input);
-            let inferred_hash = hash_from_encoded(Cursor::new(&*encoded)).unwrap();
+            let inferred_hash = hash_from_encoded(&mut Cursor::new(&*encoded)).unwrap();
             assert_eq!(hash, inferred_hash, "hashes don't match");
         }
     }

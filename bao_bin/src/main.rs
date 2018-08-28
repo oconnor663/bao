@@ -15,7 +15,7 @@ use std::path::PathBuf;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const USAGE: &str = "
-Usage: bao hash [<input>]
+Usage: bao hash [<input>] [--encoded]
        bao encode [<input>] [<output>]
        bao decode <hash> [<input>] [<output>]
        bao (--help | --version)
@@ -29,6 +29,7 @@ struct Args {
     arg_input: Option<PathBuf>,
     arg_output: Option<PathBuf>,
     arg_hash: String,
+    flag_encoded: bool,
     flag_help: bool,
     flag_version: bool,
 }
@@ -46,11 +47,15 @@ fn main() -> io::Result<()> {
     } else if args.flag_version {
         println!("{}", VERSION);
     } else if args.cmd_hash {
-        hash(&args, in_file).unwrap();
+        if args.flag_encoded {
+            hash_encoded(&args, in_file)?;
+        } else {
+            hash(&args, in_file)?;
+        }
     } else if args.cmd_encode {
-        encode(&args, in_file, out_file).unwrap();
+        encode(&args, in_file, out_file)?;
     } else if args.cmd_decode {
-        decode(&args, in_file, out_file).unwrap();
+        decode(&args, in_file, out_file)?;
     }
 
     Ok(())
@@ -65,6 +70,12 @@ fn hash(_args: &Args, mut in_file: File) -> io::Result<()> {
         io::copy(&mut in_file, &mut writer)?;
         hash = writer.finish();
     }
+    println!("{}", hex::encode(hash));
+    Ok(())
+}
+
+fn hash_encoded(_args: &Args, mut in_file: File) -> io::Result<()> {
+    let hash = bao::decode::hash_from_encoded(&mut in_file)?;
     println!("{}", hex::encode(hash));
     Ok(())
 }
