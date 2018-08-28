@@ -1,6 +1,6 @@
 [package]
 name = "bao_bin"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jack O'Connor"]
 
 [[bin]]
