@@ -519,7 +519,7 @@ mod test {
             }
             answers[start as usize].0 += 1;
             answers[(start + size - 1) as usize].1 += 1;
-            let split = hash::largest_power_of_two(size - 1);
+            let split = hash::largest_power_of_two_leq(size - 1);
             recurse(start, split, answers);
             recurse(start + split, size - split, answers);
         }

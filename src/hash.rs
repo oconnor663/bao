@@ -74,9 +74,8 @@ pub(crate) fn parent_hash(left_hash: &Hash, right_hash: &Hash, finalization: Fin
 
 // Find the largest power of two that's less than or equal to `n`. We use this
 // for computing subtree sizes below.
-pub(crate) fn largest_power_of_two(n: u64) -> u64 {
-    debug_assert!(n != 0);
-    1 << (63 - n.leading_zeros())
+pub(crate) fn largest_power_of_two_leq(n: u64) -> u64 {
+    ((n / 2) + 1).next_power_of_two()
 }
 
 // Given some input larger than one chunk, find the largest perfect tree of
@@ -85,7 +84,7 @@ pub(crate) fn left_len(content_len: u64) -> u64 {
     debug_assert!(content_len > CHUNK_SIZE as u64);
     // Subtract 1 to reserve at least one byte for the right side.
     let full_chunks = (content_len - 1) / CHUNK_SIZE as u64;
-    largest_power_of_two(full_chunks) * CHUNK_SIZE as u64
+    largest_power_of_two_leq(full_chunks) * CHUNK_SIZE as u64
 }
 
 fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
@@ -340,6 +339,8 @@ mod test {
     #[test]
     fn test_power_of_two() {
         let input_output = &[
+            // The zero case is nonsensical, but it does work.
+            (0, 1),
             (1, 1),
             (2, 2),
             (3, 2),
@@ -354,7 +355,7 @@ mod test {
         for &(input, output) in input_output {
             assert_eq!(
                 output,
-                largest_power_of_two(input),
+                largest_power_of_two_leq(input),
                 "wrong output for n={}",
                 input
             );
