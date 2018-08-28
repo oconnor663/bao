@@ -187,7 +187,7 @@ fn bench_bao_decode_slice_out_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     let (hash, encoded) = encode::encode_to_vec(&input);
     let mut output = vec![0; input.len()];
-    b.iter(|| decode::decode(&encoded, &hash, &mut output));
+    b.iter(|| decode::decode(&encoded, &mut output, &hash));
 }
 
 #[bench]
@@ -195,7 +195,7 @@ fn bench_bao_decode_slice_out_medium(b: &mut Bencher) {
     let input = input(b, MEDIUM);
     let (hash, encoded) = encode::encode_to_vec(&input);
     let mut output = vec![0; input.len()];
-    b.iter(|| decode::decode(&encoded, &hash, &mut output));
+    b.iter(|| decode::decode(&encoded, &mut output, &hash));
 }
 
 #[bench]
@@ -203,7 +203,7 @@ fn bench_bao_decode_slice_out_long(b: &mut Bencher) {
     let input = input(b, LONG);
     let (hash, encoded) = encode::encode_to_vec(&input);
     let mut output = vec![0; input.len()];
-    b.iter(|| decode::decode(&encoded, &hash, &mut output));
+    b.iter(|| decode::decode(&encoded, &mut output, &hash));
 }
 
 #[bench]
@@ -249,7 +249,7 @@ fn bench_bao_decode_reader_short(b: &mut Bencher) {
     let mut output = vec![0; input.len()];
     b.iter(|| {
         output.clear();
-        let mut decoder = decode::Reader::new(&*encoded, hash);
+        let mut decoder = decode::Reader::new(&*encoded, &hash);
         decoder.read_to_end(&mut output).unwrap();
     });
 }
@@ -261,7 +261,7 @@ fn bench_bao_decode_reader_medium(b: &mut Bencher) {
     let mut output = vec![0; input.len()];
     b.iter(|| {
         output.clear();
-        let mut decoder = decode::Reader::new(&*encoded, hash);
+        let mut decoder = decode::Reader::new(&*encoded, &hash);
         decoder.read_to_end(&mut output).unwrap();
     });
 }
@@ -273,7 +273,7 @@ fn bench_bao_decode_reader_long(b: &mut Bencher) {
     let mut output = vec![0; input.len()];
     b.iter(|| {
         output.clear();
-        let mut decoder = decode::Reader::new(&*encoded, hash);
+        let mut decoder = decode::Reader::new(&*encoded, &hash);
         decoder.read_to_end(&mut output).unwrap();
     });
 }
@@ -283,7 +283,7 @@ fn bench_bao_seek_memory_no_read(b: &mut Bencher) {
     let input = vec![0; LONG];
     let (hash, encoded) = encode::encode_to_vec(&input);
     let mut rng = rand::XorShiftRng::from_seed(Default::default());
-    let mut reader = decode::Reader::new(Cursor::new(&encoded), hash);
+    let mut reader = decode::Reader::new(Cursor::new(&encoded), &hash);
     b.iter(|| {
         let seek_offset = rng.gen_range(0, input.len() as u64);
         reader.seek(Start(seek_offset)).unwrap();
@@ -295,7 +295,7 @@ fn bench_bao_seek_memory_one_read(b: &mut Bencher) {
     let input = vec![0; LONG];
     let (hash, encoded) = encode::encode_to_vec(&input);
     let mut rng = rand::XorShiftRng::from_seed(Default::default());
-    let mut reader = decode::Reader::new(Cursor::new(&encoded), hash);
+    let mut reader = decode::Reader::new(Cursor::new(&encoded), &hash);
     let mut buf = [0];
     b.iter(|| {
         let seek_offset = rng.gen_range(0, input.len() as u64);
@@ -315,7 +315,7 @@ fn bench_bao_seek_file_no_read(b: &mut Bencher) {
     file.seek(Start(0)).expect("file seek error");
 
     let mut rng = rand::XorShiftRng::from_seed(Default::default());
-    let mut reader = decode::Reader::new(file, hash);
+    let mut reader = decode::Reader::new(file, &hash);
     b.iter(|| {
         let seek_offset = rng.gen_range(0, input.len() as u64);
         reader.seek(Start(seek_offset)).expect("seek error");
@@ -333,7 +333,7 @@ fn bench_bao_seek_file_one_read(b: &mut Bencher) {
     file.seek(Start(0)).expect("file seek error");
 
     let mut rng = rand::XorShiftRng::from_seed(Default::default());
-    let mut reader = decode::Reader::new(file, hash);
+    let mut reader = decode::Reader::new(file, &hash);
     let mut buf = [0];
     b.iter(|| {
         let seek_offset = rng.gen_range(0, input.len() as u64);

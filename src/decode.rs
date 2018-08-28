@@ -155,7 +155,7 @@ fn extract_in_place(
 // on 32 bit systems, which would lead to apparent collisions. Check for that case, as well as the
 // more obvious cases where the buffer is too small for the content length, or too small to even
 // contain a header. Note that this doesn't verify any hashes.
-fn parse_and_check_content_len(encoded: &[u8]) -> Result<usize> {
+pub fn parse_and_check_content_len(encoded: &[u8]) -> Result<usize> {
     if encoded.len() < HEADER_SIZE {
         return Err(Error::Truncated);
     }
@@ -175,7 +175,7 @@ fn root_subtree(content_len: usize, hash: &Hash) -> Subtree {
     }
 }
 
-pub fn decode(encoded: &[u8], hash: &Hash, output: &mut [u8]) -> Result<usize> {
+pub fn decode(encoded: &[u8], output: &mut [u8], hash: &Hash) -> Result<usize> {
     let content_len = parse_and_check_content_len(encoded)?;
     if content_len <= hash::MAX_SINGLE_THREADED {
         decode_recurse(encoded, &root_subtree(content_len, hash), output)
@@ -203,7 +203,7 @@ pub fn decode_to_vec(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
     let content_len = parse_and_check_content_len(encoded)?;
     // Unsafe code here could avoid the cost of initialization, but it's not much.
     let mut out = vec![0; content_len];
-    decode(encoded, hash, &mut out)?;
+    decode(encoded, &mut out, hash)?;
     Ok(out)
 }
 
@@ -242,10 +242,10 @@ struct State {
 }
 
 impl State {
-    pub fn new(root_hash: Hash) -> Self {
+    pub fn new(hash: &Hash) -> Self {
         Self {
             stack: ArrayVec::new(),
-            root_hash,
+            root_hash: *hash,
             content_len: None,
             length_verified: false,
             at_root: true,
@@ -497,10 +497,10 @@ pub struct Reader<T: Read> {
 }
 
 impl<T: Read> Reader<T> {
-    pub fn new(inner: T, root_hash: Hash) -> Self {
+    pub fn new(inner: T, hash: &Hash) -> Self {
         Self {
             inner,
-            state: State::new(root_hash),
+            state: State::new(hash),
             buf: [0; CHUNK_SIZE],
             buf_start: 0,
             buf_end: 0,
@@ -788,7 +788,7 @@ mod test {
             assert_eq!(input, output);
 
             let mut output = vec![0; case];
-            decode(&encoded, &hash, &mut output).unwrap();
+            decode(&encoded, &mut output, &hash).unwrap();
             assert_eq!(input, output);
 
             let mut output = encoded.clone();
@@ -800,7 +800,7 @@ mod test {
             assert_eq!(input, output);
 
             let mut output = Vec::new();
-            let mut decoder = Reader::new(&encoded[..], hash);
+            let mut decoder = Reader::new(&encoded[..], &hash);
             decoder.read_to_end(&mut output).unwrap();
             assert_eq!(input, output);
 
@@ -849,7 +849,7 @@ mod test {
                 assert_eq!(Error::HashMismatch, res.unwrap_err());
 
                 let mut output = vec![0; case];
-                let res = decode(&bad_encoded, &hash, &mut output);
+                let res = decode(&bad_encoded, &mut output, &hash);
                 assert_eq!(Error::HashMismatch, res.unwrap_err());
 
                 let mut output = bad_encoded.clone();
@@ -878,7 +878,7 @@ mod test {
                 seek_froms.push(io::SeekFrom::Current(seek as i64));
                 for seek_from in seek_froms {
                     println!("seek_from {:?}", seek_from);
-                    let mut decoder = Reader::new(Cursor::new(&encoded), hash);
+                    let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
                     let mut output = Vec::new();
                     decoder.seek(seek_from).expect("seek error");
                     decoder.read_to_end(&mut output).expect("decoder error");
@@ -902,7 +902,7 @@ mod test {
         let mut prng = ChaChaRng::from_seed([0; 32]);
         let input = make_test_input(input_len);
         let (hash, encoded) = encode::encode_to_vec(&input);
-        let mut decoder = Reader::new(Cursor::new(&encoded), hash);
+        let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
         // Do a thousand random seeks and chunk-sized reads.
         for _ in 0..1000 {
             let seek = prng.gen_range(0, input_len + 1);
@@ -940,13 +940,13 @@ mod test {
 
         // Decoding the empty tree with the right hash should succeed.
         let mut output = Vec::new();
-        let mut decoder = Reader::new(&*zero_encoded, zero_hash);
+        let mut decoder = Reader::new(&*zero_encoded, &zero_hash);
         decoder.read_to_end(&mut output).unwrap();
         assert_eq!(&output, &[]);
 
         // Decoding the empty tree with any other hash should fail.
         let mut output = Vec::new();
-        let mut decoder = Reader::new(&*zero_encoded, one_hash);
+        let mut decoder = Reader::new(&*zero_encoded, &one_hash);
         let result = decoder.read_to_end(&mut output);
         assert!(result.is_err(), "a bad hash is supposed to fail!");
         assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
@@ -983,7 +983,7 @@ mod test {
 
             // Read all the bits up to that tweak. Because it's right after a chunk boundary, the
             // read should succeed.
-            let mut decoder = Reader::new(Cursor::new(&encoded), hash);
+            let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
             let mut output = vec![0; tweak_position as usize];
             decoder.read_exact(&mut output).unwrap();
             assert_eq!(&input[..tweak_position], &*output);
@@ -1014,13 +1014,13 @@ mod test {
 
             // Seeking past the end of a tree should succeed with the right hash.
             let mut output = Vec::new();
-            let mut decoder = Reader::new(Cursor::new(&encoded), hash);
+            let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
             decoder.seek(io::SeekFrom::Start(case as u64)).unwrap();
             decoder.read_to_end(&mut output).unwrap();
             assert_eq!(&output, &[]);
 
             // Seeking past the end of a tree should fail if the root hash is wrong.
-            let mut decoder = Reader::new(Cursor::new(&encoded), bad_hash);
+            let mut decoder = Reader::new(Cursor::new(&encoded), &bad_hash);
             let result = decoder.seek(io::SeekFrom::Start(case as u64));
             assert!(result.is_err(), "a bad hash is supposed to fail!");
             assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
@@ -1044,7 +1044,7 @@ mod test {
             println!("case {}", case);
             let input = make_test_input(case);
             let (hash, encoded) = encode::encode_to_vec(&input);
-            let mut decoder = Reader::new(&*encoded, hash);
+            let mut decoder = Reader::new(&*encoded, &hash);
 
             // Read the len and make sure it's correct.
             let len = decoder.len().unwrap();

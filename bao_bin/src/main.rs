@@ -10,115 +10,162 @@ extern crate memmap;
 
 use std::fs::{File, OpenOptions};
 use std::io;
-use std::io::prelude::*;
+use std::path::PathBuf;
 
-fn encode(args: &Args) -> io::Result<()> {
-    let stdin = io::stdin();
-    if args.flag_memory {
-        let mut output = io::Cursor::new(Vec::<u8>::new());
-        {
-            let mut writer = bao::encode::Writer::new(&mut output);
-            io::copy(&mut stdin.lock(), &mut writer)?;
-            writer.finish()?;
-        }
-        io::stdout().write_all(output.get_ref())?;
-    } else {
-        let mut writer = bao::encode::Writer::new(
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(&args.arg_output)?,
-        );
-        if args.arg_input == "-" {
-            io::copy(&mut stdin.lock(), &mut writer)?;
-        } else {
-            let mut infile = File::open(&args.arg_input)?;
-            io::copy(&mut infile, &mut writer)?;
-        }
-        let hash = writer.finish()?;
-        println!("{}", hex::encode(hash));
-    }
-    Ok(())
-}
-
-fn decode(args: &Args) -> io::Result<()> {
-    let mut stdin = io::stdin();
-    let stdout = io::stdout();
-    if args.flag_any {
-        // TODO: Expose an "any" constructor for the decoder.
-        let mut header_bytes = [0; 8];
-        stdin.read_exact(&mut header_bytes).unwrap();
-        // TODO: THIS IS NOT CORRECT
-        let header_hash = bao::hash::hash(&header_bytes);
-        let chained_reader = io::Cursor::new(&header_bytes[..]).chain(stdin.lock());
-        let mut reader = bao::decode::Reader::new(chained_reader, header_hash);
-        io::copy(&mut reader, &mut stdout.lock())?;
-    } else {
-        let hash_vec = hex::decode(&args.flag_hash).expect("valid hex");
-        if hash_vec.len() != bao::hash::HASH_SIZE {
-            panic!(
-                "hash must be {} bytes, got {}",
-                bao::hash::HASH_SIZE,
-                hash_vec.len()
-            );
-        };
-        let hash_array = *array_ref!(&hash_vec, 0, bao::hash::HASH_SIZE);
-        let mut reader = bao::decode::Reader::new(stdin.lock(), hash_array);
-        io::copy(&mut reader, &mut stdout.lock()).unwrap();
-    }
-    Ok(())
-}
-
-fn try_mmap_stdin() -> io::Result<memmap::Mmap> {
-    let stdin_file = os_pipe::dup_stdin()?.into();
-    unsafe { memmap::Mmap::map(&stdin_file) }
-}
-
-fn hash(_args: &Args) -> io::Result<()> {
-    let hash = match try_mmap_stdin() {
-        Ok(mmap) => bao::hash::hash(&mmap),
-        Err(_) => {
-            let stdin = io::stdin();
-            let mut stdin_lock = stdin.lock();
-            let mut writer = bao::hash::Writer::new();
-            io::copy(&mut stdin_lock, &mut writer)?;
-            writer.finish()
-        }
-    };
-    println!("{}", hex::encode(hash));
-    Ok(())
-}
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const USAGE: &str = "
-Usage: bao encode (<input> <output> | --memory)
-       bao decode (--hash=<hash> | --any)
-       bao hash
+Usage: bao hash [<input>]
+       bao encode [<input>] [<output>]
+       bao decode <hash> [<input>] [<output>]
+       bao (--help | --version)
 ";
 
 #[derive(Debug, Deserialize)]
 struct Args {
-    arg_input: String,
-    arg_output: String,
     cmd_decode: bool,
     cmd_encode: bool,
     cmd_hash: bool,
-    flag_any: bool,
-    flag_hash: String,
-    flag_memory: bool,
+    arg_input: Option<PathBuf>,
+    arg_output: Option<PathBuf>,
+    arg_hash: String,
+    flag_help: bool,
+    flag_version: bool,
 }
 
-fn main() {
+fn main() -> io::Result<()> {
+    // TODO: Error reporting.
     let args: Args = docopt::Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
-    // TODO: Error reporting.
-    if args.cmd_encode {
-        encode(&args).unwrap();
-    } else if args.cmd_decode {
-        decode(&args).unwrap();
+
+    let (in_file, out_file) = in_out_files(&args)?;
+
+    if args.flag_help {
+        print!("{}", USAGE);
+    } else if args.flag_version {
+        println!("{}", VERSION);
     } else if args.cmd_hash {
-        hash(&args).unwrap();
+        hash(&args, in_file).unwrap();
+    } else if args.cmd_encode {
+        encode(&args, in_file, out_file).unwrap();
+    } else if args.cmd_decode {
+        decode(&args, in_file, out_file).unwrap();
     }
+
+    Ok(())
+}
+
+fn hash(_args: &Args, mut in_file: File) -> io::Result<()> {
+    let hash;
+    if let Some(map) = maybe_memmap_input(&in_file)? {
+        hash = bao::hash::hash(&map);
+    } else {
+        let mut writer = bao::hash::Writer::new();
+        io::copy(&mut in_file, &mut writer)?;
+        hash = writer.finish();
+    }
+    println!("{}", hex::encode(hash));
+    Ok(())
+}
+
+fn encode(_args: &Args, mut in_file: File, out_file: File) -> io::Result<()> {
+    if let Some(in_map) = maybe_memmap_input(&in_file)? {
+        let target_len = bao::encode::encoded_size(in_map.len() as u64);
+        if let Some(mut out_map) = maybe_memmap_output(&out_file, target_len)? {
+            bao::encode::encode(&in_map, &mut out_map);
+            return Ok(());
+        }
+    }
+    // If one or both of the files weren't mappable, fall back to the writer. First check that we
+    // have an actual file and not a pipe, because the writer requires seek.
+    if !out_file.metadata()?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "encode output must be a real file",
+        ));
+    }
+    let mut writer = bao::encode::Writer::new(out_file);
+    io::copy(&mut in_file, &mut writer)?;
+    writer.finish()?;
+    Ok(())
+}
+
+fn decode(args: &Args, in_file: File, mut out_file: File) -> io::Result<()> {
+    let hash_vec = hex::decode(&args.arg_hash)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid hex"))?;
+    if hash_vec.len() != bao::hash::HASH_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "wrong length hash",
+        ));
+    };
+    let hash = array_ref!(hash_vec, 0, bao::hash::HASH_SIZE);
+    if let Some(in_map) = maybe_memmap_input(&in_file)? {
+        let content_len = bao::decode::parse_and_check_content_len(&in_map)?;
+        if let Some(mut out_map) = maybe_memmap_output(&out_file, content_len as u128)? {
+            bao::decode::decode(&in_map, &mut out_map, hash)?;
+            return Ok(());
+        }
+    }
+    // If one or both of the files weren't mappable, fall back to the reader.
+    let mut reader = bao::decode::Reader::new(in_file, hash);
+    io::copy(&mut reader, &mut out_file)?;
+    Ok(())
+}
+
+fn in_out_files(args: &Args) -> io::Result<(File, File)> {
+    let in_file = if let Some(ref input_path) = args.arg_input {
+        File::open(input_path)?
+    } else {
+        os_pipe::dup_stdin()?.into()
+    };
+    let out_file = if let Some(ref output_path) = args.arg_output {
+        // Both reading and writing permissions are required for MmapMut.
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(output_path)?
+    } else {
+        os_pipe::dup_stdout()?.into()
+    };
+    Ok((in_file, out_file))
+}
+
+fn maybe_memmap_input(in_file: &File) -> io::Result<Option<memmap::Mmap>> {
+    let metadata = in_file.metadata()?;
+    Ok(if !metadata.is_file() {
+        // Not a file.
+        None
+    } else if metadata.len() > isize::max_value() as u64 {
+        // Too long to safely map. https://github.com/danburkert/memmap-rs/issues/69
+        None
+    } else {
+        let map = unsafe { memmap::Mmap::map(&in_file)? };
+        assert!(map.len() <= isize::max_value() as usize);
+        Some(map)
+    })
+}
+
+fn maybe_memmap_output(out_file: &File, target_len: u128) -> io::Result<Option<memmap::MmapMut>> {
+    if target_len > u64::max_value() as u128 {
+        panic!(format!("unreasonable target length: {}", target_len));
+    }
+    let metadata = out_file.metadata()?;
+    Ok(if !metadata.is_file() {
+        // Not a file.
+        None
+    } else if metadata.len() != 0 {
+        // The output file hasn't been truncated. Likely opened in append mode.
+        None
+    } else if target_len > isize::max_value() as u128 {
+        // Too long to safely map. https://github.com/danburkert/memmap-rs/issues/69
+        None
+    } else {
+        out_file.set_len(target_len as u64)?;
+        let map = unsafe { memmap::MmapMut::map_mut(&out_file)? };
+        assert_eq!(map.len() as u128, target_len);
+        Some(map)
+    })
 }
