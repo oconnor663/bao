@@ -183,42 +183,6 @@ fn bench_bao_encode_writer_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_encode_rayonwriter_short(b: &mut Bencher) {
-    let input = input(b, SHORT);
-    let mut output = Vec::with_capacity(encode::encoded_size(input.len() as u64) as usize);
-    b.iter(|| {
-        output.clear();
-        let mut writer = encode::RayonWriter::new(Cursor::new(&mut output));
-        writer.write_all(&input).unwrap();
-        writer.finish().unwrap()
-    });
-}
-
-#[bench]
-fn bench_bao_encode_rayonwriter_medium(b: &mut Bencher) {
-    let input = input(b, MEDIUM);
-    let mut output = Vec::with_capacity(encode::encoded_size(input.len() as u64) as usize);
-    b.iter(|| {
-        output.clear();
-        let mut writer = encode::RayonWriter::new(Cursor::new(&mut output));
-        writer.write_all(&input).unwrap();
-        writer.finish().unwrap()
-    });
-}
-
-#[bench]
-fn bench_bao_encode_rayonwriter_long(b: &mut Bencher) {
-    let input = input(b, LONG);
-    let mut output = Vec::with_capacity(encode::encoded_size(input.len() as u64) as usize);
-    b.iter(|| {
-        output.clear();
-        let mut writer = encode::RayonWriter::new(Cursor::new(&mut output));
-        writer.write_all(&input).unwrap();
-        writer.finish().unwrap()
-    });
-}
-
-#[bench]
 fn bench_bao_decode_slice_out_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     let (hash, encoded) = encode::encode_to_vec(&input);

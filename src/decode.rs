@@ -229,7 +229,7 @@ pub fn hash_from_encoded<T: Read>(mut reader: T) -> io::Result<Hash> {
 }
 
 #[derive(Clone, Debug)]
-pub struct State {
+struct State {
     stack: ArrayVec<[Hash; MAX_DEPTH]>,
     root_hash: Hash,
     content_len: Option<u64>,

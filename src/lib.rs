@@ -5,11 +5,6 @@ extern crate blake2b_simd;
 extern crate byteorder;
 extern crate constant_time_eq;
 extern crate copy_in_place;
-extern crate crossbeam;
-extern crate crossbeam_channel;
-#[macro_use]
-extern crate lazy_static;
-extern crate num_cpus;
 extern crate rayon;
 
 #[cfg(test)]

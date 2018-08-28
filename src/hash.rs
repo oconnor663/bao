@@ -1,11 +1,8 @@
 use arrayvec::ArrayVec;
 use blake2b_simd;
 use byteorder::{ByteOrder, LittleEndian};
-use crossbeam_channel as channel;
-use num_cpus;
 use rayon;
 use std::cmp;
-use std::collections::VecDeque;
 use std::fmt;
 use std::io;
 use std::mem;
@@ -161,6 +158,10 @@ impl State {
         }
     }
 
+    fn count(&self) -> u64 {
+        self.total_len
+    }
+
     fn merge_inner(&mut self, finalization: Finalization) -> ParentNode {
         let right_child = self.subtrees.pop().unwrap();
         let left_child = self.subtrees.pop().unwrap();
@@ -186,10 +187,10 @@ impl State {
     /// Add a subtree hash to the state.
     ///
     /// For most callers, this will always be the hash of a `CHUNK_SIZE` chunk of input bytes, with
-    /// the final chunk possibly having fewer (but never zero) bytes. It's possible to use input
-    /// subtrees larger than a single chunk, as long as the size is a power of 2 times `CHUNK_SIZE`
-    /// and again kept constant until the final chunk. This might be helpful in elaborate
-    /// multi-threaded settings with layers of `State` objects, but most callers should stick with
+    /// the final chunk possibly having fewer bytes. It's possible to use input subtrees larger
+    /// than a single chunk, as long as the size is a power of 2 times `CHUNK_SIZE` and again kept
+    /// constant until the final chunk. This can be helpful in a multi-threaded setting, where you
+    /// want to hash more than one chunk at a time per thread, but most callers should stick with
     /// single chunks.
     ///
     /// In cases where the total input is a single chunk or less, including the case with no input
@@ -257,280 +258,30 @@ impl fmt::Debug for State {
     }
 }
 
-struct SinglePipeline {
-    state: blake2b_simd::State,
-    first_chunk: bool,
-    final_returned: bool,
-}
-
-impl SinglePipeline {
-    fn new() -> Self {
-        Self {
-            state: new_blake2b_state(),
-            first_chunk: true,
-            final_returned: false,
-        }
-    }
-
-    fn write_loop(&mut self, input: &[u8]) -> (usize, Option<(Hash, usize)>) {
-        // Avoid sending a buffer until we're sure there's more input.
-        if input.is_empty() {
-            return (0, None);
-        }
-
-        // If the existing chunk is full, finish hashing it.
-        let mut maybe_output = None;
-        if self.state.count() as usize == CHUNK_SIZE {
-            let hash = finalize_hash(&mut self.state, NotRoot);
-            maybe_output = Some((hash, CHUNK_SIZE));
-            self.state = new_blake2b_state();
-            self.first_chunk = false;
-        }
-
-        // Now take as much input as we can.
-        let want = CHUNK_SIZE - self.state.count() as usize;
-        let take = cmp::min(want, input.len());
-        self.state.update(&input[..take]);
-
-        // Return the number of consumed bytes, and perhaps a chunk hash.
-        (take, maybe_output)
-    }
-
-    fn finish_loop(&mut self) -> Option<(Hash, usize)> {
-        if self.final_returned {
-            return None;
-        }
-        self.final_returned = true;
-        let finalization = if self.first_chunk {
-            // The current buffer is the only chunk, so we have to finalize it.
-            Root(self.state.count() as u64)
-        } else {
-            NotRoot
-        };
-        let hash = finalize_hash(&mut self.state, finalization);
-        Some((hash, self.state.count() as usize))
-    }
-}
-
-impl fmt::Debug for SinglePipeline {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Avoid printing hashes, they might be secret.
-        write!(f, "SinglePipeline {{ ... }}")
-    }
-}
-
-// benchmark_job_params.rs helps to tune these parameters.
-lazy_static! {
-    pub(crate) static ref MAX_JOBS: usize = 2 * num_cpus::get();
-    pub(crate) static ref JOB_SIZE: usize = 65536; // 2^16
-}
-
-struct RayonRunner<J, T>
-where
-    J: Default + Send + 'static,
-    T: Send + 'static,
-{
-    receivers: VecDeque<channel::Receiver<(J, T)>>,
-    max_jobs: usize,
-}
-
-impl<J, T> RayonRunner<J, T>
-where
-    J: Default + Send + 'static,
-    T: Send + 'static,
-{
-    fn new() -> Self {
-        Self {
-            receivers: VecDeque::new(),
-            max_jobs: *MAX_JOBS,
-        }
-    }
-
-    fn run<F>(&mut self, current: &mut J, do_work: F) -> Option<T>
-    where
-        F: FnOnce(&mut J) -> T + Send + 'static,
-    {
-        // First, get our hands on a fresh job object. If we haven't maxed out the outstanding
-        // receivers, just create a new one. Otherwise, await a receiver, report its result, and
-        // clear the job it was using.
-        let fresh_job;
-        let maybe_result;
-        if self.receivers.len() < self.max_jobs {
-            fresh_job = J::default();
-            maybe_result = None;
-        } else {
-            let receiver = self.receivers.pop_front().unwrap();
-            // Performance: Trying to do something clever with waiting for a later receiver
-            // (e.g. the middle one), in order to sleep longer, doesn't seem to help here.
-            let (job, result) = receiver.recv().expect("worker hung up");
-            fresh_job = job;
-            maybe_result = Some(result);
-        }
-        // Now swap the jobs and send off the full one.
-        let mut job_to_work = mem::replace(current, fresh_job);
-        // Performance: crossbeam-channel seems to beat std::mpsc here.
-        let (sender, receiver) = channel::bounded(1);
-        self.receivers.push_back(receiver);
-        rayon::spawn(move || {
-            let result = do_work(&mut job_to_work);
-            sender.send((job_to_work, result));
-        });
-        maybe_result
-    }
-
-    fn finish_loop(&mut self) -> Option<T> {
-        if let Some(receiver) = self.receivers.pop_front() {
-            let (_, result) = receiver.recv().expect("worker hung up");
-            Some(result)
-        } else {
-            None
-        }
-    }
-}
-
-struct RayonPipeline {
-    buf: Vec<u8>,
-    runner: RayonRunner<Vec<u8>, Hash>,
-    job_size: usize,
-    first_job: bool,
-    final_value: Option<Hash>,
-    final_returned: bool,
-}
-
-impl RayonPipeline {
-    fn new() -> Self {
-        Self {
-            // Use new() instead of with_capacity() to avoid a big allocation in the small case.
-            buf: Vec::new(),
-            runner: RayonRunner::new(),
-            job_size: *JOB_SIZE,
-            first_job: true,
-            final_value: None,
-            final_returned: false,
-        }
-    }
-
-    fn write_loop(&mut self, input: &[u8]) -> (usize, Option<(Hash, usize)>) {
-        // Avoid sending a buffer until we're sure there's more input.
-        if input.is_empty() {
-            return (0, None);
-        }
-
-        // If there's more input, and the buffer is full, send it off.
-        let mut maybe_output = None;
-        if self.buf.len() == self.job_size {
-            let maybe_hash = self
-                .runner
-                .run(&mut self.buf, |buf| hash_recurse(&buf, NotRoot));
-            if let Some(hash) = maybe_hash {
-                maybe_output = Some((hash, self.job_size));
-                // The buf still contains previous job input, so we need to clear it.
-                self.buf.clear();
-            }
-            // Flag that finish_loop doesn't need to do root finalization.
-            self.first_job = false;
-        }
-
-        // Now with space in the buffer, take as much input as we can.
-        let want = self.job_size - self.buf.len();
-        let take = cmp::min(want, input.len());
-        self.buf.extend_from_slice(&input[..take]);
-
-        // Return the number of consumed bytes, and a hash/len pair if we received one from a
-        // worker.
-        (take, maybe_output)
-    }
-
-    fn finish_loop(&mut self) -> Option<(Hash, usize)> {
-        // Run the final job on the main thread. This keeps overhead low for small inputs.
-        if self.final_value.is_none() {
-            let finalization = if self.first_job {
-                // The current buffer is the only subtree, so we have to finalize it.
-                Root(self.buf.len() as u64)
-            } else {
-                NotRoot
-            };
-            self.final_value = Some(hash_recurse(&self.buf, finalization));
-        }
-        if let Some(hash) = self.runner.finish_loop() {
-            Some((hash, self.job_size))
-        } else if !self.final_returned {
-            self.final_returned = true;
-            Some((self.final_value.unwrap(), self.buf.len()))
-        } else {
-            None
-        }
-    }
-}
-
-impl fmt::Debug for RayonPipeline {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Avoid printing hashes, they might be secret.
-        write!(f, "RayonPipeline {{ ... }}")
-    }
-}
-
-#[derive(Debug)]
-enum PipelineEnum {
-    Single(SinglePipeline),
-    Rayon(RayonPipeline),
-}
-
-impl PipelineEnum {
-    fn write_loop(&mut self, input: &[u8]) -> (usize, Option<(Hash, usize)>) {
-        match *self {
-            PipelineEnum::Single(ref mut p) => p.write_loop(input),
-            PipelineEnum::Rayon(ref mut p) => p.write_loop(input),
-        }
-    }
-
-    fn finish_loop(&mut self) -> Option<(Hash, usize)> {
-        match *self {
-            PipelineEnum::Single(ref mut p) => p.finish_loop(),
-            PipelineEnum::Rayon(ref mut p) => p.finish_loop(),
-        }
-    }
-}
-
-// TODO: Manually implement Clone by draining the receivers.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Writer {
+    chunk: blake2b_simd::State,
     state: State,
-    pipeline: PipelineEnum,
 }
 
 impl Writer {
     pub fn new() -> Self {
         Self {
+            chunk: new_blake2b_state(),
             state: State::new(),
-            pipeline: PipelineEnum::Rayon(RayonPipeline::new()),
         }
-    }
-
-    pub fn new_single_threaded() -> Self {
-        Self {
-            state: State::new(),
-            pipeline: PipelineEnum::Single(SinglePipeline::new()),
-        }
-    }
-
-    pub fn new_benchmarking(job_size: usize, max_jobs: usize) -> Self {
-        assert_eq!(0, job_size % CHUNK_SIZE);
-        assert_eq!(1, (job_size / CHUNK_SIZE).count_ones());
-        let mut pipeline = RayonPipeline::new();
-        pipeline.job_size = job_size;
-        pipeline.runner.max_jobs = max_jobs;
-        let mut writer = Self::new();
-        writer.pipeline = PipelineEnum::Rayon(pipeline);
-        writer
     }
 
     /// After feeding all the input bytes to `write`, return the root hash. The writer cannot be
     /// used after this.
     pub fn finish(&mut self) -> Hash {
-        while let Some((hash, len)) = self.pipeline.finish_loop() {
-            self.state.push_subtree(&hash, len);
-        }
+        let finalization = if self.state.count() == 0 {
+            Root(self.chunk.count() as u64)
+        } else {
+            NotRoot
+        };
+        let hash = finalize_hash(&mut self.chunk, finalization);
+        self.state.push_subtree(&hash, self.chunk.count() as usize);
         self.state.finish()
     }
 }
@@ -539,11 +290,15 @@ impl io::Write for Writer {
     fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
         let input_len = input.len();
         while !input.is_empty() {
-            let (n, maybe_output) = self.pipeline.write_loop(input);
-            if let Some((hash, len)) = maybe_output {
-                self.state.push_subtree(&hash, len);
+            if self.chunk.count() as usize == CHUNK_SIZE {
+                let hash = finalize_hash(&mut self.chunk, NotRoot);
+                self.state.push_subtree(&hash, CHUNK_SIZE);
+                self.chunk = new_blake2b_state();
             }
-            input = &input[n..];
+            let want = CHUNK_SIZE - self.chunk.count() as usize;
+            let take = cmp::min(want, input.len());
+            self.chunk.update(&input[..take]);
+            input = &input[take..];
         }
         Ok(input_len)
     }
@@ -676,28 +431,12 @@ mod test {
 
     #[test]
     fn test_writer() {
-        let mut cases = TEST_CASES.to_vec();
-        cases.push(*JOB_SIZE - 1);
-        cases.push(*JOB_SIZE);
-        cases.push(*JOB_SIZE + 1);
-        cases.push(*MAX_JOBS * *JOB_SIZE - 1);
-        cases.push(*MAX_JOBS * *JOB_SIZE);
-        cases.push(*MAX_JOBS * *JOB_SIZE + 1);
-        cases.push(2 * *MAX_JOBS * *JOB_SIZE - 1);
-        cases.push(2 * *MAX_JOBS * *JOB_SIZE);
-        cases.push(2 * *MAX_JOBS * *JOB_SIZE + 1);
-        for case in cases {
+        for &case in TEST_CASES {
             println!("case {}", case);
             let input = vec![0x42; case];
             let expected = hash(&input);
 
             let mut writer = Writer::new();
-            writer.write_all(&input).unwrap();
-            let found = writer.finish();
-            assert_eq!(expected, found, "hashes don't match");
-
-            // Do it again, single threaded.
-            let mut writer = Writer::new_single_threaded();
             writer.write_all(&input).unwrap();
             let found = writer.finish();
             assert_eq!(expected, found, "hashes don't match");
