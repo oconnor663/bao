@@ -10,7 +10,7 @@ extern crate memmap;
 
 use std::fs::{File, OpenOptions};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -127,17 +127,25 @@ fn decode(args: &Args, in_file: File, mut out_file: File) -> io::Result<()> {
 
 fn in_out_files(args: &Args) -> io::Result<(File, File)> {
     let in_file = if let Some(ref input_path) = args.arg_input {
-        File::open(input_path)?
+        if input_path == Path::new("-") {
+            os_pipe::dup_stdin()?.into()
+        } else {
+            File::open(input_path)?
+        }
     } else {
         os_pipe::dup_stdin()?.into()
     };
     let out_file = if let Some(ref output_path) = args.arg_output {
-        // Both reading and writing permissions are required for MmapMut.
-        OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(output_path)?
+        if output_path == Path::new("-") {
+            os_pipe::dup_stdout()?.into()
+        } else {
+            // Both reading and writing permissions are required for MmapMut.
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(output_path)?
+        }
     } else {
         os_pipe::dup_stdout()?.into()
     };
