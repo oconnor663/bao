@@ -17,7 +17,9 @@ an AVX2 implementation provided by
 gets memory mapped and then split among worker threads with
 [`rayon`](https://github.com/rayon-rs/rayon). On the i5-8250U processor
 in my laptop, it hashes a 1 gigabyte file in 0.25 seconds. By comparison
-the fastest Coreutils hash, `sha1sum`, takes 1.32 seconds.
+the fastest Coreutils hash, `sha1sum`, takes 1.32 seconds. If the input
+is piped and memory mapping isn't possible, `bao hash` falls back to a
+single-threaded streaming implementation.
 
 `bao encode` copies its input and produces an encoded file with a small
 header and subtree hashes interspersed throughout, currently 1.5% larger

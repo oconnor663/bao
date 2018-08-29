@@ -229,65 +229,53 @@ pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
 }
 
 #[derive(Clone, Debug)]
-struct State {
-    stack: ArrayVec<[Hash; MAX_DEPTH]>,
-    root_hash: Hash,
+struct ParseState {
     content_len: Option<u64>,
-    length_verified: bool,
-    at_root: bool,
-    content_position: u64,
-    encoded_offset: u128,
     next_chunk: u64,
     upcoming_parents: u8,
+    encoded_offset: u128,
+    content_target: u64,
 }
 
-impl State {
-    pub fn new(hash: &Hash) -> Self {
+impl ParseState {
+    fn new() -> Self {
         Self {
-            stack: ArrayVec::new(),
-            root_hash: *hash,
             content_len: None,
-            length_verified: false,
-            at_root: true,
-            content_position: 0,
-            encoded_offset: 0,
             next_chunk: 0,
             upcoming_parents: 0,
+            encoded_offset: 0,
+            content_target: 0,
         }
     }
 
-    pub fn position(&self) -> u64 {
-        self.content_position
+    fn content_len(&self) -> Option<u64> {
+        self.content_len
+    }
+
+    fn position(&self) -> u64 {
+        self.content_target
     }
 
     fn reset_to_root(&mut self) {
-        self.encoded_offset = HEADER_SIZE as u128;
-        self.stack.clear();
-        self.stack.push(self.root_hash);
-        self.at_root = true;
         self.next_chunk = 0;
         self.upcoming_parents = encode::pre_order_parent_nodes(0, self.content_len.unwrap());
+        self.encoded_offset = HEADER_SIZE as u128;
     }
 
-    pub fn read_next(&self) -> Option<StateNext> {
-        let content_len;
-        if let Some(len) = self.content_len {
-            content_len = len;
+    fn read_next(&self) -> Option<StateNext> {
+        let content_len = if let Some(len) = self.content_len {
+            len
         } else {
             return Some(StateNext::Header);
-        }
-        if self.stack.is_empty() {
-            // If we somehow return EOF without having verified the root node, then we don't know
-            // if the content length we read matches the hash we started with. If it doesn't,
-            // that's a spurious EOF and a security issue.
-            assert!(self.length_verified, "unverified EOF");
+        };
+        if self.is_eof() {
             None
         } else if self.upcoming_parents > 0 {
             Some(StateNext::Parent)
         } else {
             Some(StateNext::Chunk {
                 size: encode::chunk_size(self.next_chunk, content_len),
-                skip: (self.content_position % CHUNK_SIZE as u64) as usize,
+                skip: (self.content_target % CHUNK_SIZE as u64) as usize,
                 finalization: if content_len <= CHUNK_SIZE as u64 {
                     Root(content_len)
                 } else {
@@ -297,44 +285,39 @@ impl State {
         }
     }
 
-    /// Note that if reading the length returns StateNext::Chunk (leading the caller to call
-    /// feed_chunk), the content position will no longer be at the start, as with a standard read.
-    /// Callers that don't buffer the last read chunk (as Reader does) might need to do an
-    /// additional seek to compensate.
-    pub fn len_next(&self) -> LenNext {
-        if let (Some(len), true) = (self.content_len, self.length_verified) {
-            LenNext::Len(len)
-        } else {
-            debug_assert!(self.at_root);
-            let next = self.read_next().expect("unexpected EOF");
-            LenNext::Next(next)
-        }
-    }
+    // Returns (seek offset, did reset stack, stack pops, Option<next>).
+    fn seek_next(&mut self, content_target: u64) -> (u128, bool, u8, Option<StateNext>) {
+        let mut did_reset = false;
+        let mut stack_pops = 0;
 
-    pub fn seek_next(&mut self, content_position: u64) -> (u128, Option<StateNext>) {
-        // Get the current content length. This will lead us to read the header and verify the root
-        // node, if we haven't already.
-        let content_len;
-        match self.len_next() {
-            LenNext::Len(len) => content_len = len,
-            LenNext::Next(next) => return (self.encoded_offset, Some(next)),
-        }
+        let content_len = if let Some(len) = self.content_len {
+            len
+        } else {
+            return (
+                self.encoded_offset,
+                did_reset,
+                stack_pops,
+                Some(StateNext::Header),
+            );
+        };
 
         // Record the target position, which we use in read_next() to compute the skip.
-        self.content_position = content_position;
+        self.content_target = content_target;
 
         // If we're already past EOF, either reset or short circuit.
-        if self.stack.is_empty() {
-            if content_position >= content_len {
-                return (self.encoded_offset, None);
+        if self.is_eof() {
+            if content_target >= content_len {
+                return (self.encoded_offset, did_reset, stack_pops, None);
             } else {
                 self.reset_to_root();
+                did_reset = true;
             }
         }
 
         // Also reset if we're in the tree but the seek is to our left.
-        if content_position < self.subtree_start() {
+        if content_target < self.subtree_start() {
             self.reset_to_root();
+            did_reset = true;
         }
 
         // The main loop. Pop subtrees out of the stack until we find one that contains the seek
@@ -345,41 +328,170 @@ impl State {
             // more parent nodes in front of the chunk, but read will process them as usual.
             let chunk_size = cmp::min(self.subtree_size(), CHUNK_SIZE as u64);
             let chunk_end = self.subtree_start() + chunk_size;
-            if content_position < chunk_end {
-                return (self.encoded_offset, None);
+            if content_target < chunk_end {
+                return (self.encoded_offset, did_reset, stack_pops, None);
             }
 
             // If the target is outside the next chunk, but within the current subtree, then we
             // need to descend.
-            if content_position < self.subtree_end() {
-                return (self.encoded_offset, Some(StateNext::Parent));
+            if content_target < self.subtree_end() {
+                return (
+                    self.encoded_offset,
+                    did_reset,
+                    stack_pops,
+                    Some(StateNext::Parent),
+                );
             }
 
-            // Otherwise pop the current tree and repeat.
+            // Otherwise jump out of the current tree and repeat.
+            stack_pops += 1;
             self.encoded_offset += encode::encoded_subtree_size(self.subtree_size());
             self.next_chunk += encode::count_chunks(self.subtree_size());
-            self.stack.pop();
-            if !self.stack.is_empty() {
+            if !self.is_eof() {
                 // upcoming_parents is only meaningful if we're before EOF.
                 self.upcoming_parents =
                     encode::pre_order_parent_nodes(self.next_chunk, content_len);
             } else {
-                // If we've emptied the stack, we're at EOF.
-                return (self.encoded_offset, None);
+                return (self.encoded_offset, did_reset, stack_pops, None);
             }
         }
     }
 
-    pub fn feed_header(&mut self, header: [u8; HEADER_SIZE]) {
+    fn feed_header(&mut self, header: [u8; HEADER_SIZE]) {
         assert!(self.content_len.is_none(), "second call to feed_header");
         let content_len = hash::decode_len(&header);
         self.content_len = Some(content_len);
         self.reset_to_root();
     }
 
+    fn advance_parent(&mut self) {
+        assert!(
+            self.upcoming_parents > 0,
+            "too many calls to advance_parent"
+        );
+        self.upcoming_parents -= 1;
+        self.encoded_offset += PARENT_SIZE as u128;
+    }
+
+    fn advance_chunk(&mut self) {
+        assert_eq!(0, self.upcoming_parents);
+        self.content_target = self.subtree_end();
+        self.encoded_offset += self.subtree_size() as u128;
+        self.next_chunk += 1;
+        if !self.is_eof() {
+            // upcoming_parents is only meaningful if we're before EOF.
+            self.upcoming_parents =
+                encode::pre_order_parent_nodes(self.next_chunk, self.content_len.unwrap());
+        }
+    }
+
+    fn is_eof(&self) -> bool {
+        if let Some(len) = self.content_len {
+            self.next_chunk >= encode::count_chunks(len)
+        } else {
+            false
+        }
+    }
+
+    fn subtree_start(&self) -> u64 {
+        debug_assert!(!self.is_eof());
+        self.next_chunk * CHUNK_SIZE as u64
+    }
+
+    fn subtree_size(&self) -> u64 {
+        debug_assert!(!self.is_eof());
+        let content_len = self.content_len.unwrap();
+        // The following should avoid overflow even if content_len is 2^64-1. upcoming_parents was
+        // computed from the chunk count, and as long as chunks are larger than 1 byte, it will
+        // always be less than 64.
+        let max_subtree_size = (1 << self.upcoming_parents) * CHUNK_SIZE as u64;
+        cmp::min(content_len - self.subtree_start(), max_subtree_size)
+    }
+
+    fn subtree_end(&self) -> u64 {
+        debug_assert!(!self.is_eof());
+        self.subtree_start() + self.subtree_size()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct VerifyState {
+    stack: ArrayVec<[Hash; MAX_DEPTH]>,
+    parser: ParseState,
+    root_hash: Hash,
+    length_verified: bool,
+    at_root: bool,
+}
+
+impl VerifyState {
+    pub fn new(hash: &Hash) -> Self {
+        Self {
+            stack: ArrayVec::new(),
+            parser: ParseState::new(),
+            root_hash: *hash,
+            length_verified: false,
+            at_root: true,
+        }
+    }
+
+    pub fn position(&self) -> u64 {
+        self.parser.position()
+    }
+
+    pub fn read_next(&self) -> Option<StateNext> {
+        self.parser.read_next()
+    }
+
+    fn reset_to_root(&mut self) {
+        self.stack.clear();
+        self.stack.push(self.root_hash);
+        self.at_root = true;
+    }
+
+    /// Note that if reading the length returns StateNext::Chunk (leading the caller to call
+    /// feed_chunk), the content position will no longer be at the start, as with a standard read.
+    /// Callers that don't buffer the last read chunk (as Reader does) might need to do an
+    /// additional seek to compensate.
+    pub fn len_next(&self) -> LenNext {
+        if let (Some(len), true) = (self.parser.content_len(), self.length_verified) {
+            LenNext::Len(len)
+        } else {
+            debug_assert!(self.at_root);
+            let next = self.read_next().expect("unexpected EOF");
+            LenNext::Next(next)
+        }
+    }
+
+    pub fn seek_next(&mut self, content_target: u64) -> (u128, Option<StateNext>) {
+        // Seeking must verify the content length, of else we could report an early EOF that
+        // doesn't match the original input. Do this first before deferring to the parser.
+        if let LenNext::Next(next) = self.len_next() {
+            return (0, Some(next));
+        }
+
+        // The parser doesn't store hashes, but it tells whether we need to clear the hash stack or
+        // how many hashes we need to pop.
+        let (offset, did_reset, stack_pops, maybe_next) = self.parser.seek_next(content_target);
+        if did_reset {
+            self.reset_to_root();
+        }
+        for _ in 0..stack_pops {
+            self.stack.pop().expect("too many pops");
+        }
+
+        (offset, maybe_next)
+    }
+
+    pub fn feed_header(&mut self, header: [u8; HEADER_SIZE]) {
+        self.parser.feed_header(header);
+        self.reset_to_root();
+    }
+
     pub fn feed_parent(&mut self, parent: hash::ParentNode) -> Result<()> {
-        assert!(self.upcoming_parents > 0, "too many calls to feed_parent");
-        let content_len = self.content_len.expect("feed_parent before header");
+        let content_len = self
+            .parser
+            .content_len()
+            .expect("feed_parent before header");
         let finalization = if self.at_root {
             Root(content_len)
         } else {
@@ -395,10 +507,9 @@ impl State {
         self.stack.pop();
         self.stack.push(right_child);
         self.stack.push(left_child);
-        self.upcoming_parents -= 1;
-        self.encoded_offset += PARENT_SIZE as u128;
         self.length_verified = true;
         self.at_root = false;
+        self.parser.advance_parent();
         Ok(())
     }
 
@@ -407,38 +518,11 @@ impl State {
         if !constant_time_eq(&chunk_hash, &expected_hash) {
             return Err(Error::HashMismatch);
         }
-        self.content_position = self.subtree_end();
-        self.encoded_offset += encode::encoded_subtree_size(self.subtree_size());
-        self.next_chunk += encode::count_chunks(self.subtree_size());
         self.stack.pop();
         self.length_verified = true;
         self.at_root = false;
-        if !self.stack.is_empty() {
-            // upcoming_parents is only meaningful if we're before EOF.
-            self.upcoming_parents =
-                encode::pre_order_parent_nodes(self.next_chunk, self.content_len.unwrap());
-        }
+        self.parser.advance_chunk();
         Ok(())
-    }
-
-    fn subtree_start(&self) -> u64 {
-        debug_assert!(!self.stack.is_empty(), "no subtree after EOF");
-        self.next_chunk * CHUNK_SIZE as u64
-    }
-
-    fn subtree_size(&self) -> u64 {
-        debug_assert!(!self.stack.is_empty(), "no subtree after EOF");
-        let content_len = self.content_len.unwrap();
-        // The following should avoid overflow even if content_len is 2^64-1. upcoming_parents was
-        // computed from the chunk count, and as long as chunks are larger than 1 byte, it will
-        // always be less than 64.
-        let max_subtree_size = (1 << self.upcoming_parents) * CHUNK_SIZE as u64;
-        cmp::min(content_len - self.subtree_start(), max_subtree_size)
-    }
-
-    fn subtree_end(&self) -> u64 {
-        debug_assert!(!self.stack.is_empty(), "no subtree after EOF");
-        self.subtree_start() + self.subtree_size()
     }
 }
 
@@ -490,7 +574,7 @@ impl From<Error> for io::Error {
 #[derive(Clone)]
 pub struct Reader<T: Read> {
     inner: T,
-    state: State,
+    state: VerifyState,
     buf: [u8; CHUNK_SIZE],
     buf_start: usize,
     buf_end: usize,
@@ -500,7 +584,7 @@ impl<T: Read> Reader<T> {
     pub fn new(inner: T, hash: &Hash) -> Self {
         Self {
             inner,
-            state: State::new(hash),
+            state: VerifyState::new(hash),
             buf: [0; CHUNK_SIZE],
             buf_start: 0,
             buf_end: 0,
