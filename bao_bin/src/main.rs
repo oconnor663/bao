@@ -10,6 +10,7 @@ extern crate memmap;
 
 use std::fs::{File, OpenOptions};
 use std::io;
+use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -17,7 +18,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const USAGE: &str = "
 Usage: bao hash [<input>] [--encoded]
        bao encode [<input>] [<output>]
-       bao decode <hash> [<input>] [<output>]
+       bao decode <hash> [<input>] [<output>] [--seek=<offset>]
        bao (--help | --version)
 ";
 
@@ -31,6 +32,7 @@ struct Args {
     arg_hash: String,
     flag_encoded: bool,
     flag_help: bool,
+    flag_seek: Option<u64>,
     flag_version: bool,
 }
 
@@ -112,15 +114,21 @@ fn decode(args: &Args, in_file: File, mut out_file: File) -> io::Result<()> {
         ));
     };
     let hash = array_ref!(hash_vec, 0, bao::hash::HASH_SIZE);
-    if let Some(in_map) = maybe_memmap_input(&in_file)? {
-        let content_len = bao::decode::parse_and_check_content_len(&in_map)?;
-        if let Some(mut out_map) = maybe_memmap_output(&out_file, content_len as u128)? {
-            bao::decode::decode(&in_map, &mut out_map, hash)?;
-            return Ok(());
+    // If we're not seeking, try to memmap the files.
+    if args.flag_seek.is_none() {
+        if let Some(in_map) = maybe_memmap_input(&in_file)? {
+            let content_len = bao::decode::parse_and_check_content_len(&in_map)?;
+            if let Some(mut out_map) = maybe_memmap_output(&out_file, content_len as u128)? {
+                bao::decode::decode(&in_map, &mut out_map, hash)?;
+                return Ok(());
+            }
         }
     }
-    // If one or both of the files weren't mappable, fall back to the reader.
+    // If one or both of the files weren't mappable, or if we're seeking, fall back to the reader.
     let mut reader = bao::decode::Reader::new(in_file, hash);
+    if let Some(offset) = args.flag_seek {
+        reader.seek(io::SeekFrom::Start(offset))?;
+    }
     io::copy(&mut reader, &mut out_file)?;
     Ok(())
 }
