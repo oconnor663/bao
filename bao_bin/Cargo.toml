@@ -11,6 +11,7 @@ path = "src/main.rs"
 arrayref = "0.3.4"
 bao = { path = ".." }
 docopt = "1.0.1"
+failure = "0.1.2"
 hex = "0.3.2"
 memmap = "0.6.2"
 os_pipe = "0.7.0"

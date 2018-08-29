@@ -2,12 +2,14 @@
 extern crate arrayref;
 extern crate bao;
 extern crate docopt;
+extern crate failure;
 extern crate hex;
 extern crate os_pipe;
 #[macro_use]
 extern crate serde_derive;
 extern crate memmap;
 
+use failure::Error;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::prelude::*;
@@ -36,7 +38,7 @@ struct Args {
     flag_version: bool,
 }
 
-fn main() -> io::Result<()> {
+fn main() -> Result<(), Error> {
     // TODO: Error reporting.
     let args: Args = docopt::Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
@@ -63,7 +65,7 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn hash(_args: &Args, mut in_file: File) -> io::Result<()> {
+fn hash(_args: &Args, mut in_file: File) -> Result<(), Error> {
     let hash;
     if let Some(map) = maybe_memmap_input(&in_file)? {
         hash = bao::hash::hash(&map);
@@ -76,13 +78,13 @@ fn hash(_args: &Args, mut in_file: File) -> io::Result<()> {
     Ok(())
 }
 
-fn hash_encoded(_args: &Args, mut in_file: File) -> io::Result<()> {
+fn hash_encoded(_args: &Args, mut in_file: File) -> Result<(), Error> {
     let hash = bao::decode::hash_from_encoded(&mut in_file)?;
     println!("{}", hex::encode(hash));
     Ok(())
 }
 
-fn encode(_args: &Args, mut in_file: File, out_file: File) -> io::Result<()> {
+fn encode(_args: &Args, mut in_file: File, out_file: File) -> Result<(), Error> {
     if let Some(in_map) = maybe_memmap_input(&in_file)? {
         let target_len = bao::encode::encoded_size(in_map.len() as u64);
         if let Some(mut out_map) = maybe_memmap_output(&out_file, target_len)? {
@@ -93,10 +95,10 @@ fn encode(_args: &Args, mut in_file: File, out_file: File) -> io::Result<()> {
     // If one or both of the files weren't mappable, fall back to the writer. First check that we
     // have an actual file and not a pipe, because the writer requires seek.
     if !out_file.metadata()?.is_file() {
-        return Err(io::Error::new(
+        Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "encode output must be a real file",
-        ));
+        ))?;
     }
     let mut writer = bao::encode::Writer::new(out_file);
     io::copy(&mut in_file, &mut writer)?;
@@ -104,14 +106,14 @@ fn encode(_args: &Args, mut in_file: File, out_file: File) -> io::Result<()> {
     Ok(())
 }
 
-fn decode(args: &Args, in_file: File, mut out_file: File) -> io::Result<()> {
+fn decode(args: &Args, in_file: File, mut out_file: File) -> Result<(), Error> {
     let hash_vec = hex::decode(&args.arg_hash)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid hex"))?;
     if hash_vec.len() != bao::hash::HASH_SIZE {
-        return Err(io::Error::new(
+        Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "wrong length hash",
-        ));
+        ))?;
     };
     let hash = array_ref!(hash_vec, 0, bao::hash::HASH_SIZE);
     // If we're not seeking, try to memmap the files.
@@ -133,7 +135,7 @@ fn decode(args: &Args, in_file: File, mut out_file: File) -> io::Result<()> {
     Ok(())
 }
 
-fn in_out_files(args: &Args) -> io::Result<(File, File)> {
+fn in_out_files(args: &Args) -> Result<(File, File), Error> {
     let in_file = if let Some(ref input_path) = args.arg_input {
         if input_path == Path::new("-") {
             os_pipe::dup_stdin()?.into()
@@ -160,7 +162,7 @@ fn in_out_files(args: &Args) -> io::Result<(File, File)> {
     Ok((in_file, out_file))
 }
 
-fn maybe_memmap_input(in_file: &File) -> io::Result<Option<memmap::Mmap>> {
+fn maybe_memmap_input(in_file: &File) -> Result<Option<memmap::Mmap>, Error> {
     let metadata = in_file.metadata()?;
     Ok(if !metadata.is_file() {
         // Not a file.
@@ -175,7 +177,10 @@ fn maybe_memmap_input(in_file: &File) -> io::Result<Option<memmap::Mmap>> {
     })
 }
 
-fn maybe_memmap_output(out_file: &File, target_len: u128) -> io::Result<Option<memmap::MmapMut>> {
+fn maybe_memmap_output(
+    out_file: &File,
+    target_len: u128,
+) -> Result<Option<memmap::MmapMut>, Error> {
     if target_len > u64::max_value() as u128 {
         panic!(format!("unreasonable target length: {}", target_len));
     }
