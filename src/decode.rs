@@ -357,9 +357,9 @@ impl ParseState {
         }
     }
 
-    fn feed_header(&mut self, header: [u8; HEADER_SIZE]) {
+    fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
         assert!(self.content_len.is_none(), "second call to feed_header");
-        let content_len = hash::decode_len(&header);
+        let content_len = hash::decode_len(header);
         self.content_len = Some(content_len);
         self.reset_to_root();
     }
@@ -482,7 +482,7 @@ impl VerifyState {
         (offset, maybe_next)
     }
 
-    pub fn feed_header(&mut self, header: [u8; HEADER_SIZE]) {
+    pub fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
         self.parser.feed_header(header);
         self.reset_to_root();
     }
@@ -631,7 +631,7 @@ impl<T: Read> Reader<T> {
     fn read_header(&mut self) -> io::Result<()> {
         let mut header = [0; HEADER_SIZE];
         self.inner.read_exact(&mut header)?;
-        self.state.feed_header(header);
+        self.state.feed_header(&header);
         Ok(())
     }
 
@@ -708,11 +708,11 @@ impl<T: Read + Seek> Seek for Reader<T> {
             }
         };
 
-        // Compute our current position, and use that to compute the absolute target_position of
-        // the seek. Note an invariant here, which we'll also rely on below: If the buffer is
+        // Compute our current position, and use that to compute the absolute content_target of the
+        // seek. Note an invariant here, which we'll also rely on below: If the buffer is
         // non-empty, the State position is exactly the end of the buffer.
         let starting_position = self.state.position() - self.buf_len() as u64;
-        let target_position = match pos {
+        let content_target = match pos {
             io::SeekFrom::Start(pos) => pos,
             io::SeekFrom::End(off) => add_offset(content_len, off)?,
             io::SeekFrom::Current(off) => add_offset(starting_position, off)?,
@@ -722,9 +722,9 @@ impl<T: Read + Seek> Seek for Reader<T> {
         // we're relying on the position invariant from above: If the buffer is non-empty, then
         // self.state.position() is exactly the end of the current buffer.
         let buf_origin = self.state.position() - self.buf_end as u64;
-        if buf_origin <= target_position && target_position < self.state.position() {
-            self.buf_start = (target_position - buf_origin) as usize;
-            return Ok(target_position);
+        if buf_origin <= content_target && content_target < self.state.position() {
+            self.buf_start = (content_target - buf_origin) as usize;
+            return Ok(content_target);
         }
 
         // Now, since we're entering the main seek loop, clear the buffer. Buffered input won't be
@@ -733,7 +733,7 @@ impl<T: Read + Seek> Seek for Reader<T> {
 
         // Finally, loop over the seek_next() method until it's done.
         loop {
-            let (seek_offset, next) = self.state.seek_next(target_position);
+            let (seek_offset, next) = self.state.seek_next(content_target);
             let cast_offset = cast_offset(seek_offset)?;
             self.inner.seek(io::SeekFrom::Start(cast_offset))?;
             match next {
@@ -751,8 +751,8 @@ impl<T: Read + Seek> Seek for Reader<T> {
                     self.read_chunk(size, skip, finalization)?;
                 }
                 None => {
-                    debug_assert_eq!(target_position, self.state.position());
-                    return Ok(target_position);
+                    debug_assert_eq!(content_target, self.state.position());
+                    return Ok(content_target);
                 }
             }
         }
@@ -794,6 +794,121 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
         ))
     } else {
         Ok(sum as u64)
+    }
+}
+
+pub struct SliceExtractor<T: Read + Seek> {
+    inner: T,
+    content_start: u64,
+    content_len: u64,
+    parser: ParseState,
+    buf: [u8; CHUNK_SIZE],
+    buf_start: usize,
+    buf_end: usize,
+    did_seek: bool,
+}
+
+impl<T: Read + Seek> SliceExtractor<T> {
+    pub fn new(inner: T, content_start: u64, content_len: u64) -> Self {
+        Self {
+            inner,
+            content_start,
+            content_len,
+            parser: ParseState::new(),
+            buf: [0; CHUNK_SIZE],
+            buf_start: 0,
+            buf_end: 0,
+            did_seek: false,
+        }
+    }
+
+    // Note that unlike the regular Reader, the header bytes go into the output buffer.
+    fn read_header(&mut self) -> io::Result<()> {
+        let header = array_mut_ref!(self.buf, 0, HEADER_SIZE);
+        self.inner.read_exact(header)?;
+        self.buf_start = 0;
+        self.buf_end = HEADER_SIZE;
+        self.parser.feed_header(header);
+        Ok(())
+    }
+
+    // Note that unlike the regular Reader, the parent bytes go into the output buffer.
+    fn read_parent(&mut self) -> io::Result<()> {
+        let parent = array_mut_ref!(self.buf, 0, PARENT_SIZE);
+        self.inner.read_exact(parent)?;
+        self.buf_start = 0;
+        self.buf_end = PARENT_SIZE;
+        self.parser.advance_parent();
+        Ok(())
+    }
+
+    fn read_chunk(&mut self, size: usize) -> io::Result<()> {
+        let chunk = &mut self.buf[..size];
+        self.inner.read_exact(chunk)?;
+        // Note that we ignore the skip offset here. The recipient will need the skipped bytes to
+        // verify the chunk hash.
+        self.buf_start = 0;
+        self.buf_end = size;
+        // After reading a chunk, decrement the content_len. This will stop the read loop once
+        // we've read everything the caller asked for.
+        self.content_len = self.content_len.saturating_sub(size as u64);
+        Ok(())
+    }
+}
+
+impl<T: Read + Seek> Read for SliceExtractor<T> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // If we don't have any output ready to go, try to read more.
+        if self.buf_end - self.buf_start == 0 {
+            // If we haven't finished the seek yet, make progress on that. That will buffer some
+            // output, unless we just finished seeking. Note that this is a single seek call, not a
+            // loop. Note also that we seek regardless of the remaining content_len. That causes
+            // the root node (either the root parent or the only chunk) to be included even if the
+            // caller requested zero bytes, so they'll still get an error if their root hash is
+            // wrong.
+            if !self.did_seek {
+                let (offset, _, _, maybe_next) = self.parser.seek_next(self.content_start);
+                self.inner.seek(io::SeekFrom::Start(cast_offset(offset)?))?;
+                match maybe_next {
+                    Some(StateNext::Header) => self.read_header()?,
+                    Some(StateNext::Parent) => self.read_parent()?,
+                    Some(StateNext::Chunk {
+                        size,
+                        skip: _,
+                        finalization: _,
+                    }) => self.read_chunk(size)?,
+                    None => {
+                        self.did_seek = true;
+                        // Fall through to the read.
+                    }
+                }
+            }
+
+            // If we're done seeking (and we might've just finished and fallen through), get to
+            // work on reading. Note this is a single read call, not a loop. If we've already
+            // supplied all the requested bytes, however, don't read any more.
+            if self.did_seek && self.content_len > 0 {
+                match self.parser.read_next() {
+                    Some(StateNext::Header) => unreachable!(),
+                    Some(StateNext::Parent) => self.read_parent()?,
+                    Some(StateNext::Chunk {
+                        size,
+                        skip: _,
+                        finalization: _,
+                    }) => {
+                        self.read_chunk(size)?;
+                    }
+                    None => {} // EOF
+                }
+            }
+        }
+
+        // Unless we're at EOF, the buffer either already had some bytes or just got refilled.
+        // Return as much as we can from it.
+        let n = cmp::min(buf.len(), self.buf_end - self.buf_start);
+        buf[..n].copy_from_slice(&self.buf[self.buf_start..][..n]);
+        self.buf_start += n;
+        Ok(n)
     }
 }
 
