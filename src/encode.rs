@@ -229,6 +229,10 @@ fn post_order_parent_nodes_final(chunk: u64) -> u8 {
 /// a 1 chunk tree is of height 0.
 pub(crate) fn pre_order_parent_nodes(chunk: u64, content_len: u64) -> u8 {
     let total_chunks = count_chunks(content_len);
+    debug_assert!(
+        chunk < total_chunks,
+        "attempted to count parent nodes after EOF"
+    );
     let remaining = total_chunks - chunk;
     let starting_bound = 64 - (remaining - 1).leading_zeros();
     let interior_bound = chunk.trailing_zeros();
