@@ -1,7 +1,7 @@
 # bao
 
-`bao` is a general purpose tree hash for files. Tree hashes have two big
-benefits over regular serial hashes:
+`bao` (pronounced "bough") is a general purpose tree hash for files.
+Tree hashes have two big benefits over regular serial hashes:
 
 - **Parallelism.** A regular hash can only occupy one CPU core, but a
   tree hash with enough input can spread the work over any number of
@@ -36,3 +36,6 @@ cd bao/bao_bin
 cargo build --release
 ./target/release/bao --help
 ```
+
+[`python/bao.py`](python/bao.py) includes a Python implementation in
+about 100 lines of code, designed to be as readable as possible.
