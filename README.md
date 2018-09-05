@@ -25,15 +25,15 @@ single-threaded streaming implementation.
 header and subtree hashes interspersed throughout, currently 1.5% larger
 than the original. `bao hash --encoded` can quickly extract the root
 hash from the encoded file, the same result as running `bao hash` on the
-original content. Given that hash, `bao decode` will stream verified
-content bytes from the encoded file, with an optional start offset.
+original content. Given that hash, `bao decode` will **stream verified
+content bytes** from the encoded file, with an optional start offset.
 
 `bao slice` takes a start offset and a length of content bytes to read
 and extracts the parts of an encoded file needed to read just those
-bytes. `bao decode-slice` takes those arguments plus the same hash that
-`bao decode` uses, and verifies and outputs the specified content bytes.
-Note that `bao hash --encoded` can read an extracted slice just like a
-full encoded file.
+bytes. `bao decode-slice` takes those arguments plus the **same hash**
+that `bao decode` uses, and verifies and outputs the specified range of
+content bytes. Note that `bao hash --encoded` can read an extracted
+slice just like a full encoded file.
 
 You can build the `bao` binary from the `bao_bin` sub-crate, like this:
 
