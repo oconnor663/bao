@@ -26,14 +26,19 @@ header and subtree hashes interspersed throughout, currently 1.5% larger
 than the original. `bao hash --encoded` can quickly extract the root
 hash from the encoded file, the same result as running `bao hash` on the
 original content. Given that hash, `bao decode` will **stream verified
-content bytes** from the encoded file, with an optional start offset.
+content bytes** from the encoded file, with an optional `--start`
+offset. `decode` can read from a pipe or a socket, unless `--start` is
+used, in which case it needs to be able to seek.
 
-`bao slice` takes a start offset and a length of content bytes to read
-and extracts the parts of an encoded file needed to read just those
-bytes. `bao decode-slice` takes those arguments plus the **same hash**
-that `bao decode` uses, and verifies and outputs the specified range of
-content bytes. Note that `bao hash --encoded` can read an extracted
-slice just like a full encoded file.
+`bao slice` takes a start offset and a byte count and extracts the parts
+of an encoded file needed to read just those bytes. `bao decode-slice`
+takes the same offset and count plus the **same hash that `decode`
+uses**, reads in the output of `slice`, and outputs the specified range
+of content bytes. While `slice` and `decode --start=...` require
+seeking, and so generally require a full encoded file on disk,
+`decode-slice` doesn't need to seek and can stream from a pipe or a
+socket like a regular `decode`. Note that `bao hash --encoded` can hash
+an extracted slice just like a full encoded file.
 
 You can build the `bao` binary from the `bao_bin` sub-crate, like this:
 
