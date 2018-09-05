@@ -20,7 +20,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const USAGE: &str = "
 Usage: bao hash [<input>] [--encoded]
        bao encode [<input>] [<output>]
-       bao decode <hash> [<input>] [<output>] [--seek=<offset>]
+       bao decode <hash> [<input>] [<output>] [--start=<offset>]
        bao slice <start> <len> [<input>] [<output>]
        bao decode-slice <hash> <start> <len> [<input>] [<output>]
        bao (--help | --version)
@@ -40,7 +40,7 @@ struct Args {
     arg_len: u64,
     flag_encoded: bool,
     flag_help: bool,
-    flag_seek: Option<u64>,
+    flag_start: Option<u64>,
     flag_version: bool,
 }
 
@@ -116,7 +116,7 @@ fn encode(_args: &Args, mut in_file: File, out_file: File) -> Result<(), Error> 
 fn decode(args: &Args, in_file: File, mut out_file: File) -> Result<(), Error> {
     let hash = parse_hash(args)?;
     // If we're not seeking, try to memmap the files.
-    if args.flag_seek.is_none() {
+    if args.flag_start.is_none() {
         if let Some(in_map) = maybe_memmap_input(&in_file)? {
             let content_len = bao::decode::parse_and_check_content_len(&in_map)?;
             if let Some(mut out_map) = maybe_memmap_output(&out_file, content_len as u128)? {
@@ -127,7 +127,7 @@ fn decode(args: &Args, in_file: File, mut out_file: File) -> Result<(), Error> {
     }
     // If one or both of the files weren't mappable, or if we're seeking, fall back to the reader.
     let mut reader = bao::decode::Reader::new(&in_file, &hash);
-    if let Some(offset) = args.flag_seek {
+    if let Some(offset) = args.flag_start {
         confirm_real_file(&in_file, "when seeking, decode input")?;
         reader.seek(io::SeekFrom::Start(offset))?;
     }

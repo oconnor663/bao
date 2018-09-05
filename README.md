@@ -26,7 +26,7 @@ header and subtree hashes interspersed throughout, currently 1.5% larger
 than the original. `bao hash --encoded` can quickly extract the root
 hash from the encoded file, the same result as running `bao hash` on the
 original content. Given that hash, `bao decode` will stream verified
-content bytes from the encoded file, with an optional seek offset.
+content bytes from the encoded file, with an optional start offset.
 
 `bao slice` takes a start offset and a length of content bytes to read
 and extracts the parts of an encoded file needed to read just those
