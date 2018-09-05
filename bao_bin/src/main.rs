@@ -126,8 +126,9 @@ fn decode(args: &Args, in_file: File, mut out_file: File) -> Result<(), Error> {
         }
     }
     // If one or both of the files weren't mappable, or if we're seeking, fall back to the reader.
-    let mut reader = bao::decode::Reader::new(in_file, &hash);
+    let mut reader = bao::decode::Reader::new(&in_file, &hash);
     if let Some(offset) = args.flag_seek {
+        confirm_real_file(&in_file, "when seeking, decode input")?;
         reader.seek(io::SeekFrom::Start(offset))?;
     }
     io::copy(&mut reader, &mut out_file)?;
