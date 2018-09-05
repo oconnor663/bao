@@ -1494,4 +1494,38 @@ mod test {
             }
         }
     }
+
+    #[test]
+    fn test_corrupted_slice() {
+        let input = make_test_input(10000);
+        let slice_start = 2500;
+        let slice_len = 5000;
+        let (hash, encoded) = encode::encode_to_vec(&input);
+
+        // Slice out the middle 5000 bytes;
+        let mut slice = Vec::new();
+        {
+            let mut extractor =
+                SliceExtractor::new(Cursor::new(&encoded), slice_start as u64, slice_len as u64);
+            extractor.read_to_end(&mut slice).unwrap();
+        }
+
+        // First confirm that the regular decode works.
+        let mut output = Vec::new();
+        let mut reader = SliceReader::new(&*slice, &hash, slice_start as u64, slice_len as u64);
+        reader.read_to_end(&mut output).unwrap();
+        assert_eq!(&input[slice_start..][..slice_len], &*output);
+
+        // Now confirm that flipping bits anywhere in the slice will corrupt it.
+        let mut i = 0;
+        while i < slice.len() {
+            let mut slice_clone = slice.clone();
+            slice_clone[i] ^= 1;
+            let mut reader =
+                SliceReader::new(&*slice_clone, &hash, slice_start as u64, slice_len as u64);
+            let err = reader.read_to_end(&mut output).unwrap_err();
+            assert_eq!(io::ErrorKind::InvalidData, err.kind());
+            i += 32;
+        }
+    }
 }
