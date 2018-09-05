@@ -1261,6 +1261,11 @@ mod test {
 
                 let res = decode_to_vec(&bad_encoded, &hash);
                 assert_eq!(Error::HashMismatch, res.unwrap_err());
+
+                let mut output = Vec::new();
+                let mut decoder = Reader::new(&bad_encoded[..], &hash);
+                let res = decoder.read_to_end(&mut output);
+                assert_eq!(io::ErrorKind::InvalidData, res.unwrap_err().kind());
             }
         }
     }
