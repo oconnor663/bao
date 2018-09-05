@@ -131,7 +131,7 @@ fn decode(args: &Args, in_file: File, mut out_file: File) -> Result<(), Error> {
         confirm_real_file(&in_file, "when seeking, decode input")?;
         reader.seek(io::SeekFrom::Start(offset))?;
     }
-    io::copy(&mut reader, &mut out_file)?;
+    allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
     Ok(())
 }
 
@@ -146,7 +146,7 @@ fn slice(args: &Args, in_file: File, mut out_file: File) -> Result<(), Error> {
 fn decode_slice(args: &Args, in_file: File, mut out_file: File) -> Result<(), Error> {
     let hash = parse_hash(&args)?;
     let mut reader = bao::decode::SliceReader::new(in_file, &hash, args.arg_start, args.arg_len);
-    io::copy(&mut reader, &mut out_file)?;
+    allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
     Ok(())
 }
 
@@ -231,4 +231,19 @@ fn parse_hash(args: &Args) -> Result<[u8; bao::hash::HASH_SIZE], Error> {
         return Err(err_msg("wrong length hash"));
     };
     Ok(*array_ref!(hash_vec, 0, bao::hash::HASH_SIZE))
+}
+
+// When streaming out decoded content, it's acceptable for the caller to pipe us
+// into e.g. `head -c 100`. We catch closed pipe errors in that case and avoid
+// erroring out. When encoding, though, we let those errors stay noisy, since
+// truncating an encoding is almost never correct.
+fn allow_broken_pipe<T>(result: io::Result<T>) -> io::Result<()> {
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => if e.kind() == io::ErrorKind::BrokenPipe {
+            Ok(())
+        } else {
+            Err(e)
+        },
+    }
 }
