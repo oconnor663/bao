@@ -45,11 +45,33 @@ pub fn encode_in_place(buf: &mut [u8], content_len: usize) -> Hash {
     }
 }
 
+pub fn encode_outboard(input: &[u8], output: &mut [u8]) -> Hash {
+    let content_len = input.len() as u64;
+    assert_eq!(
+        output.len() as u128,
+        outboard_size(content_len),
+        "output is the wrong length"
+    );
+    output[..HEADER_SIZE].copy_from_slice(&hash::encode_len(content_len));
+    if input.len() <= hash::MAX_SINGLE_THREADED {
+        encode_outboard_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
+    } else {
+        encode_outboard_recurse_rayon(input, &mut output[HEADER_SIZE..], Root(content_len))
+    }
+}
+
 pub fn encode_to_vec(input: &[u8]) -> (Hash, Vec<u8>) {
     let size = encoded_size(input.len() as u64) as usize;
     // Unsafe code here could avoid the cost of initialization, but it's not much.
     let mut output = vec![0; size];
     let hash = encode(input, &mut output);
+    (hash, output)
+}
+
+pub fn encode_outboard_to_vec(input: &[u8]) -> (Hash, Vec<u8>) {
+    let size = outboard_size(input.len() as u64) as usize;
+    let mut output = vec![0; size];
+    let hash = encode_outboard(input, &mut output);
     (hash, output)
 }
 
@@ -89,6 +111,50 @@ fn encode_recurse_rayon(input: &[u8], output: &mut [u8], finalization: Finalizat
     let (left_hash, right_hash) = rayon::join(
         || encode_recurse_rayon(left_in, left_out, NotRoot),
         || encode_recurse_rayon(right_in, right_out, NotRoot),
+    );
+    parent_out[..HASH_SIZE].copy_from_slice(&left_hash);
+    parent_out[HASH_SIZE..].copy_from_slice(&right_hash);
+    hash::parent_hash(&left_hash, &right_hash, finalization)
+}
+
+fn encode_outboard_recurse(input: &[u8], output: &mut [u8], finalization: Finalization) -> Hash {
+    debug_assert_eq!(
+        output.len() as u128,
+        outboard_subtree_size(input.len() as u64)
+    );
+    if input.len() <= CHUNK_SIZE {
+        return hash::hash_node(input, finalization);
+    }
+    let left_len = hash::left_len(input.len() as u64);
+    let (left_in, right_in) = input.split_at(left_len as usize);
+    let (parent_out, rest) = output.split_at_mut(PARENT_SIZE);
+    let (left_out, right_out) = rest.split_at_mut(outboard_subtree_size(left_len) as usize);
+    let left_hash = encode_outboard_recurse(left_in, left_out, NotRoot);
+    let right_hash = encode_outboard_recurse(right_in, right_out, NotRoot);
+    parent_out[..HASH_SIZE].copy_from_slice(&left_hash);
+    parent_out[HASH_SIZE..].copy_from_slice(&right_hash);
+    hash::parent_hash(&left_hash, &right_hash, finalization)
+}
+
+fn encode_outboard_recurse_rayon(
+    input: &[u8],
+    output: &mut [u8],
+    finalization: Finalization,
+) -> Hash {
+    debug_assert_eq!(
+        output.len() as u128,
+        outboard_subtree_size(input.len() as u64)
+    );
+    if input.len() <= CHUNK_SIZE {
+        return hash::hash_node(input, finalization);
+    }
+    let left_len = hash::left_len(input.len() as u64);
+    let (left_in, right_in) = input.split_at(left_len as usize);
+    let (parent_out, rest) = output.split_at_mut(PARENT_SIZE);
+    let (left_out, right_out) = rest.split_at_mut(outboard_subtree_size(left_len) as usize);
+    let (left_hash, right_hash) = rayon::join(
+        || encode_outboard_recurse_rayon(left_in, left_out, NotRoot),
+        || encode_outboard_recurse_rayon(right_in, right_out, NotRoot),
     );
     parent_out[..HASH_SIZE].copy_from_slice(&left_hash);
     parent_out[HASH_SIZE..].copy_from_slice(&right_hash);
@@ -525,6 +591,34 @@ mod test {
                 assert_eq!(expected_hash, writer_hash);
             }
             assert_eq!(output, writer_output);
+        }
+    }
+
+    #[test]
+    fn test_outboard_encode() {
+        for &case in hash::TEST_CASES {
+            println!("case {}", case);
+            let input = make_test_input(case);
+            let expected_hash = hash::hash(&input);
+            let (to_vec_hash, outboard) = encode_outboard_to_vec(&input);
+            assert_eq!(expected_hash, to_vec_hash);
+
+            let mut serial_output = vec![0; outboard_subtree_size(case as u64) as usize];
+            let serial_hash =
+                encode_outboard_recurse(&input, &mut serial_output, Root(case as u64));
+            assert_eq!(expected_hash, serial_hash);
+            assert_eq!(&outboard[HEADER_SIZE..], &*serial_output);
+
+            let mut parallel_outboard = vec![0; outboard_subtree_size(case as u64) as usize];
+            let parallel_hash =
+                encode_outboard_recurse_rayon(&input, &mut parallel_outboard, Root(case as u64));
+            assert_eq!(expected_hash, parallel_hash);
+            assert_eq!(&outboard[HEADER_SIZE..], &*parallel_outboard);
+
+            let mut highlevel_outboard = vec![0; outboard_size(case as u64) as usize];
+            let highlevel_hash = encode_outboard(&input, &mut highlevel_outboard);
+            assert_eq!(expected_hash, highlevel_hash);
+            assert_eq!(outboard, highlevel_outboard);
         }
     }
 

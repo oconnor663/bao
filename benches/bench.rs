@@ -96,24 +96,45 @@ fn bench_bao_hash_writer_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_encode_slice_out_short(b: &mut Bencher) {
+fn bench_bao_encode_slice_combined_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     let mut output = vec![0; encode::encoded_size(input.len() as u64) as usize];
     b.iter(|| encode::encode(&input, &mut output));
 }
 
 #[bench]
-fn bench_bao_encode_slice_out_medium(b: &mut Bencher) {
+fn bench_bao_encode_slice_combined_medium(b: &mut Bencher) {
     let input = input(b, MEDIUM);
     let mut output = vec![0; encode::encoded_size(input.len() as u64) as usize];
     b.iter(|| encode::encode(&input, &mut output));
 }
 
 #[bench]
-fn bench_bao_encode_slice_out_long(b: &mut Bencher) {
+fn bench_bao_encode_slice_combined_long(b: &mut Bencher) {
     let input = input(b, LONG);
     let mut output = vec![0; encode::encoded_size(input.len() as u64) as usize];
     b.iter(|| encode::encode(&input, &mut output));
+}
+
+#[bench]
+fn bench_bao_encode_slice_outboard_short(b: &mut Bencher) {
+    let input = input(b, SHORT);
+    let mut output = vec![0; encode::outboard_size(input.len() as u64) as usize];
+    b.iter(|| encode::encode_outboard(&input, &mut output));
+}
+
+#[bench]
+fn bench_bao_encode_slice_outboard_medium(b: &mut Bencher) {
+    let input = input(b, MEDIUM);
+    let mut output = vec![0; encode::outboard_size(input.len() as u64) as usize];
+    b.iter(|| encode::encode_outboard(&input, &mut output));
+}
+
+#[bench]
+fn bench_bao_encode_slice_outboard_long(b: &mut Bencher) {
+    let input = input(b, LONG);
+    let mut output = vec![0; encode::outboard_size(input.len() as u64) as usize];
+    b.iter(|| encode::encode_outboard(&input, &mut output));
 }
 
 #[bench]
@@ -183,7 +204,7 @@ fn bench_bao_encode_writer_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_decode_slice_out_short(b: &mut Bencher) {
+fn bench_bao_decode_slice_combined_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     let (hash, encoded) = encode::encode_to_vec(&input);
     let mut output = vec![0; input.len()];
@@ -191,7 +212,7 @@ fn bench_bao_decode_slice_out_short(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_decode_slice_out_medium(b: &mut Bencher) {
+fn bench_bao_decode_slice_combined_medium(b: &mut Bencher) {
     let input = input(b, MEDIUM);
     let (hash, encoded) = encode::encode_to_vec(&input);
     let mut output = vec![0; input.len()];
@@ -199,7 +220,7 @@ fn bench_bao_decode_slice_out_medium(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_decode_slice_out_long(b: &mut Bencher) {
+fn bench_bao_decode_slice_combined_long(b: &mut Bencher) {
     let input = input(b, LONG);
     let (hash, encoded) = encode::encode_to_vec(&input);
     let mut output = vec![0; input.len()];
