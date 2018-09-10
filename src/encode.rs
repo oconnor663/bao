@@ -162,15 +162,26 @@ fn write_parents_in_place_rayon(
 }
 
 pub fn encoded_size(content_len: u64) -> u128 {
-    encoded_subtree_size(content_len) + HEADER_SIZE as u128
+    content_len as u128 + outboard_size(content_len)
+}
+
+// Should the return type here really by u128? Two reasons: 1) It's convenient to use the same type
+// as encoded_size(), and 2) if we're ever experimenting with very small chunk sizes, we could
+// indeed overflow u64.
+pub fn outboard_size(content_len: u64) -> u128 {
+    outboard_subtree_size(content_len) + HEADER_SIZE as u128
 }
 
 pub(crate) fn encoded_subtree_size(content_len: u64) -> u128 {
+    content_len as u128 + outboard_subtree_size(content_len)
+}
+
+pub(crate) fn outboard_subtree_size(content_len: u64) -> u128 {
     // The number of parent nodes is always the number of chunks minus one. To see why this is true,
     // start with a single chunk and incrementally add chunks to the tree. Each new chunk always
     // brings one parent node along with it.
     let num_parents = count_chunks(content_len) - 1;
-    content_len as u128 + (num_parents as u128 * PARENT_SIZE as u128)
+    num_parents as u128 * PARENT_SIZE as u128
 }
 
 pub(crate) fn count_chunks(content_len: u64) -> u64 {
@@ -453,6 +464,10 @@ mod test {
             let (_, encoded) = encode_to_vec(&input);
             assert_eq!(encoded.len() as u128, encoded_size(case as u64));
             assert_eq!(encoded.len(), encoded.capacity());
+            assert_eq!(
+                encoded.len() as u128,
+                case as u128 + outboard_size(case as u64)
+            );
         }
     }
 
