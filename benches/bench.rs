@@ -168,7 +168,7 @@ fn bench_bao_encode_slice_in_place_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_encode_writer_short(b: &mut Bencher) {
+fn bench_bao_encode_writer_combined_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     let mut output = Vec::with_capacity(encode::encoded_size(input.len() as u64) as usize);
     b.iter(|| {
@@ -180,7 +180,7 @@ fn bench_bao_encode_writer_short(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_encode_writer_medium(b: &mut Bencher) {
+fn bench_bao_encode_writer_combined_medium(b: &mut Bencher) {
     let input = input(b, MEDIUM);
     let mut output = Vec::with_capacity(encode::encoded_size(input.len() as u64) as usize);
     b.iter(|| {
@@ -192,12 +192,48 @@ fn bench_bao_encode_writer_medium(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_encode_writer_long(b: &mut Bencher) {
+fn bench_bao_encode_writer_combined_long(b: &mut Bencher) {
     let input = input(b, LONG);
     let mut output = Vec::with_capacity(encode::encoded_size(input.len() as u64) as usize);
     b.iter(|| {
         output.clear();
         let mut writer = encode::Writer::new(Cursor::new(&mut output));
+        writer.write_all(&input).unwrap();
+        writer.finish().unwrap()
+    });
+}
+
+#[bench]
+fn bench_bao_encode_writer_outboard_short(b: &mut Bencher) {
+    let input = input(b, SHORT);
+    let mut output = Vec::with_capacity(encode::outboard_size(input.len() as u64) as usize);
+    b.iter(|| {
+        output.clear();
+        let mut writer = encode::OutboardWriter::new(Cursor::new(&mut output));
+        writer.write_all(&input).unwrap();
+        writer.finish().unwrap()
+    });
+}
+
+#[bench]
+fn bench_bao_encode_writer_outboard_medium(b: &mut Bencher) {
+    let input = input(b, MEDIUM);
+    let mut output = Vec::with_capacity(encode::outboard_size(input.len() as u64) as usize);
+    b.iter(|| {
+        output.clear();
+        let mut writer = encode::OutboardWriter::new(Cursor::new(&mut output));
+        writer.write_all(&input).unwrap();
+        writer.finish().unwrap()
+    });
+}
+
+#[bench]
+fn bench_bao_encode_writer_outboard_long(b: &mut Bencher) {
+    let input = input(b, LONG);
+    let mut output = Vec::with_capacity(encode::outboard_size(input.len() as u64) as usize);
+    b.iter(|| {
+        output.clear();
+        let mut writer = encode::OutboardWriter::new(Cursor::new(&mut output));
         writer.write_all(&input).unwrap();
         writer.finish().unwrap()
     });
