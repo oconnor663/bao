@@ -619,8 +619,9 @@ impl From<Error> for io::Error {
     }
 }
 
+// Shared between Reader and SliceReader (but not SliceExtractor).
 #[derive(Clone)]
-pub struct Reader<T: Read> {
+struct ReaderShared<T: Read> {
     inner: T,
     state: VerifyState,
     buf: [u8; CHUNK_SIZE],
@@ -628,7 +629,7 @@ pub struct Reader<T: Read> {
     buf_end: usize,
 }
 
-impl<T: Read> Reader<T> {
+impl<T: Read> ReaderShared<T> {
     pub fn new(inner: T, hash: &Hash) -> Self {
         Self {
             inner,
@@ -639,9 +640,6 @@ impl<T: Read> Reader<T> {
         }
     }
 
-    /// Return the total length of the stream, according the header. This doesn't require the
-    /// underlying reader to implement `Seek`. Note that this is not the remaining length, which
-    /// will be different if the reader has already advanced.
     pub fn len(&mut self) -> io::Result<u64> {
         loop {
             match self.state.len_next() {
@@ -696,28 +694,52 @@ impl<T: Read> Reader<T> {
         self.buf_end = size;
         Ok(())
     }
+
+    fn take_bytes(&mut self, buf: &mut [u8]) -> usize {
+        let take = cmp::min(self.buf_len(), buf.len());
+        buf[..take].copy_from_slice(&self.buf[self.buf_start..self.buf_start + take]);
+        self.buf_start += take;
+        take
+    }
+}
+
+#[derive(Clone)]
+pub struct Reader<T: Read> {
+    shared: ReaderShared<T>,
+}
+
+impl<T: Read> Reader<T> {
+    pub fn new(inner: T, hash: &Hash) -> Self {
+        Self {
+            shared: ReaderShared::new(inner, hash),
+        }
+    }
+
+    /// Return the total length of the stream, according the header. This doesn't require the
+    /// underlying reader to implement `Seek`. Note that this is the *total* length, regardless of
+    /// the current read position.
+    pub fn len(&mut self) -> io::Result<u64> {
+        self.shared.len()
+    }
 }
 
 impl<T: Read> Read for Reader<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // If we need more data, loop on read_next() until we read a chunk.
-        if self.buf_len() == 0 {
+        if self.shared.buf_len() == 0 {
             loop {
-                match self.state.read_next() {
-                    Some(StateNext::Header) => self.read_header()?,
-                    Some(StateNext::Parent) => self.read_parent()?,
+                match self.shared.state.read_next() {
+                    Some(StateNext::Header) => self.shared.read_header()?,
+                    Some(StateNext::Parent) => self.shared.read_parent()?,
                     Some(StateNext::Chunk { size, finalization }) => {
-                        self.read_chunk(size, finalization)?;
+                        self.shared.read_chunk(size, finalization)?;
                         break;
                     }
                     None => return Ok(0), // EOF
                 }
             }
         }
-        let take = cmp::min(self.buf_len(), buf.len());
-        buf[..take].copy_from_slice(&self.buf[self.buf_start..self.buf_start + take]);
-        self.buf_start += take;
-        Ok(take)
+        Ok(self.shared.take_bytes(buf))
     }
 }
 
@@ -728,7 +750,7 @@ impl<T: Read + Seek> Seek for Reader<T> {
         let content_len = self.len()?;
 
         // Compute our current position, and use that to compute the absolute seek offset.
-        let starting_position = self.state.position() - self.buf_len() as u64;
+        let starting_position = self.shared.state.position() - self.shared.buf_len() as u64;
         let seek_to = match pos {
             io::SeekFrom::Start(pos) => pos,
             io::SeekFrom::End(off) => add_offset(content_len, off)?,
@@ -737,22 +759,24 @@ impl<T: Read + Seek> Seek for Reader<T> {
 
         loop {
             let (maybe_buf_start, maybe_seek_offset, maybe_next) =
-                self.state.seek_next(seek_to, self.buf_end);
+                self.shared.state.seek_next(seek_to, self.shared.buf_end);
             if let Some(buf_start) = maybe_buf_start {
-                self.buf_start = buf_start;
+                self.shared.buf_start = buf_start;
             } else {
                 // Seeks outside of the current buffer must erase it, because otherwise subsequent
                 // short seeks could reuse buffer data from the wrong position.
-                self.clear_buf();
+                self.shared.clear_buf();
             }
             if let Some(offset) = maybe_seek_offset {
-                self.inner.seek(io::SeekFrom::Start(cast_offset(offset)?))?;
+                self.shared
+                    .inner
+                    .seek(io::SeekFrom::Start(cast_offset(offset)?))?;
             }
             match maybe_next {
                 Some(StateNext::Header) => unreachable!(),
-                Some(StateNext::Parent) => self.read_parent()?,
+                Some(StateNext::Parent) => self.shared.read_parent()?,
                 Some(StateNext::Chunk { size, finalization }) => {
-                    self.read_chunk(size, finalization)?
+                    self.shared.read_chunk(size, finalization)?
                 }
                 None => {
                     return Ok(seek_to);
@@ -767,7 +791,7 @@ impl<T: Read> fmt::Debug for Reader<T> {
         write!(
             f,
             "Reader {{ inner: ..., state: {:?}, buf: [...], buf_start: {}, buf_end: {} }}",
-            self.state, self.buf_start, self.buf_end
+            self.shared.state, self.shared.buf_start, self.shared.buf_end
         )
     }
 }
@@ -939,72 +963,27 @@ impl<T: Read + Seek> Read for SliceExtractor<T> {
 }
 
 pub struct SliceReader<T: Read> {
-    inner: T,
+    shared: ReaderShared<T>,
     slice_start: u64,
     slice_remaining: u64,
-    state: VerifyState,
-    buf: [u8; CHUNK_SIZE],
-    buf_start: usize,
-    buf_end: usize,
     did_seek: bool,
 }
 
 impl<T: Read> SliceReader<T> {
     pub fn new(inner: T, hash: &Hash, slice_start: u64, slice_len: u64) -> Self {
         Self {
-            inner,
+            shared: ReaderShared::new(inner, hash),
             slice_start,
             slice_remaining: slice_len,
-            state: VerifyState::new(hash),
-            buf: [0; CHUNK_SIZE],
-            buf_start: 0,
-            buf_end: 0,
             did_seek: false,
         }
-    }
-
-    fn buf_len(&self) -> usize {
-        self.buf_end - self.buf_start
-    }
-
-    fn clear_buf(&mut self) {
-        self.buf_start = 0;
-        self.buf_end = 0;
-    }
-
-    // Same as Reader.
-    fn read_header(&mut self) -> io::Result<()> {
-        let mut header = [0; HEADER_SIZE];
-        self.inner.read_exact(&mut header)?;
-        self.state.feed_header(&header);
-        Ok(())
-    }
-
-    // Same as Reader.
-    fn read_parent(&mut self) -> io::Result<()> {
-        let mut parent = [0; PARENT_SIZE];
-        self.inner.read_exact(&mut parent)?;
-        self.state.feed_parent(&parent)?;
-        Ok(())
-    }
-
-    // Same as Reader.
-    fn read_chunk(&mut self, size: usize, finalization: Finalization) -> io::Result<()> {
-        // Erase the buffer before doing any IO, so that if there's a failure subsequent reads and
-        // seeks don't think there's valid data there.
-        self.clear_buf();
-        self.inner.read_exact(&mut self.buf[..size])?;
-        let hash = hash::hash_node(&self.buf[..size], finalization);
-        self.state.feed_chunk(hash)?;
-        self.buf_end = size;
-        Ok(())
     }
 }
 
 impl<T: Read> Read for SliceReader<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // If we don't have any output ready to go, try to read more.
-        if self.buf_len() == 0 {
+        if self.shared.buf_len() == 0 {
             // If we haven't done the seek yet, do the whole thing in a loop.
             if !self.did_seek {
                 // Do the seek.
@@ -1012,24 +991,22 @@ impl<T: Read> Read for SliceReader<T> {
                 loop {
                     // Note that we ignore the returned seek offset. In a slice, the next thing we
                     // need to read is always next in the stream.
-                    let (maybe_start, _, maybe_next) =
-                        self.state.seek_next(self.slice_start, self.buf_end);
+                    let (maybe_start, _, maybe_next) = self
+                        .shared
+                        .state
+                        .seek_next(self.slice_start, self.shared.buf_end);
                     if let Some(start) = maybe_start {
-                        // If the seek needs us to skip into the middle of the buffer, we don't actually
-                        // skip bytes, because the recipient will need everything for decoding. However, we
-                        // decrement slice_bytes_read, so that the skipped bytes don't count against what
-                        // the caller asked for.
-                        self.buf_start = start;
+                        self.shared.buf_start = start;
                     } else {
                         // Seek never needs to clear the buffer, because there's only one seek.
-                        debug_assert_eq!(0, self.buf_start);
-                        debug_assert_eq!(0, self.buf_end);
+                        debug_assert_eq!(0, self.shared.buf_start);
+                        debug_assert_eq!(0, self.shared.buf_end);
                     }
                     match maybe_next {
-                        Some(StateNext::Header) => self.read_header()?,
-                        Some(StateNext::Parent) => self.read_parent()?,
+                        Some(StateNext::Header) => self.shared.read_header()?,
+                        Some(StateNext::Parent) => self.shared.read_parent()?,
                         Some(StateNext::Chunk { size, finalization }) => {
-                            self.read_chunk(size, finalization)?;
+                            self.shared.read_chunk(size, finalization)?;
                         }
                         None => break,
                     }
@@ -1038,12 +1015,12 @@ impl<T: Read> Read for SliceReader<T> {
 
             // After seeking, if we didn't already fill the buffer above, work on reading. If we've
             // already supplied all the requested bytes, however, don't read any more.
-            while self.slice_remaining > 0 && self.buf_len() == 0 {
-                match self.state.read_next() {
+            while self.slice_remaining > 0 && self.shared.buf_len() == 0 {
+                match self.shared.state.read_next() {
                     Some(StateNext::Header) => unreachable!(),
-                    Some(StateNext::Parent) => self.read_parent()?,
+                    Some(StateNext::Parent) => self.shared.read_parent()?,
                     Some(StateNext::Chunk { size, finalization }) => {
-                        self.read_chunk(size, finalization)?;
+                        self.shared.read_chunk(size, finalization)?;
                     }
                     None => break, // EOF
                 }
@@ -1054,9 +1031,7 @@ impl<T: Read> Read for SliceReader<T> {
         // Return as much as we can from it. Decrement the slice_remaining so that we know when to
         // stop.
         let want = cmp::min(buf.len(), self.slice_remaining as usize);
-        let take = cmp::min(want, self.buf_len());
-        buf[..take].copy_from_slice(&self.buf[self.buf_start..][..take]);
-        self.buf_start += take;
+        let take = self.shared.take_bytes(&mut buf[..want]);
         self.slice_remaining -= take as u64;
         Ok(take)
     }
