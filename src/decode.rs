@@ -239,6 +239,7 @@ mod parse_state {
         content_len: Option<u64>,
         next_chunk: u64,
         upcoming_parents: u8,
+        stack_depth: u8,
         encoded_offset: u128,
         length_verified: bool,
         at_root: bool,
@@ -250,6 +251,7 @@ mod parse_state {
                 content_len: None,
                 next_chunk: 0,
                 upcoming_parents: 0,
+                stack_depth: 1,
                 encoded_offset: 0,
                 length_verified: false,
                 at_root: true,
@@ -267,6 +269,11 @@ mod parse_state {
             }
         }
 
+        // VerifyState needs this to know when to pop nodes during a seek.
+        pub fn stack_depth(&self) -> usize {
+            self.stack_depth as usize
+        }
+
         // As with len_next, the ParseState doesn't strictly need to know about finalizations to do
         // its job. But its callers need to finalize, and we want to tightly gate access to
         // content_len (so that it doesn't get accidentally used without verifying it), so we
@@ -280,21 +287,12 @@ mod parse_state {
             }
         }
 
-        // The stack_and_root argument represents a lot of coupling between ParseState and
-        // VerifyState, but I'm not sure how to do better without overcomplicating the return
-        // signature.
-        fn reset_to_root(
-            &mut self,
-            stack_and_root: &mut Option<(&mut ArrayVec<[Hash; MAX_DEPTH]>, &Hash)>,
-        ) {
+        fn reset_to_root(&mut self) {
             self.next_chunk = 0;
             self.upcoming_parents = encode::pre_order_parent_nodes(0, self.content_len.unwrap());
             self.encoded_offset = HEADER_SIZE as u128;
             self.at_root = true;
-            if let &mut Some((ref mut stack, root)) = stack_and_root {
-                stack.clear();
-                stack.push(*root);
-            }
+            self.stack_depth = 1;
         }
 
         // Strictly speaking, since ParseState doesn't verify anything, it could just return the
@@ -356,10 +354,6 @@ mod parse_state {
         // seek is into that region, it will tell the caller to just adjust its buffer start,
         // rather than seeking backwards and repeating reads.
         //
-        // The stack and root hash arguments lets the parser adjust the caller's stack of upcoming
-        // hashes, if any. This means popping from the end when we seek forward, and resetting the
-        // entire stack when we seek back.
-        //
         // Returns (maybe buffer start, maybe seek, maybe state next). A None buffer start means
         // that the buffer needs to be purged (such that subsequent calls to seek would pass
         // buffered_bytes=0), otherwise the buffer should be retained and its cursor set to the new
@@ -370,7 +364,6 @@ mod parse_state {
             &mut self,
             seek_to: u64,
             buffered_bytes: usize,
-            mut stack_and_root: Option<(&mut ArrayVec<[Hash; MAX_DEPTH]>, &Hash)>,
         ) -> (Option<usize>, Option<u128>, Option<StateNext>) {
             let content_len = match self.len_next() {
                 LenNext::Next(next) => {
@@ -400,7 +393,7 @@ mod parse_state {
             let mut maybe_seek_offset = None;
             let leftmost_buffered = self.position() - buffered_bytes as u64;
             if seek_to < leftmost_buffered {
-                self.reset_to_root(&mut stack_and_root);
+                self.reset_to_root();
                 maybe_seek_offset = Some(self.encoded_offset);
             }
 
@@ -429,9 +422,7 @@ mod parse_state {
                 }
 
                 // Otherwise jump out of the current subtree and loop.
-                if let Some((ref mut stack, _)) = stack_and_root {
-                    stack.pop().unwrap();
-                }
+                self.stack_depth -= 1;
                 self.encoded_offset += encode::encoded_subtree_size(self.subtree_size());
                 maybe_seek_offset = Some(self.encoded_offset);
                 self.next_chunk += encode::count_chunks(self.subtree_size());
@@ -447,7 +438,7 @@ mod parse_state {
             assert!(self.content_len.is_none(), "second call to feed_header");
             let content_len = hash::decode_len(header);
             self.content_len = Some(content_len);
-            self.reset_to_root(&mut None);
+            self.reset_to_root();
         }
 
         pub fn advance_parent(&mut self) {
@@ -459,6 +450,7 @@ mod parse_state {
             self.encoded_offset += PARENT_SIZE as u128;
             self.length_verified = true;
             self.at_root = false;
+            self.stack_depth += 1;
         }
 
         pub fn advance_chunk(&mut self) {
@@ -470,6 +462,7 @@ mod parse_state {
             self.next_chunk += 1;
             self.length_verified = true;
             self.at_root = false;
+            self.stack_depth -= 1;
             // Note that is_eof() depends on the flag changes we just made.
             if !self.is_eof() {
                 // upcoming_parents is only meaningful if we're before EOF.
@@ -552,11 +545,18 @@ mod verify_state {
             seek_to: u64,
             buffered_bytes: usize,
         ) -> (Option<usize>, Option<u128>, Option<StateNext>) {
-            self.parser.seek_next(
-                seek_to,
-                buffered_bytes,
-                Some((&mut self.stack, &self.root_hash)),
-            )
+            let position_before = self.position();
+            let ret = self.parser.seek_next(seek_to, buffered_bytes);
+            if self.position() < position_before {
+                // Any leftward seek requires resetting the stack to the beginning.
+                self.stack.clear();
+                self.stack.push(self.root_hash);
+            }
+            debug_assert!(self.stack.len() >= self.parser.stack_depth());
+            while self.stack.len() > self.parser.stack_depth() {
+                self.stack.pop();
+            }
+            ret
         }
 
         pub fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
@@ -876,9 +876,9 @@ impl<T: Read + Seek> SliceExtractor<T> {
         if !self.seek_done {
             // Also note that this reader, unlike the others, has to account for
             // previous_chunk_size separately from buf_end.
-            let (maybe_start, maybe_seek_offset, maybe_next) =
-                self.parser
-                    .seek_next(self.slice_start, self.previous_chunk_size, None);
+            let (maybe_start, maybe_seek_offset, maybe_next) = self
+                .parser
+                .seek_next(self.slice_start, self.previous_chunk_size);
             if let Some(start) = maybe_start {
                 // If the seek needs us to skip into the middle of the buffer, we don't actually
                 // skip bytes, because the recipient will need everything for decoding. However, we
