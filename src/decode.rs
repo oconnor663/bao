@@ -619,7 +619,7 @@ impl From<Error> for io::Error {
     }
 }
 
-// Shared between Reader and SliceReader (but not SliceExtractor).
+// Shared between Reader and SliceReader (but not OutboardReader or SliceExtractor).
 #[derive(Clone)]
 struct ReaderShared<T: Read> {
     inner: T,
@@ -792,6 +792,162 @@ impl<T: Read> fmt::Debug for Reader<T> {
             f,
             "Reader {{ inner: ..., state: {:?}, buf: [...], buf_start: {}, buf_end: {} }}",
             self.shared.state, self.shared.buf_start, self.shared.buf_end
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct OutboardReader<C: Read, O: Read> {
+    content_reader: C,
+    outboard_reader: O,
+    state: VerifyState,
+    buf: [u8; CHUNK_SIZE],
+    buf_start: usize,
+    buf_end: usize,
+}
+
+impl<C: Read, O: Read> OutboardReader<C, O> {
+    pub fn new(content_reader: C, outboard_reader: O, hash: &Hash) -> Self {
+        Self {
+            content_reader,
+            outboard_reader,
+            state: VerifyState::new(hash),
+            buf: [0; CHUNK_SIZE],
+            buf_start: 0,
+            buf_end: 0,
+        }
+    }
+
+    fn len(&mut self) -> io::Result<u64> {
+        loop {
+            match self.state.len_next() {
+                LenNext::Len(len) => return Ok(len),
+                LenNext::Next(next) => match next {
+                    StateNext::Header => self.read_header()?,
+                    StateNext::Parent => self.read_parent()?,
+                    StateNext::Chunk { size, finalization } => {
+                        self.read_chunk(size, finalization)?;
+                    }
+                },
+            }
+        }
+    }
+
+    fn buf_len(&self) -> usize {
+        self.buf_end - self.buf_start
+    }
+
+    fn clear_buf(&mut self) {
+        // Note that because seeking can move buf_start backwards, it's important that we set them
+        // both to exactly zero. It wouldn't be enough to just set buf_start = buf_end.
+        self.buf_start = 0;
+        self.buf_end = 0;
+    }
+
+    fn read_header(&mut self) -> io::Result<()> {
+        let mut header = [0; HEADER_SIZE];
+        self.outboard_reader.read_exact(&mut header)?;
+        self.state.feed_header(&header);
+        Ok(())
+    }
+
+    fn read_parent(&mut self) -> io::Result<()> {
+        let mut parent = [0; PARENT_SIZE];
+        self.outboard_reader.read_exact(&mut parent)?;
+        self.state.feed_parent(&parent)?;
+        Ok(())
+    }
+
+    fn read_chunk(&mut self, size: usize, finalization: Finalization) -> io::Result<()> {
+        // Erase the buffer before doing any IO, so that if there's a failure subsequent reads and
+        // seeks don't think there's valid data there.
+        self.clear_buf();
+        self.content_reader.read_exact(&mut self.buf[..size])?;
+        let hash = hash::hash_node(&self.buf[..size], finalization);
+        self.state.feed_chunk(hash)?;
+        self.buf_end = size;
+        Ok(())
+    }
+}
+
+impl<C: Read, O: Read> Read for OutboardReader<C, O> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // If we need more data, loop on read_next() until we read a chunk.
+        if self.buf_len() == 0 {
+            loop {
+                match self.state.read_next() {
+                    Some(StateNext::Header) => self.read_header()?,
+                    Some(StateNext::Parent) => self.read_parent()?,
+                    Some(StateNext::Chunk { size, finalization }) => {
+                        self.read_chunk(size, finalization)?;
+                        break;
+                    }
+                    None => return Ok(0), // EOF
+                }
+            }
+        }
+        let take = cmp::min(self.buf_len(), buf.len());
+        buf[..take].copy_from_slice(&self.buf[self.buf_start..self.buf_start + take]);
+        self.buf_start += take;
+        Ok(take)
+    }
+}
+
+impl<C: Read + Seek, O: Read + Seek> Seek for OutboardReader<C, O> {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        // Read and verify the length if we haven't already. The seek would take care of this
+        // itself, but we need to get our hands on it directly to compute the asolute seek offset.
+        let content_len = self.len()?;
+
+        // Compute our current position, and use that to compute the absolute seek offset.
+        let starting_position = self.state.position() - self.buf_len() as u64;
+        let seek_to = match pos {
+            io::SeekFrom::Start(pos) => pos,
+            io::SeekFrom::End(off) => add_offset(content_len, off)?,
+            io::SeekFrom::Current(off) => add_offset(starting_position, off)?,
+        };
+
+        loop {
+            let (maybe_buf_start, maybe_seek_offset, maybe_next) =
+                self.state.seek_next(seek_to, self.buf_end);
+            if let Some(buf_start) = maybe_buf_start {
+                self.buf_start = buf_start;
+            } else {
+                // Seeks outside of the current buffer must erase it, because otherwise subsequent
+                // short seeks could reuse buffer data from the wrong position.
+                self.clear_buf();
+            }
+            if let Some(offset) = maybe_seek_offset {
+                // The outboard writer has to seek both of its readers. The content position of the
+                // state goes into the content reader, and the rest of the reported seek offset
+                // goes into the outboard reader.
+                let content_offset = self.state.position();
+                self.content_reader
+                    .seek(io::SeekFrom::Start(content_offset))?;
+                let outboard_offset = offset - content_offset as u128;
+                self.outboard_reader
+                    .seek(io::SeekFrom::Start(cast_offset(outboard_offset)?))?;
+            }
+            match maybe_next {
+                Some(StateNext::Header) => unreachable!(),
+                Some(StateNext::Parent) => self.read_parent()?,
+                Some(StateNext::Chunk { size, finalization }) => {
+                    self.read_chunk(size, finalization)?
+                }
+                None => {
+                    return Ok(seek_to);
+                }
+            }
+        }
+    }
+}
+
+impl<C: Read, O: Read> fmt::Debug for OutboardReader<C, O> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "OutboardReader {{ inner: ..., state: {:?}, buf: [...], buf_start: {}, buf_end: {} }}",
+            self.state, self.buf_start, self.buf_end
         )
     }
 }
@@ -1134,6 +1290,20 @@ mod test {
             let n = benchmarks::decode_in_place_fake(&output, &hash, &mut output_mut).unwrap();
             output_mut.truncate(n);
             assert_eq!(input, output_mut);
+        }
+    }
+
+    #[test]
+    fn test_outboard_reader() {
+        for &case in hash::TEST_CASES {
+            println!("case {}", case);
+            let input = make_test_input(case);
+            let (hash, outboard) = { encode::encode_outboard_to_vec(&input) };
+
+            let mut output = Vec::new();
+            let mut decoder = OutboardReader::new(&input[..], &outboard[..], &hash);
+            decoder.read_to_end(&mut output).unwrap();
+            assert_eq!(input, output);
         }
     }
 
