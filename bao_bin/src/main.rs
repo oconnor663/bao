@@ -19,9 +19,9 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const USAGE: &str = "
 Usage: bao hash [<input>] [--encoded]
-       bao encode [<input>] [<output>]
-       bao decode <hash> [<input>] [<output>] [--start=<offset>]
-       bao slice <start> <len> [<input>] [<output>]
+       bao encode [<input>] [<output> | --outboard=<file>]
+       bao decode <hash> [<input>] [<output>] [--start=<offset>] [--outboard=<file>]
+       bao slice <start> <len> [<input>] [<output>] [--outboard=<file>]
        bao decode-slice <hash> <start> <len> [<input>] [<output>]
        bao (--help | --version)
 ";
@@ -40,17 +40,15 @@ struct Args {
     arg_len: u64,
     flag_encoded: bool,
     flag_help: bool,
+    flag_outboard: Option<PathBuf>,
     flag_start: Option<u64>,
     flag_version: bool,
 }
 
 fn main() -> Result<(), Error> {
-    // TODO: Error reporting.
     let args: Args = docopt::Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
-
-    let (in_file, out_file) = in_out_files(&args)?;
 
     if args.flag_help {
         print!("{}", USAGE);
@@ -58,18 +56,18 @@ fn main() -> Result<(), Error> {
         println!("{}", VERSION);
     } else if args.cmd_hash {
         if args.flag_encoded {
-            hash_encoded(&args, in_file)?;
+            hash_encoded(&args)?;
         } else {
-            hash(&args, in_file)?;
+            hash(&args)?;
         }
     } else if args.cmd_encode {
-        encode(&args, in_file, out_file)?;
+        encode(&args)?;
     } else if args.cmd_decode {
-        decode(&args, in_file, out_file)?;
+        decode(&args)?;
     } else if args.cmd_slice {
-        slice(&args, in_file, out_file)?;
+        slice(&args)?;
     } else if args.cmd_decode_slice {
-        decode_slice(&args, in_file, out_file)?;
+        decode_slice(&args)?;
     } else {
         unreachable!();
     }
@@ -77,7 +75,8 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn hash(_args: &Args, mut in_file: File) -> Result<(), Error> {
+fn hash(args: &Args) -> Result<(), Error> {
+    let mut in_file = open_input(&args.arg_input)?;
     let hash;
     if let Some(map) = maybe_memmap_input(&in_file)? {
         hash = bao::hash::hash(&map);
@@ -90,33 +89,57 @@ fn hash(_args: &Args, mut in_file: File) -> Result<(), Error> {
     Ok(())
 }
 
-fn hash_encoded(_args: &Args, mut in_file: File) -> Result<(), Error> {
+fn hash_encoded(args: &Args) -> Result<(), Error> {
+    let mut in_file = open_input(&args.arg_input)?;
     let hash = bao::decode::hash_from_encoded(&mut in_file)?;
     println!("{}", hex::encode(hash));
     Ok(())
 }
 
-fn encode(_args: &Args, mut in_file: File, out_file: File) -> Result<(), Error> {
+fn encode(args: &Args) -> Result<(), Error> {
+    let mut in_file = open_input(&args.arg_input)?;
+    let out_maybe_path = if args.flag_outboard.is_some() {
+        &args.flag_outboard
+    } else {
+        &args.arg_output
+    };
+    let out_file = open_output(out_maybe_path)?;
     if let Some(in_map) = maybe_memmap_input(&in_file)? {
-        let target_len = bao::encode::encoded_size(in_map.len() as u64);
+        let target_len = if args.flag_outboard.is_some() {
+            bao::encode::outboard_size(in_map.len() as u64)
+        } else {
+            bao::encode::encoded_size(in_map.len() as u64)
+        };
         if let Some(mut out_map) = maybe_memmap_output(&out_file, target_len)? {
-            bao::encode::encode(&in_map, &mut out_map);
+            if args.flag_outboard.is_some() {
+                bao::encode::encode_outboard(&in_map, &mut out_map);
+            } else {
+                bao::encode::encode(&in_map, &mut out_map);
+            }
             return Ok(());
         }
     }
     // If one or both of the files weren't mappable, fall back to the writer. First check that we
     // have an actual file and not a pipe, because the writer requires seek.
     confirm_real_file(&out_file, "encode output")?;
-    let mut writer = bao::encode::Writer::new(out_file);
-    io::copy(&mut in_file, &mut writer)?;
-    writer.finish()?;
+    if args.flag_outboard.is_some() {
+        let mut writer = bao::encode::OutboardWriter::new(out_file);
+        io::copy(&mut in_file, &mut writer)?;
+        writer.finish()?;
+    } else {
+        let mut writer = bao::encode::Writer::new(out_file);
+        io::copy(&mut in_file, &mut writer)?;
+        writer.finish()?;
+    };
     Ok(())
 }
 
-fn decode(args: &Args, in_file: File, mut out_file: File) -> Result<(), Error> {
+fn decode(args: &Args) -> Result<(), Error> {
+    let in_file = open_input(&args.arg_input)?;
+    let mut out_file = open_output(&args.arg_output)?;
     let hash = parse_hash(args)?;
-    // If we're not seeking, try to memmap the files.
-    if args.flag_start.is_none() {
+    // If we're not seeking or outboard, try to memmap the files.
+    if args.flag_start.is_none() && args.flag_outboard.is_none() {
         if let Some(in_map) = maybe_memmap_input(&in_file)? {
             let content_len = bao::decode::parse_and_check_content_len(&in_map)?;
             if let Some(mut out_map) = maybe_memmap_output(&out_file, content_len as u128)? {
@@ -125,43 +148,76 @@ fn decode(args: &Args, in_file: File, mut out_file: File) -> Result<(), Error> {
             }
         }
     }
-    // If one or both of the files weren't mappable, or if we're seeking, fall back to the reader.
-    let mut reader = bao::decode::Reader::new(&in_file, &hash);
-    if let Some(offset) = args.flag_start {
-        confirm_real_file(&in_file, "when seeking, decode input")?;
-        reader.seek(io::SeekFrom::Start(offset))?;
+    // If one or both of the files weren't mappable, or if we're seeking or outboard, fall back to
+    // the reader.
+    if args.flag_outboard.is_some() {
+        let outboard_file = open_input(&args.flag_outboard)?;
+        let mut reader = bao::decode::OutboardReader::new(&in_file, &outboard_file, &hash);
+        if let Some(offset) = args.flag_start {
+            confirm_real_file(&in_file, "when seeking, decode input")?;
+            confirm_real_file(&outboard_file, "when seeking, decode input")?;
+            reader.seek(io::SeekFrom::Start(offset))?;
+        }
+        allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
+    } else {
+        let mut reader = bao::decode::Reader::new(&in_file, &hash);
+        if let Some(offset) = args.flag_start {
+            confirm_real_file(&in_file, "when seeking, decode input")?;
+            reader.seek(io::SeekFrom::Start(offset))?;
+        }
+        allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
     }
-    allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
     Ok(())
 }
 
-fn slice(args: &Args, in_file: File, mut out_file: File) -> Result<(), Error> {
-    // Slice extraction requires seek.
-    confirm_real_file(&in_file, "slicing input")?;
-    let mut reader = bao::decode::SliceExtractor::new(in_file, args.arg_start, args.arg_len);
-    io::copy(&mut reader, &mut out_file)?;
+fn slice(args: &Args) -> Result<(), Error> {
+    let in_file = open_input(&args.arg_input)?;
+    let mut out_file = open_output(&args.arg_output)?;
+    if args.flag_outboard.is_some() {
+        let outboard_file = open_input(&args.flag_outboard)?;
+        // Slice extraction requires seek.
+        confirm_real_file(&in_file, "slicing input")?;
+        confirm_real_file(&outboard_file, "slicing input")?;
+        let mut reader = bao::decode::OutboardSliceExtractor::new(
+            in_file,
+            outboard_file,
+            args.arg_start,
+            args.arg_len,
+        );
+        io::copy(&mut reader, &mut out_file)?;
+    } else {
+        // Slice extraction requires seek.
+        confirm_real_file(&in_file, "slicing input")?;
+        let mut reader = bao::decode::SliceExtractor::new(in_file, args.arg_start, args.arg_len);
+        io::copy(&mut reader, &mut out_file)?;
+    }
     Ok(())
 }
 
-fn decode_slice(args: &Args, in_file: File, mut out_file: File) -> Result<(), Error> {
+fn decode_slice(args: &Args) -> Result<(), Error> {
+    let in_file = open_input(&args.arg_input)?;
+    let mut out_file = open_output(&args.arg_output)?;
     let hash = parse_hash(&args)?;
     let mut reader = bao::decode::SliceReader::new(in_file, &hash, args.arg_start, args.arg_len);
     allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
     Ok(())
 }
 
-fn in_out_files(args: &Args) -> Result<(File, File), Error> {
-    let in_file = if let Some(ref input_path) = args.arg_input {
-        if input_path == Path::new("-") {
+fn open_input(maybe_path: &Option<PathBuf>) -> Result<File, Error> {
+    Ok(if let Some(ref path) = maybe_path {
+        if path == Path::new("-") {
             os_pipe::dup_stdin()?.into()
         } else {
-            File::open(input_path)?
+            File::open(path)?
         }
     } else {
         os_pipe::dup_stdin()?.into()
-    };
-    let out_file = if let Some(ref output_path) = args.arg_output {
-        if output_path == Path::new("-") {
+    })
+}
+
+fn open_output(maybe_path: &Option<PathBuf>) -> Result<File, Error> {
+    Ok(if let Some(ref path) = maybe_path {
+        if path == Path::new("-") {
             os_pipe::dup_stdout()?.into()
         } else {
             // Both reading and writing permissions are required for MmapMut.
@@ -169,12 +225,11 @@ fn in_out_files(args: &Args) -> Result<(File, File), Error> {
                 .read(true)
                 .write(true)
                 .create(true)
-                .open(output_path)?
+                .open(path)?
         }
     } else {
         os_pipe::dup_stdout()?.into()
-    };
-    Ok((in_file, out_file))
+    })
 }
 
 fn maybe_memmap_input(in_file: &File) -> Result<Option<memmap::Mmap>, Error> {
