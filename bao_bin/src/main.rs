@@ -19,7 +19,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const USAGE: &str = "
 Usage: bao hash [<input>] [--encoded]
-       bao encode [<input>] [<output> | --outboard=<file>]
+       bao encode <input> (<output> | --outboard=<file>)
        bao decode <hash> [<input>] [<output>] [--start=<offset>] [--outboard=<file>]
        bao slice <start> <len> [<input>] [<output>] [--outboard=<file>]
        bao decode-slice <hash> <start> <len> [<input>] [<output>]
