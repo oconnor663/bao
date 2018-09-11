@@ -225,6 +225,7 @@ fn open_output(maybe_path: &Option<PathBuf>) -> Result<File, Error> {
                 .read(true)
                 .write(true)
                 .create(true)
+                .truncate(true)
                 .open(path)?
         }
     } else {
