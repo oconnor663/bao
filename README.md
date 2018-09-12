@@ -1,4 +1,8 @@
-# bao
+# bao [![Build Status](https://travis-ci.org/oconnor663/bao.svg?branch=master)](https://travis-ci.org/oconnor663/bao) [![Build status](https://ci.appveyor.com/api/projects/status/yt1vchury2xtqphk/branch/master?svg=true)](https://ci.appveyor.com/project/oconnor663/bao/branch/master) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao)
+
+[Repo](https://github.com/oconnor663/bao) —
+[Docs](https://docs.rs/bao) —
+[Crate](https://crates.io/crates/bao)
 
 `bao` (pronounced "bough") is a general purpose tree hash for files.
 Tree hashes have two big benefits over regular serial hashes:
