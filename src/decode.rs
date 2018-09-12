@@ -1567,4 +1567,29 @@ mod test {
             i += 32;
         }
     }
+
+    #[test]
+    fn test_slice_entire() {
+        // If a slice starts at the beginning (actually anywere in the first chunk) and includes
+        // entire length of the content (or at least one byte in the last chunk), the slice should
+        // be exactly the same as the entire encoded tree. This can act as a cheap way to convert
+        // an outboard tree to a combined one.
+        for &case in hash::TEST_CASES {
+            println!("case {}", case);
+            let input = make_test_input(case);
+            let (_, encoded) = encode::encode_to_vec(&input);
+            let (_, outboard) = encode::encode_outboard_to_vec(&input);
+            let mut slice = Vec::new();
+            {
+                let mut extractor = SliceExtractor::new_outboard(
+                    Cursor::new(&input),
+                    Cursor::new(&outboard),
+                    0,
+                    case as u64,
+                );
+                extractor.read_to_end(&mut slice).unwrap();
+            }
+            assert_eq!(encoded, slice);
+        }
+    }
 }
