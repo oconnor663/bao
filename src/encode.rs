@@ -582,6 +582,7 @@ mod test {
         }
     }
 
+    #[cfg(feature = "python")]
     #[test]
     fn compare_encoded_to_python() {
         for &case in hash::TEST_CASES {

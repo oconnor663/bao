@@ -7,7 +7,7 @@ rust:
   - beta
   - nightly
 script:
-  # With std.
-  - cargo test -vv --all-features
+  # With std, but skip python tests.
+  - cargo test -vv --no-default-features --features std
   # Without std. Currently only the build is supported.
   - cargo build -vv --no-default-features

@@ -27,6 +27,7 @@ pub mod hash;
 mod test {
     use std::process::Command;
 
+    #[cfg(feature = "python")]
     #[test]
     fn run_python_tests() {
         let output = Command::new("python3")

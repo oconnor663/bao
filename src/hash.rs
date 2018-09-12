@@ -393,6 +393,7 @@ mod test {
         }
     }
 
+    #[cfg(feature = "python")]
     #[test]
     fn test_compare_python() {
         for &case in TEST_CASES {

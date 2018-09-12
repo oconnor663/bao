@@ -7,7 +7,9 @@ license = "MIT"
 repository = "https://github.com/oconnor663/bao"
 
 [features]
-default = ["std"]
+default = ["std", "python"]
+# Gates the Python tests, because getting them working in CI is a drag.
+python = []
 std = ["byteorder/std", "blake2b_simd/std", "rayon"]
 
 [dependencies]
