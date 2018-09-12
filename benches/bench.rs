@@ -14,10 +14,10 @@ use test::Bencher;
 
 // The tiniest relvant benchmark is one that fills a single BLAKE2b block. But if we don't account
 // for the header bytes, we'll actually fill two blocks, and the results will look awful.
-const SHORT: usize = blake2b_simd::BLOCKBYTES - hash::HEADER_SIZE;
+const SHORT: usize = blake2b_simd::BLOCKBYTES - hash::benchmarks::HEADER_SIZE;
 
 // Same as short, but for a single chunk of input.
-const MEDIUM: usize = hash::CHUNK_SIZE - hash::HEADER_SIZE;
+const MEDIUM: usize = hash::benchmarks::CHUNK_SIZE - hash::benchmarks::HEADER_SIZE;
 
 const LONG: usize = 10_000_000;
 

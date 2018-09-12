@@ -387,7 +387,7 @@ impl fmt::Debug for FlipperState {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum FlipperNext {
+enum FlipperNext {
     FeedParent,
     TakeParent,
     Chunk(usize),

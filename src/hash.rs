@@ -8,11 +8,11 @@ use std::io;
 use std::mem;
 
 pub const HASH_SIZE: usize = 32;
-pub const PARENT_SIZE: usize = 2 * HASH_SIZE;
-pub const HEADER_SIZE: usize = 8;
-pub const CHUNK_SIZE: usize = 4096;
-pub const MAX_DEPTH: usize = 64;
-pub const MAX_SINGLE_THREADED: usize = 4 * CHUNK_SIZE;
+pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
+pub(crate) const HEADER_SIZE: usize = 8;
+pub(crate) const CHUNK_SIZE: usize = 4096;
+pub(crate) const MAX_DEPTH: usize = 64;
+pub(crate) const MAX_SINGLE_THREADED: usize = 4 * CHUNK_SIZE;
 
 pub type Hash = [u8; HASH_SIZE];
 pub(crate) type ParentNode = [u8; 2 * HASH_SIZE];
@@ -39,7 +39,7 @@ pub(crate) fn new_blake2b_state() -> blake2b_simd::State {
 // That means that no root hash can ever collide with an interior hash, or with
 // the root of a different size tree.
 #[derive(Clone, Copy, Debug)]
-pub enum Finalization {
+pub(crate) enum Finalization {
     NotRoot,
     Root(u64),
 }
@@ -305,6 +305,12 @@ impl io::Write for Writer {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
+}
+
+#[doc(hidden)]
+pub mod benchmarks {
+    pub const HEADER_SIZE: usize = super::HEADER_SIZE;
+    pub const CHUNK_SIZE: usize = super::CHUNK_SIZE;
 }
 
 // Interesting input lengths to run tests on.

@@ -235,7 +235,7 @@ mod parse_state {
     use super::*;
 
     #[derive(Clone, Debug)]
-    pub struct ParseState {
+    pub(crate) struct ParseState {
         content_len: Option<u64>,
         next_chunk: u64,
         upcoming_parents: u8,
@@ -246,7 +246,7 @@ mod parse_state {
     }
 
     impl ParseState {
-        pub fn new() -> Self {
+        pub(crate) fn new() -> Self {
             Self {
                 content_len: None,
                 next_chunk: 0,
@@ -258,7 +258,7 @@ mod parse_state {
             }
         }
 
-        pub fn position(&self) -> u64 {
+        pub(crate) fn position(&self) -> u64 {
             if let Some(content_len) = self.content_len {
                 cmp::min(
                     content_len,
@@ -270,7 +270,7 @@ mod parse_state {
         }
 
         // VerifyState needs this to know when to pop nodes during a seek.
-        pub fn stack_depth(&self) -> usize {
+        pub(crate) fn stack_depth(&self) -> usize {
             self.stack_depth as usize
         }
 
@@ -278,7 +278,7 @@ mod parse_state {
         // its job. But its callers need to finalize, and we want to tightly gate access to
         // content_len (so that it doesn't get accidentally used without verifying it), so we
         // centralize the logic here.
-        pub fn finalization(&self) -> Finalization {
+        pub(crate) fn finalization(&self) -> Finalization {
             let content_len = self.content_len.expect("finalization with no len");
             if self.at_root {
                 Root(content_len)
@@ -306,7 +306,7 @@ mod parse_state {
         // All of our callers buffer the last chunk, so this won't ultimately cause the user to skip
         // over any input. But a caller that didn't buffer anything would need to account for this
         // somehow.
-        pub fn len_next(&self) -> LenNext {
+        pub(crate) fn len_next(&self) -> LenNext {
             match (self.content_len, self.length_verified) {
                 (None, false) => LenNext::Next(StateNext::Header),
                 (None, true) => unreachable!(),
@@ -331,7 +331,7 @@ mod parse_state {
             }
         }
 
-        pub fn read_next(&self) -> Option<StateNext> {
+        pub(crate) fn read_next(&self) -> Option<StateNext> {
             let content_len = match self.len_next() {
                 LenNext::Next(next) => return Some(next),
                 LenNext::Len(len) => len,
@@ -360,7 +360,7 @@ mod parse_state {
         // start value. A non-None seek value means that the caller should execute a seek on the
         // underlying reader, with the offset measured from the start. No state next means the seek
         // is done, though the first two arguments still need to be respected first.
-        pub fn seek_next(
+        pub(crate) fn seek_next(
             &mut self,
             seek_to: u64,
             buffered_bytes: usize,
@@ -434,14 +434,14 @@ mod parse_state {
             }
         }
 
-        pub fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
+        pub(crate) fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
             assert!(self.content_len.is_none(), "second call to feed_header");
             let content_len = hash::decode_len(header);
             self.content_len = Some(content_len);
             self.reset_to_root();
         }
 
-        pub fn advance_parent(&mut self) {
+        pub(crate) fn advance_parent(&mut self) {
             assert!(
                 self.upcoming_parents > 0,
                 "too many calls to advance_parent"
@@ -453,7 +453,7 @@ mod parse_state {
             self.stack_depth += 1;
         }
 
-        pub fn advance_chunk(&mut self) {
+        pub(crate) fn advance_chunk(&mut self) {
             assert_eq!(
                 0, self.upcoming_parents,
                 "advance_chunk with non-zero upcoming parents"
@@ -489,7 +489,7 @@ mod parse_state {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum StateNext {
+pub(crate) enum StateNext {
     Header,
     Parent,
     Chunk {
@@ -499,7 +499,7 @@ pub enum StateNext {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum LenNext {
+pub(crate) enum LenNext {
     Len(u64),
     Next(StateNext),
 }
@@ -511,14 +511,14 @@ mod verify_state {
     use super::*;
 
     #[derive(Clone)]
-    pub struct VerifyState {
+    pub(crate) struct VerifyState {
         stack: ArrayVec<[Hash; MAX_DEPTH]>,
         parser: ParseState,
         root_hash: Hash,
     }
 
     impl VerifyState {
-        pub fn new(hash: &Hash) -> Self {
+        pub(crate) fn new(hash: &Hash) -> Self {
             let mut stack = ArrayVec::new();
             stack.push(*hash);
             Self {
@@ -528,19 +528,19 @@ mod verify_state {
             }
         }
 
-        pub fn position(&self) -> u64 {
+        pub(crate) fn position(&self) -> u64 {
             self.parser.position()
         }
 
-        pub fn read_next(&self) -> Option<StateNext> {
+        pub(crate) fn read_next(&self) -> Option<StateNext> {
             self.parser.read_next()
         }
 
-        pub fn len_next(&self) -> LenNext {
+        pub(crate) fn len_next(&self) -> LenNext {
             self.parser.len_next()
         }
 
-        pub fn seek_next(
+        pub(crate) fn seek_next(
             &mut self,
             seek_to: u64,
             buffered_bytes: usize,
@@ -559,11 +559,11 @@ mod verify_state {
             ret
         }
 
-        pub fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
+        pub(crate) fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
             self.parser.feed_header(header);
         }
 
-        pub fn feed_parent(&mut self, parent: &hash::ParentNode) -> Result<()> {
+        pub(crate) fn feed_parent(&mut self, parent: &hash::ParentNode) -> Result<()> {
             let finalization = self.parser.finalization();
             let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
             let computed_hash = hash::hash_node(parent, finalization);
@@ -579,7 +579,7 @@ mod verify_state {
             Ok(())
         }
 
-        pub fn feed_chunk(&mut self, chunk_hash: Hash) -> Result<()> {
+        pub(crate) fn feed_chunk(&mut self, chunk_hash: Hash) -> Result<()> {
             let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
             if !constant_time_eq(&chunk_hash, &expected_hash) {
                 return Err(Error::HashMismatch);
