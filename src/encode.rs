@@ -403,6 +403,7 @@ pub struct Writer<T: Read + Write + Seek> {
     total_len: u64,
     chunk_state: blake2b_simd::State,
     tree_state: hash::State,
+    outboard: bool,
 }
 
 impl<T: Read + Write + Seek> Writer<T> {
@@ -412,7 +413,14 @@ impl<T: Read + Write + Seek> Writer<T> {
             total_len: 0,
             chunk_state: hash::new_blake2b_state(),
             tree_state: hash::State::new(),
+            outboard: false,
         }
+    }
+
+    pub fn new_outboard(inner: T) -> Self {
+        let mut writer = Self::new(inner);
+        writer.outboard = true;
+        writer
     }
 
     pub fn finish(&mut self) -> io::Result<Hash> {
@@ -437,9 +445,55 @@ impl<T: Read + Write + Seek> Writer<T> {
         self.inner.write_all(&hash::encode_len(self.total_len))?;
 
         // Then flip the tree to be pre-order.
-        flip_post_order_stream(&mut self.inner)?;
+        self.flip_post_order_stream()?;
 
         Ok(root_hash)
+    }
+
+    fn flip_post_order_stream(&mut self) -> io::Result<()> {
+        let mut write_cursor = self.inner.seek(End(0))?;
+        let mut read_cursor = write_cursor - HEADER_SIZE as u64;
+        let mut header = [0; HEADER_SIZE];
+        self.inner.seek(Start(read_cursor))?;
+        self.inner.read_exact(&mut header)?;
+        let content_len = hash::decode_len(&header);
+        let mut flipper = FlipperState::new(content_len);
+        loop {
+            match flipper.next() {
+                FlipperNext::FeedParent => {
+                    let mut parent = [0; PARENT_SIZE];
+                    self.inner.seek(Start(read_cursor - PARENT_SIZE as u64))?;
+                    self.inner.read_exact(&mut parent)?;
+                    read_cursor -= PARENT_SIZE as u64;
+                    flipper.feed_parent(parent);
+                }
+                FlipperNext::TakeParent => {
+                    let parent = flipper.take_parent();
+                    self.inner.seek(Start(write_cursor - PARENT_SIZE as u64))?;
+                    self.inner.write_all(&parent)?;
+                    write_cursor -= PARENT_SIZE as u64;
+                }
+                FlipperNext::Chunk(size) => {
+                    // In outboard moded, we skip over chunks.
+                    if !self.outboard {
+                        let mut chunk = [0; CHUNK_SIZE];
+                        self.inner.seek(Start(read_cursor - size as u64))?;
+                        self.inner.read_exact(&mut chunk[..size])?;
+                        read_cursor -= size as u64;
+                        self.inner.seek(Start(write_cursor - size as u64))?;
+                        self.inner.write_all(&chunk[..size])?;
+                        write_cursor -= size as u64;
+                    }
+                    flipper.chunk_moved();
+                }
+                FlipperNext::Done => {
+                    debug_assert_eq!(HEADER_SIZE as u64, write_cursor);
+                    self.inner.seek(Start(0))?;
+                    self.inner.write_all(&header)?;
+                    return Ok(());
+                }
+            }
+        }
     }
 }
 
@@ -459,7 +513,12 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
         }
         let want = CHUNK_SIZE - self.chunk_state.count() as usize;
         let take = cmp::min(want, buf.len());
-        let written = self.inner.write(&buf[..take])?;
+        // The outboard mode skips writing content to the stream.
+        let written = if self.outboard {
+            take
+        } else {
+            self.inner.write(&buf[..take])?
+        };
         self.chunk_state.update(&buf[..written]);
         self.total_len += written as u64;
         Ok(written)
@@ -467,158 +526,6 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
 
     fn flush(&mut self) -> io::Result<()> {
         self.inner.flush()
-    }
-}
-
-fn flip_post_order_stream<T: Read + Write + Seek>(stream: &mut T) -> io::Result<()> {
-    let mut write_cursor = stream.seek(End(0))?;
-    let mut read_cursor = write_cursor - HEADER_SIZE as u64;
-    let mut header = [0; HEADER_SIZE];
-    stream.seek(Start(read_cursor))?;
-    stream.read_exact(&mut header)?;
-    let content_len = hash::decode_len(&header);
-    let mut flipper = FlipperState::new(content_len);
-    loop {
-        match flipper.next() {
-            FlipperNext::FeedParent => {
-                let mut parent = [0; PARENT_SIZE];
-                stream.seek(Start(read_cursor - PARENT_SIZE as u64))?;
-                stream.read_exact(&mut parent)?;
-                read_cursor -= PARENT_SIZE as u64;
-                flipper.feed_parent(parent);
-            }
-            FlipperNext::TakeParent => {
-                let parent = flipper.take_parent();
-                stream.seek(Start(write_cursor - PARENT_SIZE as u64))?;
-                stream.write_all(&parent)?;
-                write_cursor -= PARENT_SIZE as u64;
-            }
-            FlipperNext::Chunk(size) => {
-                let mut chunk = [0; CHUNK_SIZE];
-                stream.seek(Start(read_cursor - size as u64))?;
-                stream.read_exact(&mut chunk[..size])?;
-                read_cursor -= size as u64;
-                stream.seek(Start(write_cursor - size as u64))?;
-                stream.write_all(&chunk[..size])?;
-                write_cursor -= size as u64;
-                flipper.chunk_moved();
-            }
-            FlipperNext::Done => {
-                debug_assert_eq!(HEADER_SIZE as u64, write_cursor);
-                stream.seek(Start(0))?;
-                stream.write_all(&header)?;
-                return Ok(());
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct OutboardWriter<T: Read + Write + Seek> {
-    inner: T,
-    total_len: u64,
-    chunk_state: blake2b_simd::State,
-    tree_state: hash::State,
-}
-
-impl<T: Read + Write + Seek> OutboardWriter<T> {
-    pub fn new(inner: T) -> Self {
-        Self {
-            inner,
-            total_len: 0,
-            chunk_state: hash::new_blake2b_state(),
-            tree_state: hash::State::new(),
-        }
-    }
-
-    pub fn finish(&mut self) -> io::Result<Hash> {
-        // First finish the post-order encoding.
-        let root_hash;
-        if self.total_len <= CHUNK_SIZE as u64 {
-            root_hash = hash::finalize_hash(&mut self.chunk_state, Root(self.total_len));
-        } else {
-            let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
-            self.tree_state
-                .push_subtree(&chunk_hash, self.chunk_state.count() as usize);
-            loop {
-                match self.tree_state.merge_finish() {
-                    hash::StateFinish::Parent(parent) => self.inner.write_all(&parent)?,
-                    hash::StateFinish::Root(root) => {
-                        root_hash = root;
-                        break;
-                    }
-                }
-            }
-        }
-        self.inner.write_all(&hash::encode_len(self.total_len))?;
-
-        // Then flip the tree to be pre-order.
-        flip_post_order_stream_outboard(&mut self.inner)?;
-
-        Ok(root_hash)
-    }
-}
-
-impl<T: Read + Write + Seek> Write for OutboardWriter<T> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if buf.is_empty() {
-            // Without more bytes coming, we're not sure how to finalize.
-            return Ok(0);
-        }
-        if self.chunk_state.count() as usize == CHUNK_SIZE {
-            let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
-            self.chunk_state = hash::new_blake2b_state();
-            self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
-            while let Some(parent) = self.tree_state.merge_parent() {
-                self.inner.write_all(&parent)?;
-            }
-        }
-        let want = CHUNK_SIZE - self.chunk_state.count() as usize;
-        let take = cmp::min(want, buf.len());
-        self.chunk_state.update(&buf[..take]);
-        self.total_len += take as u64;
-        Ok(take)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.inner.flush()
-    }
-}
-
-fn flip_post_order_stream_outboard<T: Read + Write + Seek>(stream: &mut T) -> io::Result<()> {
-    let mut write_cursor = stream.seek(End(0))?;
-    let mut read_cursor = write_cursor - HEADER_SIZE as u64;
-    let mut header = [0; HEADER_SIZE];
-    stream.seek(Start(read_cursor))?;
-    stream.read_exact(&mut header)?;
-    let content_len = hash::decode_len(&header);
-    let mut flipper = FlipperState::new(content_len);
-    loop {
-        match flipper.next() {
-            FlipperNext::FeedParent => {
-                let mut parent = [0; PARENT_SIZE];
-                stream.seek(Start(read_cursor - PARENT_SIZE as u64))?;
-                stream.read_exact(&mut parent)?;
-                read_cursor -= PARENT_SIZE as u64;
-                flipper.feed_parent(parent);
-            }
-            FlipperNext::TakeParent => {
-                let parent = flipper.take_parent();
-                stream.seek(Start(write_cursor - PARENT_SIZE as u64))?;
-                stream.write_all(&parent)?;
-                write_cursor -= PARENT_SIZE as u64;
-            }
-            FlipperNext::Chunk(_) => {
-                // The outboard case skips over chunks.
-                flipper.chunk_moved();
-            }
-            FlipperNext::Done => {
-                debug_assert_eq!(HEADER_SIZE as u64, write_cursor);
-                stream.seek(Start(0))?;
-                stream.write_all(&header)?;
-                return Ok(());
-            }
-        }
     }
 }
 
@@ -727,7 +634,7 @@ mod test {
 
             let mut writer_outboard = Vec::new();
             {
-                let mut writer = OutboardWriter::new(Cursor::new(&mut writer_outboard));
+                let mut writer = Writer::new_outboard(Cursor::new(&mut writer_outboard));
                 writer.write_all(&input).unwrap();
                 let writer_hash = writer.finish().unwrap();
                 assert_eq!(expected_hash, writer_hash);

@@ -122,15 +122,14 @@ fn encode(args: &Args) -> Result<(), Error> {
     // If one or both of the files weren't mappable, fall back to the writer. First check that we
     // have an actual file and not a pipe, because the writer requires seek.
     confirm_real_file(&out_file, "encode output")?;
+    let mut writer;
     if args.flag_outboard.is_some() {
-        let mut writer = bao::encode::OutboardWriter::new(out_file);
-        io::copy(&mut in_file, &mut writer)?;
-        writer.finish()?;
+        writer = bao::encode::Writer::new_outboard(out_file);
     } else {
-        let mut writer = bao::encode::Writer::new(out_file);
-        io::copy(&mut in_file, &mut writer)?;
-        writer.finish()?;
+        writer = bao::encode::Writer::new(out_file);
     };
+    io::copy(&mut in_file, &mut writer)?;
+    writer.finish()?;
     Ok(())
 }
 
