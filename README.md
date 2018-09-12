@@ -66,3 +66,14 @@ cargo build --release
 
 [`python/bao.py`](python/bao.py) includes a Python implementation in
 about 100 lines of code, designed to be as readable as possible.
+
+There is `no_std` support if you set `default-features = false` in your
+`Cargo.toml`. Most of the standalone functions that don't obviously
+depend on `std` are available. For example, `encode::encode` is
+available with a single threaded implementation, but
+`encode::encode_to_vec` isn't avialable. Of the streaming
+implementations, only `hash::Writer` is available, because the encoding
+and decoding implementations rely more on the `std::io` traits. If there
+are any callers that want to do streaming encoding or decoding under
+`no_std`, please let me know, and we can figure out which
+libcore-compatible IO interfaces it makes sense to use.
