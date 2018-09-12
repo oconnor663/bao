@@ -745,16 +745,16 @@ pub struct Reader<T: Read, O: Read> {
 }
 
 impl<T: Read> Reader<T, T> {
-    pub fn new(inner: T, hash: &Hash) -> Reader<T, T> {
-        Reader {
+    pub fn new(inner: T, hash: &Hash) -> Self {
+        Self {
             shared: ReaderShared::new(inner, None, hash),
         }
     }
 }
 
 impl<T: Read, O: Read> Reader<T, O> {
-    pub fn new_outboard(inner: T, outboard: O, hash: &Hash) -> Reader<T, O> {
-        Reader {
+    pub fn new_outboard(inner: T, outboard: O, hash: &Hash) -> Self {
+        Self {
             shared: ReaderShared::new(inner, Some(outboard), hash),
         }
     }
@@ -945,8 +945,9 @@ impl<T: Read> Read for SliceReader<T> {
     }
 }
 
-pub struct SliceExtractor<T: Read + Seek> {
-    inner: T,
+pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
+    input: T,
+    outboard: Option<O>,
     slice_start: u64,
     slice_len: u64,
     slice_bytes_read: u64,
@@ -958,10 +959,21 @@ pub struct SliceExtractor<T: Read + Seek> {
     seek_done: bool,
 }
 
-impl<T: Read + Seek> SliceExtractor<T> {
-    pub fn new(inner: T, slice_start: u64, slice_len: u64) -> Self {
+impl<T: Read + Seek> SliceExtractor<T, T> {
+    pub fn new(input: T, slice_start: u64, slice_len: u64) -> Self {
+        Self::new_inner(input, None, slice_start, slice_len)
+    }
+}
+
+impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
+    pub fn new_outboard(input: T, outboard: O, slice_start: u64, slice_len: u64) -> Self {
+        Self::new_inner(input, Some(outboard), slice_start, slice_len)
+    }
+
+    fn new_inner(input: T, outboard: Option<O>, slice_start: u64, slice_len: u64) -> Self {
         Self {
-            inner,
+            input,
+            outboard,
             slice_start,
             slice_len,
             slice_bytes_read: 0,
@@ -981,7 +993,11 @@ impl<T: Read + Seek> SliceExtractor<T> {
     // Note that unlike the regular Reader, the header bytes go into the output buffer.
     fn read_header(&mut self) -> io::Result<()> {
         let header = array_mut_ref!(self.buf, 0, HEADER_SIZE);
-        self.inner.read_exact(header)?;
+        if let Some(ref mut outboard) = self.outboard {
+            outboard.read_exact(header)?;
+        } else {
+            self.input.read_exact(header)?;
+        }
         self.buf_start = 0;
         self.buf_end = HEADER_SIZE;
         self.parser.feed_header(header);
@@ -991,7 +1007,11 @@ impl<T: Read + Seek> SliceExtractor<T> {
     // Note that unlike the regular Reader, the parent bytes go into the output buffer.
     fn read_parent(&mut self) -> io::Result<()> {
         let parent = array_mut_ref!(self.buf, 0, PARENT_SIZE);
-        self.inner.read_exact(parent)?;
+        if let Some(ref mut outboard) = self.outboard {
+            outboard.read_exact(parent)?;
+        } else {
+            self.input.read_exact(parent)?;
+        }
         self.buf_start = 0;
         self.buf_end = PARENT_SIZE;
         self.parser.advance_parent();
@@ -1001,7 +1021,7 @@ impl<T: Read + Seek> SliceExtractor<T> {
     fn read_chunk(&mut self, size: usize) -> io::Result<()> {
         debug_assert_eq!(0, self.buf_len(), "read_chunk with nonempty buffer");
         let chunk = &mut self.buf[..size];
-        self.inner.read_exact(chunk)?;
+        self.input.read_exact(chunk)?;
         self.buf_start = 0;
         self.buf_end = size;
         // After reading a chunk, increment slice_bytes_read. This will stop the read loop once
@@ -1036,7 +1056,17 @@ impl<T: Read + Seek> SliceExtractor<T> {
                 debug_assert_eq!(0, self.previous_chunk_size);
             }
             if let Some(offset) = maybe_seek_offset {
-                self.inner.seek(io::SeekFrom::Start(cast_offset(offset)?))?;
+                if let Some(ref mut outboard) = self.outboard {
+                    // As with Reader in the outboard case, the outboard extractor has to seek both of
+                    // its inner readers. The content position of the state goes into the content
+                    // reader, and the rest of the reported seek offset goes into the outboard reader.
+                    let content_position = self.parser.position();
+                    self.input.seek(io::SeekFrom::Start(content_position))?;
+                    let outboard_offset = offset - content_position as u128;
+                    outboard.seek(io::SeekFrom::Start(cast_offset(outboard_offset)?))?;
+                } else {
+                    self.input.seek(io::SeekFrom::Start(cast_offset(offset)?))?;
+                }
             }
             match maybe_next {
                 Some(StateNext::Header) => return self.read_header(),
@@ -1067,156 +1097,7 @@ impl<T: Read + Seek> SliceExtractor<T> {
     }
 }
 
-impl<T: Read + Seek> Read for SliceExtractor<T> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // If we don't have any output ready to go, try to read more.
-        if self.buf_len() == 0 {
-            self.make_progress_and_buffer_output()?;
-        }
-
-        // Unless we're at EOF, the buffer either already had some bytes or just got refilled.
-        // Return as much as we can from it.
-        let n = cmp::min(buf.len(), self.buf_len());
-        buf[..n].copy_from_slice(&self.buf[self.buf_start..][..n]);
-        self.buf_start += n;
-        Ok(n)
-    }
-}
-
-pub struct OutboardSliceExtractor<C: Read + Seek, O: Read + Seek> {
-    content_reader: C,
-    outboard_reader: O,
-    slice_start: u64,
-    slice_len: u64,
-    slice_bytes_read: u64,
-    previous_chunk_size: usize,
-    parser: ParseState,
-    buf: [u8; CHUNK_SIZE],
-    buf_start: usize,
-    buf_end: usize,
-    seek_done: bool,
-}
-
-impl<C: Read + Seek, O: Read + Seek> OutboardSliceExtractor<C, O> {
-    pub fn new(content_reader: C, outboard_reader: O, slice_start: u64, slice_len: u64) -> Self {
-        Self {
-            content_reader,
-            outboard_reader,
-            slice_start,
-            slice_len,
-            slice_bytes_read: 0,
-            previous_chunk_size: 0,
-            parser: ParseState::new(),
-            buf: [0; CHUNK_SIZE],
-            buf_start: 0,
-            buf_end: 0,
-            seek_done: false,
-        }
-    }
-
-    fn buf_len(&self) -> usize {
-        self.buf_end - self.buf_start
-    }
-
-    // Note that unlike the regular Reader, the header bytes go into the output buffer.
-    fn read_header(&mut self) -> io::Result<()> {
-        let header = array_mut_ref!(self.buf, 0, HEADER_SIZE);
-        self.outboard_reader.read_exact(header)?;
-        self.buf_start = 0;
-        self.buf_end = HEADER_SIZE;
-        self.parser.feed_header(header);
-        Ok(())
-    }
-
-    // Note that unlike the regular Reader, the parent bytes go into the output buffer.
-    fn read_parent(&mut self) -> io::Result<()> {
-        let parent = array_mut_ref!(self.buf, 0, PARENT_SIZE);
-        self.outboard_reader.read_exact(parent)?;
-        self.buf_start = 0;
-        self.buf_end = PARENT_SIZE;
-        self.parser.advance_parent();
-        Ok(())
-    }
-
-    fn read_chunk(&mut self, size: usize) -> io::Result<()> {
-        debug_assert_eq!(0, self.buf_len(), "read_chunk with nonempty buffer");
-        let chunk = &mut self.buf[..size];
-        self.content_reader.read_exact(chunk)?;
-        self.buf_start = 0;
-        self.buf_end = size;
-        // After reading a chunk, increment slice_bytes_read. This will stop the read loop once
-        // we've read everything the caller asked for. Note that if the seek indicates we should
-        // skip partway into a chunk, we'll decrement slice_bytes_read to account for the skip.
-        self.slice_bytes_read += size as u64;
-        self.parser.advance_chunk();
-        // Record the size of the chunk we just read. Unlike the other readers, because this one
-        // keeps header and parent bytes in the output buffer, we can't just rely on buf_end.
-        self.previous_chunk_size = size;
-        Ok(())
-    }
-
-    fn make_progress_and_buffer_output(&mut self) -> io::Result<()> {
-        // If we haven't finished the seek yet, do a step of that. That will buffer some output,
-        // unless we just finished seeking.
-        if !self.seek_done {
-            // Also note that this reader, unlike the others, has to account for
-            // previous_chunk_size separately from buf_end.
-            let (maybe_start, maybe_seek_offset, maybe_next) = self
-                .parser
-                .seek_next(self.slice_start, self.previous_chunk_size);
-            if let Some(start) = maybe_start {
-                // If the seek needs us to skip into the middle of the buffer, we don't actually
-                // skip bytes, because the recipient will need everything for decoding. However, we
-                // decrement slice_bytes_read, so that the skipped bytes don't count against what
-                // the caller asked for.
-                self.slice_bytes_read -= start as u64;
-            } else {
-                // Seek never needs to clear the buffer, because there's only one seek.
-                debug_assert_eq!(0, self.buf_len());
-                debug_assert_eq!(0, self.previous_chunk_size);
-            }
-            if let Some(offset) = maybe_seek_offset {
-                // The outboard extractor has to seek both of its readers. The content position of
-                // The outboard extractor has to seek both of its readers. The content position of
-                // the state goes into the content reader, and the rest of the reported seek offset
-                // goes into the outboard reader.
-                let content_offset = self.parser.position();
-                self.content_reader
-                    .seek(io::SeekFrom::Start(content_offset))?;
-                let outboard_offset = offset - content_offset as u128;
-                self.outboard_reader
-                    .seek(io::SeekFrom::Start(cast_offset(outboard_offset)?))?;
-            }
-            match maybe_next {
-                Some(StateNext::Header) => return self.read_header(),
-                Some(StateNext::Parent) => return self.read_parent(),
-                Some(StateNext::Chunk {
-                    size,
-                    finalization: _,
-                }) => return self.read_chunk(size),
-                None => self.seek_done = true, // Fall through to read.
-            }
-        }
-
-        // If we haven't finished the read yet, do a step of that. If we've already supplied all
-        // the requested bytes, however, don't read any more.
-        if self.slice_bytes_read < self.slice_len {
-            match self.parser.read_next() {
-                Some(StateNext::Header) => unreachable!(),
-                Some(StateNext::Parent) => return self.read_parent(),
-                Some(StateNext::Chunk {
-                    size,
-                    finalization: _,
-                }) => return self.read_chunk(size),
-                None => {} // EOF
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl<C: Read + Seek, O: Read + Seek> Read for OutboardSliceExtractor<C, O> {
+impl<T: Read + Seek, O: Read + Seek> Read for SliceExtractor<T, O> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // If we don't have any output ready to go, try to read more.
         if self.buf_len() == 0 {
@@ -1619,7 +1500,7 @@ mod test {
                     // Make sure the outboard extractor produces the same output.
                     {
                         let mut slice_from_outboard = Vec::new();
-                        let mut extractor = OutboardSliceExtractor::new(
+                        let mut extractor = SliceExtractor::new_outboard(
                             Cursor::new(&input),
                             Cursor::new(&outboard),
                             slice_start as u64,
@@ -1664,7 +1545,7 @@ mod test {
             let (outboard_hash, outboard) = encode::encode_outboard_to_vec(&input);
             assert_eq!(hash, outboard_hash);
             let mut slice_from_outboard = Vec::new();
-            let mut extractor = OutboardSliceExtractor::new(
+            let mut extractor = SliceExtractor::new_outboard(
                 Cursor::new(&input),
                 Cursor::new(&outboard),
                 slice_start as u64,

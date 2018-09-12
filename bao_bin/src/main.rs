@@ -170,24 +170,23 @@ fn decode(args: &Args) -> Result<(), Error> {
 fn slice(args: &Args) -> Result<(), Error> {
     let in_file = open_input(&args.arg_input)?;
     let mut out_file = open_output(&args.arg_output)?;
+    // Slice extraction requires seek.
+    confirm_real_file(&in_file, "slicing input")?;
+    let outboard_file;
+    let mut extractor;
     if args.flag_outboard.is_some() {
-        let outboard_file = open_input(&args.flag_outboard)?;
-        // Slice extraction requires seek.
-        confirm_real_file(&in_file, "slicing input")?;
+        outboard_file = open_input(&args.flag_outboard)?;
         confirm_real_file(&outboard_file, "slicing input")?;
-        let mut reader = bao::decode::OutboardSliceExtractor::new(
+        extractor = bao::decode::SliceExtractor::new_outboard(
             in_file,
             outboard_file,
             args.arg_start,
             args.arg_len,
         );
-        io::copy(&mut reader, &mut out_file)?;
     } else {
-        // Slice extraction requires seek.
-        confirm_real_file(&in_file, "slicing input")?;
-        let mut reader = bao::decode::SliceExtractor::new(in_file, args.arg_start, args.arg_len);
-        io::copy(&mut reader, &mut out_file)?;
+        extractor = bao::decode::SliceExtractor::new(in_file, args.arg_start, args.arg_len);
     }
+    io::copy(&mut extractor, &mut out_file)?;
     Ok(())
 }
 
