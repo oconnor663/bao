@@ -1,0 +1,13 @@
+language: rust
+os:
+  - linux
+  - osx
+rust:
+  - stable
+  - beta
+  - nightly
+script:
+  # With std.
+  - cargo test -vv --all-features
+  # Without std. Currently only the build is supported.
+  - cargo build -vv --no-default-features
