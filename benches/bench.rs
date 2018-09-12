@@ -30,21 +30,59 @@ fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
 // filling up a full BLOCKBYTES block, and so they appear worse than in the upstream crate. All the
 // other benchmarks below will pay the same overhead, so this is the correct comparison.
 #[bench]
-fn bench_blake2b_short(b: &mut Bencher) {
+fn bench_blake2b_whole_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     b.iter(|| blake2b_simd::blake2b(&input));
 }
 
 #[bench]
-fn bench_blake2b_medium(b: &mut Bencher) {
+fn bench_blake2b_whole_medium(b: &mut Bencher) {
     let input = input(b, MEDIUM);
     b.iter(|| blake2b_simd::blake2b(&input));
 }
 
 #[bench]
-fn bench_blake2b_long(b: &mut Bencher) {
+fn bench_blake2b_whole_long(b: &mut Bencher) {
     let input = input(b, LONG);
     b.iter(|| blake2b_simd::blake2b(&input));
+}
+
+fn hash_chunks(mut len: usize) {
+    // If there are N chunks, there are N-1 parent nodes. Also the last chunk has the header
+    // appended. This is all overhead that needs to be accounted for, when we want to see whether
+    // our state management is adding anything on top.
+    let chunk = [0; hash::benchmarks::CHUNK_SIZE];
+    while len > hash::benchmarks::CHUNK_SIZE {
+        let mut chunk_state = blake2b_simd::State::new();
+        chunk_state.update(&chunk);
+        test::black_box(chunk_state.finalize());
+        let mut parent_state = blake2b_simd::State::new();
+        parent_state.update(&[0; 2 * hash::HASH_SIZE]);
+        test::black_box(parent_state.finalize());
+        len -= chunk.len();
+    }
+    let mut chunk_state = blake2b_simd::State::new();
+    chunk_state.update(&chunk[..len]);
+    chunk_state.update(&[0; hash::benchmarks::HEADER_SIZE]);
+    test::black_box(chunk_state.finalize());
+}
+
+#[bench]
+fn bench_blake2b_chunks_short(b: &mut Bencher) {
+    b.bytes = SHORT as u64;
+    b.iter(|| hash_chunks(SHORT));
+}
+
+#[bench]
+fn bench_blake2b_chunks_medium(b: &mut Bencher) {
+    b.bytes = MEDIUM as u64;
+    b.iter(|| hash_chunks(MEDIUM));
+}
+
+#[bench]
+fn bench_blake2b_chunks_long(b: &mut Bencher) {
+    b.bytes = LONG as u64;
+    b.iter(|| hash_chunks(LONG));
 }
 
 #[bench]
