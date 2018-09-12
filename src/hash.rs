@@ -1,11 +1,13 @@
 use arrayvec::ArrayVec;
 use blake2b_simd;
 use byteorder::{ByteOrder, LittleEndian};
+use core::cmp;
+use core::fmt;
+use core::mem;
+#[cfg(feature = "std")]
 use rayon;
-use std::cmp;
-use std::fmt;
+#[cfg(feature = "std")]
 use std::io;
-use std::mem;
 
 pub const HASH_SIZE: usize = 32;
 pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
@@ -100,6 +102,7 @@ fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
     parent_hash(&left_hash, &right_hash, finalization)
 }
 
+#[cfg(feature = "std")]
 fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_node(input, finalization);
@@ -115,11 +118,18 @@ fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
 /// Hash a slice of input bytes all at once. Above about 16 kilobytes, this will parallelize using
 /// [Rayon](https://crates.io/crates/rayon).
 pub fn hash(input: &[u8]) -> Hash {
-    // Below about 4 chunks, the overhead of parallelizing isn't worth it.
-    if input.len() <= MAX_SINGLE_THREADED {
+    #[cfg(feature = "std")]
+    {
+        // Below about 4 chunks, the overhead of parallelizing isn't worth it.
+        if input.len() <= MAX_SINGLE_THREADED {
+            hash_recurse(input, Root(input.len() as u64))
+        } else {
+            hash_recurse_rayon(input, Root(input.len() as u64))
+        }
+    }
+    #[cfg(not(feature = "std"))]
+    {
         hash_recurse(input, Root(input.len() as u64))
-    } else {
-        hash_recurse_rayon(input, Root(input.len() as u64))
     }
 }
 
@@ -271,6 +281,21 @@ impl Writer {
         }
     }
 
+    /// This is equivalent to `write`, except that it's also available with `no_std`.
+    pub fn update(&mut self, mut input: &[u8]) {
+        while !input.is_empty() {
+            if self.chunk.count() as usize == CHUNK_SIZE {
+                let hash = finalize_hash(&mut self.chunk, NotRoot);
+                self.state.push_subtree(&hash, CHUNK_SIZE);
+                self.chunk = new_blake2b_state();
+            }
+            let want = CHUNK_SIZE - self.chunk.count() as usize;
+            let take = cmp::min(want, input.len());
+            self.chunk.update(&input[..take]);
+            input = &input[take..];
+        }
+    }
+
     /// After feeding all the input bytes to `write`, return the root hash. The writer cannot be
     /// used after this.
     pub fn finish(&mut self) -> Hash {
@@ -285,21 +310,11 @@ impl Writer {
     }
 }
 
+#[cfg(feature = "std")]
 impl io::Write for Writer {
-    fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
-        let input_len = input.len();
-        while !input.is_empty() {
-            if self.chunk.count() as usize == CHUNK_SIZE {
-                let hash = finalize_hash(&mut self.chunk, NotRoot);
-                self.state.push_subtree(&hash, CHUNK_SIZE);
-                self.chunk = new_blake2b_state();
-            }
-            let want = CHUNK_SIZE - self.chunk.count() as usize;
-            let take = cmp::min(want, input.len());
-            self.chunk.update(&input[..take]);
-            input = &input[take..];
-        }
-        Ok(input_len)
+    fn write(&mut self, input: &[u8]) -> io::Result<usize> {
+        self.update(input);
+        Ok(input.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {

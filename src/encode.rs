@@ -1,13 +1,17 @@
 use arrayvec::ArrayVec;
 use blake2b_simd;
 use copy_in_place::copy_in_place;
+use core::cmp;
+use core::fmt;
 use hash::Finalization::{self, NotRoot, Root};
 use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
+#[cfg(feature = "std")]
 use rayon;
-use std::cmp;
-use std::fmt;
+#[cfg(feature = "std")]
 use std::io;
+#[cfg(feature = "std")]
 use std::io::prelude::*;
+#[cfg(feature = "std")]
 use std::io::SeekFrom::{End, Start};
 
 pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
@@ -18,10 +22,17 @@ pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
         "output is the wrong length"
     );
     output[..HEADER_SIZE].copy_from_slice(&hash::encode_len(content_len));
-    if input.len() <= hash::MAX_SINGLE_THREADED {
+    #[cfg(feature = "std")]
+    {
+        if input.len() <= hash::MAX_SINGLE_THREADED {
+            encode_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
+        } else {
+            encode_recurse_rayon(input, &mut output[HEADER_SIZE..], Root(content_len))
+        }
+    }
+    #[cfg(not(feature = "std"))]
+    {
         encode_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
-    } else {
-        encode_recurse_rayon(input, &mut output[HEADER_SIZE..], Root(content_len))
     }
 }
 
@@ -38,10 +49,17 @@ pub fn encode_in_place(buf: &mut [u8], content_len: usize) -> Hash {
     layout_chunks_in_place(buf, 0, HEADER_SIZE, content_len);
     let (header, rest) = buf.split_at_mut(HEADER_SIZE);
     header.copy_from_slice(&hash::encode_len(content_len as u64));
-    if content_len <= hash::MAX_SINGLE_THREADED {
+    #[cfg(feature = "std")]
+    {
+        if content_len <= hash::MAX_SINGLE_THREADED {
+            write_parents_in_place(rest, content_len, Root(content_len as u64))
+        } else {
+            write_parents_in_place_rayon(rest, content_len, Root(content_len as u64))
+        }
+    }
+    #[cfg(not(feature = "std"))]
+    {
         write_parents_in_place(rest, content_len, Root(content_len as u64))
-    } else {
-        write_parents_in_place_rayon(rest, content_len, Root(content_len as u64))
     }
 }
 
@@ -53,13 +71,21 @@ pub fn encode_outboard(input: &[u8], output: &mut [u8]) -> Hash {
         "output is the wrong length"
     );
     output[..HEADER_SIZE].copy_from_slice(&hash::encode_len(content_len));
-    if input.len() <= hash::MAX_SINGLE_THREADED {
+    #[cfg(feature = "std")]
+    {
+        if input.len() <= hash::MAX_SINGLE_THREADED {
+            encode_outboard_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
+        } else {
+            encode_outboard_recurse_rayon(input, &mut output[HEADER_SIZE..], Root(content_len))
+        }
+    }
+    #[cfg(not(feature = "std"))]
+    {
         encode_outboard_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
-    } else {
-        encode_outboard_recurse_rayon(input, &mut output[HEADER_SIZE..], Root(content_len))
     }
 }
 
+#[cfg(feature = "std")]
 pub fn encode_to_vec(input: &[u8]) -> (Hash, Vec<u8>) {
     let size = encoded_size(input.len() as u64) as usize;
     // Unsafe code here could avoid the cost of initialization, but it's not much.
@@ -68,6 +94,7 @@ pub fn encode_to_vec(input: &[u8]) -> (Hash, Vec<u8>) {
     (hash, output)
 }
 
+#[cfg(feature = "std")]
 pub fn encode_outboard_to_vec(input: &[u8]) -> (Hash, Vec<u8>) {
     let size = outboard_size(input.len() as u64) as usize;
     let mut output = vec![0; size];
@@ -95,6 +122,7 @@ fn encode_recurse(input: &[u8], output: &mut [u8], finalization: Finalization) -
     hash::parent_hash(&left_hash, &right_hash, finalization)
 }
 
+#[cfg(feature = "std")]
 fn encode_recurse_rayon(input: &[u8], output: &mut [u8], finalization: Finalization) -> Hash {
     debug_assert_eq!(
         output.len() as u128,
@@ -136,6 +164,7 @@ fn encode_outboard_recurse(input: &[u8], output: &mut [u8], finalization: Finali
     hash::parent_hash(&left_hash, &right_hash, finalization)
 }
 
+#[cfg(feature = "std")]
 fn encode_outboard_recurse_rayon(
     input: &[u8],
     output: &mut [u8],
@@ -203,6 +232,7 @@ fn write_parents_in_place(buf: &mut [u8], content_len: usize, finalization: Fina
 }
 
 // This function doesn't check for adequate space. Its caller should check.
+#[cfg(feature = "std")]
 fn write_parents_in_place_rayon(
     buf: &mut [u8],
     content_len: usize,
@@ -397,6 +427,7 @@ enum FlipperNext {
 /// Most callers should use this writer for incremental encoding. The writer makes no attempt to
 /// recover from IO errors, so callers that want to retry should start from the beginning with a new
 /// writer.
+#[cfg(feature = "std")]
 #[derive(Clone, Debug)]
 pub struct Writer<T: Read + Write + Seek> {
     inner: T,
@@ -406,6 +437,7 @@ pub struct Writer<T: Read + Write + Seek> {
     outboard: bool,
 }
 
+#[cfg(feature = "std")]
 impl<T: Read + Write + Seek> Writer<T> {
     pub fn new(inner: T) -> Self {
         Self {
@@ -497,6 +529,7 @@ impl<T: Read + Write + Seek> Writer<T> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T: Read + Write + Seek> Write for Writer<T> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if buf.is_empty() {

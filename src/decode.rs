@@ -1,16 +1,21 @@
 use arrayvec::ArrayVec;
 use constant_time_eq::constant_time_eq;
 use copy_in_place::copy_in_place;
+#[cfg(feature = "std")]
 use rayon;
 
 use encode;
 use hash::Finalization::{self, NotRoot, Root};
 use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 
-use std;
-use std::cmp;
-use std::fmt;
+use core::cmp;
+use core::fmt;
+use core::result;
+#[cfg(feature = "std")]
+use std::error;
+#[cfg(feature = "std")]
 use std::io;
+#[cfg(feature = "std")]
 use std::io::prelude::*;
 
 fn verify_hash(node_bytes: &[u8], hash: &Hash, finalization: Finalization) -> Result<()> {
@@ -88,6 +93,7 @@ fn decode_recurse(encoded: &[u8], subtree: &Subtree, output: &mut [u8]) -> Resul
     }
 }
 
+#[cfg(feature = "std")]
 fn decode_recurse_rayon(encoded: &[u8], subtree: &Subtree, output: &mut [u8]) -> Result<usize> {
     match verify_one_level(encoded, subtree)? {
         Verified::Chunk { offset, len } => {
@@ -115,6 +121,7 @@ fn verify_recurse(encoded: &[u8], subtree: &Subtree) -> Result<()> {
     }
 }
 
+#[cfg(feature = "std")]
 fn verify_recurse_rayon(encoded: &[u8], subtree: &Subtree) -> Result<()> {
     match verify_one_level(encoded, subtree)? {
         Verified::Chunk { .. } => Ok(()),
@@ -177,10 +184,17 @@ fn root_subtree(content_len: usize, hash: &Hash) -> Subtree {
 
 pub fn decode(encoded: &[u8], output: &mut [u8], hash: &Hash) -> Result<usize> {
     let content_len = parse_and_check_content_len(encoded)?;
-    if content_len <= hash::MAX_SINGLE_THREADED {
+    #[cfg(feature = "std")]
+    {
+        if content_len <= hash::MAX_SINGLE_THREADED {
+            decode_recurse(encoded, &root_subtree(content_len, hash), output)
+        } else {
+            decode_recurse_rayon(encoded, &root_subtree(content_len, hash), output)
+        }
+    }
+    #[cfg(not(feature = "std"))]
+    {
         decode_recurse(encoded, &root_subtree(content_len, hash), output)
-    } else {
-        decode_recurse_rayon(encoded, &root_subtree(content_len, hash), output)
     }
 }
 
@@ -190,15 +204,23 @@ pub fn decode_in_place(encoded: &mut [u8], hash: &Hash) -> Result<usize> {
     // Note that if you change anything in this function, you should probably
     // also update benchmarks::decode_in_place_fake.
     let content_len = parse_and_check_content_len(encoded)?;
-    if content_len <= hash::MAX_SINGLE_THREADED {
+    #[cfg(feature = "std")]
+    {
+        if content_len <= hash::MAX_SINGLE_THREADED {
+            verify_recurse(encoded, &root_subtree(content_len, hash))?;
+        } else {
+            verify_recurse_rayon(encoded, &root_subtree(content_len, hash))?;
+        }
+    }
+    #[cfg(not(feature = "std"))]
+    {
         verify_recurse(encoded, &root_subtree(content_len, hash))?;
-    } else {
-        verify_recurse_rayon(encoded, &root_subtree(content_len, hash))?;
     }
     extract_in_place(encoded, HEADER_SIZE, 0, content_len);
     Ok(content_len)
 }
 
+#[cfg(feature = "std")]
 pub fn decode_to_vec(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
     let content_len = parse_and_check_content_len(encoded)?;
     // Unsafe code here could avoid the cost of initialization, but it's not much.
@@ -207,9 +229,9 @@ pub fn decode_to_vec(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-pub fn hash_from_encoded_nostd<F, E>(mut read_exact_fn: F) -> std::result::Result<Hash, E>
+pub fn hash_from_encoded_nostd<F, E>(mut read_exact_fn: F) -> result::Result<Hash, E>
 where
-    F: FnMut(&mut [u8]) -> std::result::Result<(), E>,
+    F: FnMut(&mut [u8]) -> result::Result<(), E>,
 {
     let mut buf = [0; CHUNK_SIZE];
     read_exact_fn(&mut buf[..HEADER_SIZE])?;
@@ -224,6 +246,7 @@ where
     Ok(hash::hash_node(node, Root(content_len)))
 }
 
+#[cfg(feature = "std")]
 pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
     hash_from_encoded_nostd(|buf| reader.read_exact(buf))
 }
@@ -604,7 +627,7 @@ mod verify_state {
     }
 }
 
-type Result<T> = std::result::Result<T, Error>;
+type Result<T> = result::Result<T, Error>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -621,8 +644,10 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+#[cfg(feature = "std")]
+impl error::Error for Error {}
 
+#[cfg(feature = "std")]
 impl From<Error> for io::Error {
     fn from(e: Error) -> io::Error {
         match e {
@@ -633,6 +658,7 @@ impl From<Error> for io::Error {
 }
 
 // Shared between Reader and SliceReader (but not SliceExtractor).
+#[cfg(feature = "std")]
 #[derive(Clone)]
 struct ReaderShared<T: Read, O: Read> {
     input: T,
@@ -643,6 +669,7 @@ struct ReaderShared<T: Read, O: Read> {
     buf_end: usize,
 }
 
+#[cfg(feature = "std")]
 impl<T: Read, O: Read> ReaderShared<T, O> {
     pub fn new(input: T, outboard: Option<O>, hash: &Hash) -> Self {
         Self {
@@ -726,6 +753,7 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T: Read, O: Read> fmt::Debug for ReaderShared<T, O> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -739,11 +767,13 @@ impl<T: Read, O: Read> fmt::Debug for ReaderShared<T, O> {
     }
 }
 
+#[cfg(feature = "std")]
 #[derive(Clone, Debug)]
 pub struct Reader<T: Read, O: Read> {
     shared: ReaderShared<T, O>,
 }
 
+#[cfg(feature = "std")]
 impl<T: Read> Reader<T, T> {
     pub fn new(inner: T, hash: &Hash) -> Self {
         Self {
@@ -752,6 +782,7 @@ impl<T: Read> Reader<T, T> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T: Read, O: Read> Reader<T, O> {
     pub fn new_outboard(inner: T, outboard: O, hash: &Hash) -> Self {
         Self {
@@ -767,6 +798,7 @@ impl<T: Read, O: Read> Reader<T, O> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T: Read, O: Read> Read for Reader<T, O> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // If we need more data, loop on read_next() until we read a chunk.
@@ -787,6 +819,7 @@ impl<T: Read, O: Read> Read for Reader<T, O> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T: Read + Seek, O: Read + Seek> Seek for Reader<T, O> {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
         // Read and verify the length if we haven't already. The seek would take care of this
@@ -842,6 +875,7 @@ impl<T: Read + Seek, O: Read + Seek> Seek for Reader<T, O> {
     }
 }
 
+#[cfg(feature = "std")]
 fn cast_offset(offset: u128) -> io::Result<u64> {
     if offset > u64::max_value() as u128 {
         Err(io::Error::new(
@@ -853,6 +887,7 @@ fn cast_offset(offset: u128) -> io::Result<u64> {
     }
 }
 
+#[cfg(feature = "std")]
 fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
     let sum = position as i128 + offset as i128;
     if sum < 0 {
@@ -870,6 +905,7 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
     }
 }
 
+#[cfg(feature = "std")]
 pub struct SliceReader<T: Read> {
     shared: ReaderShared<T, T>,
     slice_start: u64,
@@ -877,6 +913,7 @@ pub struct SliceReader<T: Read> {
     did_seek: bool,
 }
 
+#[cfg(feature = "std")]
 impl<T: Read> SliceReader<T> {
     pub fn new(inner: T, hash: &Hash, slice_start: u64, slice_len: u64) -> Self {
         Self {
@@ -888,6 +925,7 @@ impl<T: Read> SliceReader<T> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T: Read> Read for SliceReader<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // If we don't have any output ready to go, try to read more.
@@ -945,6 +983,7 @@ impl<T: Read> Read for SliceReader<T> {
     }
 }
 
+#[cfg(feature = "std")]
 pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
     input: T,
     outboard: Option<O>,
@@ -959,12 +998,14 @@ pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
     seek_done: bool,
 }
 
+#[cfg(feature = "std")]
 impl<T: Read + Seek> SliceExtractor<T, T> {
     pub fn new(input: T, slice_start: u64, slice_len: u64) -> Self {
         Self::new_inner(input, None, slice_start, slice_len)
     }
 }
 
+#[cfg(feature = "std")]
 impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
     pub fn new_outboard(input: T, outboard: O, slice_start: u64, slice_len: u64) -> Self {
         Self::new_inner(input, Some(outboard), slice_start, slice_len)
@@ -1097,6 +1138,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T: Read + Seek, O: Read + Seek> Read for SliceExtractor<T, O> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // If we don't have any output ready to go, try to read more.
@@ -1115,6 +1157,7 @@ impl<T: Read + Seek, O: Read + Seek> Read for SliceExtractor<T, O> {
 
 // This module is only exposed for writing benchmarks, and nothing here should
 // actually be used outside this crate.
+#[cfg(feature = "std")]
 #[doc(hidden)]
 pub mod benchmarks {
     use super::*;
