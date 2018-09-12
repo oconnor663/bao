@@ -342,7 +342,7 @@ fn bench_bao_decode_reader_outboard_short(b: &mut Bencher) {
     let mut output = vec![0; input.len()];
     b.iter(|| {
         output.clear();
-        let mut decoder = decode::OutboardReader::new(&*input, &*outboard, &hash);
+        let mut decoder = decode::Reader::new_outboard(&*input, &*outboard, &hash);
         decoder.read_to_end(&mut output).unwrap();
     });
 }
@@ -354,7 +354,7 @@ fn bench_bao_decode_reader_outboard_medium(b: &mut Bencher) {
     let mut output = vec![0; input.len()];
     b.iter(|| {
         output.clear();
-        let mut decoder = decode::OutboardReader::new(&*input, &*outboard, &hash);
+        let mut decoder = decode::Reader::new_outboard(&*input, &*outboard, &hash);
         decoder.read_to_end(&mut output).unwrap();
     });
 }
@@ -366,7 +366,7 @@ fn bench_bao_decode_reader_outboard_long(b: &mut Bencher) {
     let mut output = vec![0; input.len()];
     b.iter(|| {
         output.clear();
-        let mut decoder = decode::OutboardReader::new(&*input, &*outboard, &hash);
+        let mut decoder = decode::Reader::new_outboard(&*input, &*outboard, &hash);
         decoder.read_to_end(&mut output).unwrap();
     });
 }

@@ -148,25 +148,23 @@ fn decode(args: &Args) -> Result<(), Error> {
             }
         }
     }
-    // If one or both of the files weren't mappable, or if we're seeking or outboard, fall back to
-    // the reader.
+    // If the files weren't mappable, or if we're seeking or outboard, fall back to the reader.
+    let outboard_file;
+    let mut reader;
     if args.flag_outboard.is_some() {
-        let outboard_file = open_input(&args.flag_outboard)?;
-        let mut reader = bao::decode::OutboardReader::new(&in_file, &outboard_file, &hash);
-        if let Some(offset) = args.flag_start {
-            confirm_real_file(&in_file, "when seeking, decode input")?;
+        outboard_file = open_input(&args.flag_outboard)?;
+        if args.flag_start.is_some() {
             confirm_real_file(&outboard_file, "when seeking, decode input")?;
-            reader.seek(io::SeekFrom::Start(offset))?;
         }
-        allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
+        reader = bao::decode::Reader::new_outboard(&in_file, &outboard_file, &hash);
     } else {
-        let mut reader = bao::decode::Reader::new(&in_file, &hash);
-        if let Some(offset) = args.flag_start {
-            confirm_real_file(&in_file, "when seeking, decode input")?;
-            reader.seek(io::SeekFrom::Start(offset))?;
-        }
-        allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
+        reader = bao::decode::Reader::new(&in_file, &hash);
     }
+    if let Some(offset) = args.flag_start {
+        confirm_real_file(&in_file, "when seeking, decode input")?;
+        reader.seek(io::SeekFrom::Start(offset))?;
+    }
+    allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
     Ok(())
 }
 
