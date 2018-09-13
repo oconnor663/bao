@@ -35,8 +35,8 @@
 # whole input.
 
 __doc__ = """\
-Usage: bao.py encode
-       bao.py decode <hash>
+Usage: bao.py encode [--outboard=<file>]
+       bao.py decode <hash> [--outboard=<file>]
        bao.py hash [--encoded]
 """
 
@@ -95,10 +95,10 @@ def left_len(parent_len):
     return CHUNK_SIZE * power_of_two_chunks
 
 
-def bao_encode(buf):
+def bao_encode(buf, *, outboard=False):
     def encode_recurse(buf, root_len):
         if len(buf) <= CHUNK_SIZE:
-            return hash_node(buf, root_len), buf
+            return hash_node(buf, root_len), b"" if outboard else buf
         llen = left_len(len(buf))
         # Interior nodes have no len suffix.
         left_hash, left_encoded = encode_recurse(buf[:llen], None)
@@ -114,14 +114,16 @@ def bao_encode(buf):
     return encode_len(root_len) + encoded
 
 
-def bao_decode(in_stream, out_stream, hash_):
+def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
+    parent_stream = outboard_stream or input_stream
+
     def decode_recurse(hash_, content_len, root_len):
         if content_len <= CHUNK_SIZE:
-            chunk = in_stream.read(content_len)
+            chunk = input_stream.read(content_len)
             verify_node(chunk, content_len, root_len, hash_)
-            out_stream.write(chunk)
+            output_stream.write(chunk)
         else:
-            parent = in_stream.read(2 * DIGEST_SIZE)
+            parent = parent_stream.read(2 * DIGEST_SIZE)
             verify_node(parent, 2 * DIGEST_SIZE, root_len, hash_)
             left_hash, right_hash = parent[:DIGEST_SIZE], parent[DIGEST_SIZE:]
             llen = left_len(content_len)
@@ -130,17 +132,17 @@ def bao_decode(in_stream, out_stream, hash_):
             decode_recurse(right_hash, content_len - llen, None)
 
     # The first 8 bytes are the encoded content len.
-    root_len = decode_len(in_stream.read(HEADER_SIZE))
+    root_len = decode_len(parent_stream.read(HEADER_SIZE))
     decode_recurse(hash_, root_len, root_len)
 
 
-def bao_hash(in_stream):
+def bao_hash(input_stream):
     buf = b""
     chunks = 0
     subtrees = []
     while True:
         # We ask for CHUNK_SIZE bytes, but be careful, we can always get fewer.
-        read = in_stream.read(CHUNK_SIZE)
+        read = input_stream.read(CHUNK_SIZE)
         # If the read is EOF, do a final rollup merge of all the subtrees we
         # have, and pass the root_len flag for hashing the root node.
         if not read:
@@ -166,13 +168,13 @@ def bao_hash(in_stream):
         buf = buf + read
 
 
-def bao_hash_encoded(in_stream):
-    root_len = decode_len(in_stream.read(HEADER_SIZE))
+def bao_hash_encoded(input_stream):
+    root_len = decode_len(input_stream.read(HEADER_SIZE))
     if root_len > CHUNK_SIZE:
-        root_node = in_stream.read(2 * DIGEST_SIZE)
+        root_node = input_stream.read(2 * DIGEST_SIZE)
         assert len(root_node) == 2 * DIGEST_SIZE
     else:
-        root_node = in_stream.read(root_len)
+        root_node = input_stream.read(root_len)
         assert len(root_node) == root_len
     return hash_node(root_node, root_len)
 
@@ -180,11 +182,23 @@ def bao_hash_encoded(in_stream):
 def main():
     args = docopt.docopt(__doc__)
     if args["encode"]:
-        encoded = bao_encode(sys.stdin.buffer.read())
-        sys.stdout.buffer.write(encoded)
+        outboard = False
+        output_file = sys.stdout.buffer
+        if args["--outboard"] is not None:
+            outboard = True
+            output_file = open(args["--outboard"], "wb")
+        encoded = bao_encode(sys.stdin.buffer.read(), outboard=outboard)
+        output_file.write(encoded)
     elif args["decode"]:
         hash_ = binascii.unhexlify(args["<hash>"])
-        bao_decode(sys.stdin.buffer, sys.stdout.buffer, hash_)
+        outboard_stream = None
+        if args["--outboard"] is not None:
+            outboard_stream = open(args["--outboard"], "rb")
+        bao_decode(
+            sys.stdin.buffer,
+            sys.stdout.buffer,
+            hash_,
+            outboard_stream=outboard_stream)
     elif args["hash"]:
         if args["--encoded"]:
             hash_ = bao_hash_encoded(sys.stdin.buffer)
