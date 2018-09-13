@@ -403,7 +403,7 @@ mod test {
 
             // Have the Python implementation hash the same input, and make
             // sure the result is identical.
-            let python_hash = cmd!("python3", "./python/bao.py", "hash")
+            let python_hash = cmd!("python3", "./test/bao.py", "hash")
                 .input(input.clone())
                 .read()
                 .expect("is python3 installed?");

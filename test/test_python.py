@@ -21,8 +21,8 @@ cases = [
     (
         "a million zeros",
         b"\0" * 1_000_000,
-       "a6da3f5139c4a277bdfe3718eaef2c00093b8794788722438b15861631c9cf4b",
-       "e812974bebf25137ea6cdb775706d3d618f0b05fd1df4e25a111575510d9f333",
+        "a6da3f5139c4a277bdfe3718eaef2c00093b8794788722438b15861631c9cf4b",
+        "e812974bebf25137ea6cdb775706d3d618f0b05fd1df4e25a111575510d9f333",
     ),
 ]
 

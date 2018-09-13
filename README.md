@@ -68,7 +68,7 @@ cargo build --release
 ./target/release/bao --help
 ```
 
-[`python/bao.py`](python/bao.py) includes a Python implementation in
+[`test/bao.py`](test/bao.py) includes a Python implementation in
 about 100 lines of code, designed to be as readable as possible.
 
 There is `no_std` support if you set `default-features = false` in your

@@ -589,7 +589,7 @@ mod test {
             println!("starting case {}", case);
             let input = vec![9; case];
             let (_, encoded) = encode_to_vec(&input);
-            let output = cmd!("python3", "./python/bao.py", "encode")
+            let output = cmd!("python3", "./test/bao.py", "encode")
                 .input(input)
                 .stdout_capture()
                 .run()

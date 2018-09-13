@@ -31,7 +31,7 @@ mod test {
     #[test]
     fn run_python_tests() {
         let output = Command::new("python3")
-            .arg("./python/test.py")
+            .arg("./test/test_python.py")
             .output()
             .expect("Python test script failed to run.");
         println!(
