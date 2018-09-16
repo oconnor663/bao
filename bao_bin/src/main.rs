@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const USAGE: &str = "
-Usage: bao hash [<input>] [--encoded]
+Usage: bao hash [<input>] [--encoded | --outboard=<file>]
        bao encode <input> (<output> | --outboard=<file>)
        bao decode <hash> [<input>] [<output>] [--start=<offset>] [--outboard=<file>]
        bao slice <start> <len> [<input>] [<output>] [--outboard=<file>]
@@ -55,11 +55,7 @@ fn main() -> Result<(), Error> {
     } else if args.flag_version {
         println!("{}", VERSION);
     } else if args.cmd_hash {
-        if args.flag_encoded {
-            hash_encoded(&args)?;
-        } else {
-            hash(&args)?;
-        }
+        hash(&args)?;
     } else if args.cmd_encode {
         encode(&args)?;
     } else if args.cmd_decode {
@@ -78,20 +74,18 @@ fn main() -> Result<(), Error> {
 fn hash(args: &Args) -> Result<(), Error> {
     let mut in_file = open_input(&args.arg_input)?;
     let hash;
-    if let Some(map) = maybe_memmap_input(&in_file)? {
+    if args.flag_outboard.is_some() {
+        let mut outboard_file = open_input(&args.flag_outboard)?;
+        hash = bao::decode::hash_from_outboard_encoded(&mut in_file, &mut outboard_file)?;
+    } else if args.flag_encoded {
+        hash = bao::decode::hash_from_encoded(&mut in_file)?;
+    } else if let Some(map) = maybe_memmap_input(&in_file)? {
         hash = bao::hash::hash(&map);
     } else {
         let mut writer = bao::hash::Writer::new();
         io::copy(&mut in_file, &mut writer)?;
         hash = writer.finish();
     }
-    println!("{}", hex::encode(hash));
-    Ok(())
-}
-
-fn hash_encoded(args: &Args) -> Result<(), Error> {
-    let mut in_file = open_input(&args.arg_input)?;
-    let hash = bao::decode::hash_from_encoded(&mut in_file)?;
     println!("{}", hex::encode(hash));
     Ok(())
 }

@@ -246,9 +246,42 @@ where
     Ok(hash::hash_node(node, Root(content_len)))
 }
 
+pub fn hash_from_outboard_encoded_nostd<F1, F2, E>(
+    content_read_exact_fn: F1,
+    mut outboard_read_exact_fn: F2,
+) -> result::Result<Hash, E>
+where
+    F1: FnOnce(&mut [u8]) -> result::Result<(), E>,
+    F2: FnMut(&mut [u8]) -> result::Result<(), E>,
+{
+    let mut buf = [0; CHUNK_SIZE];
+    outboard_read_exact_fn(&mut buf[..HEADER_SIZE])?;
+    let content_len = hash::decode_len(array_ref!(buf, 0, HEADER_SIZE));
+    let node;
+    if content_len <= CHUNK_SIZE as u64 {
+        node = &mut buf[..content_len as usize];
+        content_read_exact_fn(node)?;
+    } else {
+        node = &mut buf[..PARENT_SIZE];
+        outboard_read_exact_fn(node)?;
+    }
+    Ok(hash::hash_node(node, Root(content_len)))
+}
+
 #[cfg(feature = "std")]
 pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
     hash_from_encoded_nostd(|buf| reader.read_exact(buf))
+}
+
+#[cfg(feature = "std")]
+pub fn hash_from_outboard_encoded<C: Read, O: Read>(
+    content_reader: &mut C,
+    outboard_reader: &mut O,
+) -> io::Result<Hash> {
+    hash_from_outboard_encoded_nostd(
+        |buf| content_reader.read_exact(buf),
+        |buf| outboard_reader.read_exact(buf),
+    )
 }
 
 // The state structs are each in their own modules to enforce privacy. For example, callers should
@@ -1489,6 +1522,19 @@ mod test {
             let input = make_test_input(case);
             let (hash, encoded) = encode::encode_to_vec(&input);
             let inferred_hash = hash_from_encoded(&mut Cursor::new(&*encoded)).unwrap();
+            assert_eq!(hash, inferred_hash, "hashes don't match");
+        }
+    }
+
+    #[test]
+    fn test_hash_from_outboard_encoded() {
+        for &case in hash::TEST_CASES {
+            println!("case {}", case);
+            let input = make_test_input(case);
+            let (hash, outboard) = encode::encode_outboard_to_vec(&input);
+            let inferred_hash =
+                hash_from_outboard_encoded(&mut Cursor::new(&input), &mut Cursor::new(&outboard))
+                    .unwrap();
             assert_eq!(hash, inferred_hash, "hashes don't match");
         }
     }
