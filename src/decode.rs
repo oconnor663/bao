@@ -704,7 +704,7 @@ struct ReaderShared<T: Read, O: Read> {
 
 #[cfg(feature = "std")]
 impl<T: Read, O: Read> ReaderShared<T, O> {
-    pub fn new(input: T, outboard: Option<O>, hash: &Hash) -> Self {
+    fn new(input: T, outboard: Option<O>, hash: &Hash) -> Self {
         Self {
             input,
             outboard,
@@ -715,7 +715,7 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
         }
     }
 
-    pub fn len(&mut self) -> io::Result<u64> {
+    fn len(&mut self) -> io::Result<u64> {
         loop {
             match self.state.len_next() {
                 LenNext::Len(len) => return Ok(len),
