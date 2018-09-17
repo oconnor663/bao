@@ -48,12 +48,12 @@ seeking, and so generally require a full encoded file on disk,
 socket like a regular `decode`. Note that `bao hash --encoded` can hash
 an extracted slice just like a full encoded file.
 
-The `encode`, `decode`, `slice`, and `hash --encoded` commands all
-support an `--outboard` flag. This mode stores tree data in a separate
+The `encode`, `decode`, `slice`, and `hash` commands all support an
+`--outboard` flag. This mode reads or writes tree data in a separate
 file apart from the input bytes, so that you can keep the unmodified
 input file without taking up twice as much disk space. The total size of
 an input file plus an outboard tree file is the same as the size of an
-encoded file in the usual combined mode. Note that if you `slice` the
+encoded file in the default combined mode. Note that if you `slice` the
 entire input (using the slice parameters start=0 and len=size), the
 result is exactly the same as an entire combined-mode encoding, so
 `slice` can be an efficient way of converting from outboard to combined
@@ -68,8 +68,8 @@ cargo build --release
 ./target/release/bao --help
 ```
 
-[`test/bao.py`](test/bao.py) includes a Python implementation in
-about 100 lines of code, designed to be as readable as possible.
+[`test/bao.py`](test/bao.py) includes a Python implementation designed
+to be as short and readable as possible.
 
 There is `no_std` support if you set `default-features = false` in your
 `Cargo.toml`. Most of the standalone functions that don't obviously
