@@ -146,7 +146,7 @@ fn extract_in_place(
     if content_len <= CHUNK_SIZE {
         // This function might eventually make its way into libcore:
         // https://github.com/rust-lang/rust/pull/53652
-        copy_in_place(buf, read_offset, write_offset, content_len);
+        copy_in_place(buf, read_offset..read_offset + content_len, write_offset);
     } else {
         read_offset += PARENT_SIZE;
         let left_len = hash::left_len(content_len as u64) as usize;

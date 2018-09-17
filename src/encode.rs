@@ -198,7 +198,7 @@ fn layout_chunks_in_place(
     content_len: usize,
 ) {
     if content_len <= CHUNK_SIZE {
-        copy_in_place(buf, read_offset, write_offset, content_len);
+        copy_in_place(buf, read_offset..read_offset + content_len, write_offset);
     } else {
         let left_len = hash::left_len(content_len as u64) as usize;
         let left_write_offset = write_offset + PARENT_SIZE;
