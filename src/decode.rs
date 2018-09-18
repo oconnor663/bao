@@ -1239,6 +1239,7 @@ pub(crate) fn make_test_input(len: usize) -> Vec<u8> {
 #[cfg(test)]
 mod test {
     extern crate rand;
+    extern crate tempfile;
 
     use self::rand::{prng::chacha::ChaChaRng, Rng, SeedableRng};
     use std::io;
@@ -1606,6 +1607,35 @@ mod test {
                     assert_eq!(expected_output, &*output);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn compare_slice_to_python() {
+        for &case in hash::TEST_CASES {
+            let input = make_test_input(case);
+            let (_, encoded) = encode::encode_to_vec(&input);
+            let mut encoded_file = tempfile::NamedTempFile::new().unwrap();
+            encoded_file.write_all(&encoded).unwrap();
+            encoded_file.flush().unwrap();
+            let slice_start = input.len() / 4;
+            let slice_len = input.len() / 2;
+            println!("\ncase {} start {} len {}", case, slice_start, slice_len);
+            let mut slice = Vec::new();
+            let mut extractor =
+                SliceExtractor::new(Cursor::new(&encoded), slice_start as u64, slice_len as u64);
+            extractor.read_to_end(&mut slice).unwrap();
+            let python_output = cmd!(
+                "python3",
+                "./test/bao.py",
+                "slice",
+                slice_start.to_string(),
+                slice_len.to_string()
+            ).stdin(encoded_file.path())
+            .stdout_capture()
+            .run()
+            .unwrap();
+            assert_eq!(python_output.stdout, slice, "slice mismatch");
         }
     }
 
