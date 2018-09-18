@@ -44,11 +44,11 @@
 # much space to leave for pre-order parent nodes.
 
 __doc__ = """\
-Usage: bao.py encode [--outboard=<file>]
-       bao.py decode <hash> [--outboard=<file>]
-       bao.py hash [--encoded]
-       bao.py slice <start> <len> [--outboard=<file>]
-       bao.py decode-slice <hash> <start> <len>
+Usage: bao.py hash [<input>] [--encoded | --outboard=<file>]
+       bao.py encode <input> (<output> | --outboard=<file>)
+       bao.py decode <hash> [<input>] [<output>] [--outboard=<file>]
+       bao.py slice <start> <len> [<input>] [<output>] [--outboard=<file>]
+       bao.py decode-slice <hash> <start> <len> [<input>] [<output>]
 """
 
 import binascii
@@ -287,42 +287,52 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
     decode_slice_recurse(0, content_len, hash_, content_len)
 
 
+def open_input(maybe_path):
+    if maybe_path is None or maybe_path == "-":
+        return sys.stdin.buffer
+    return open(maybe_path, "rb")
+
+
+def open_output(maybe_path):
+    if maybe_path is None or maybe_path == "-":
+        return sys.stdout.buffer
+    return open(maybe_path, "w+b")
+
+
 def main():
     args = docopt.docopt(__doc__)
+    in_stream = open_input(args["<input>"])
+    out_stream = open_output(args["<output>"])
     if args["encode"]:
         outboard = False
-        output_file = sys.stdout.buffer
         if args["--outboard"] is not None:
             outboard = True
-            output_file = open(args["--outboard"], "wb")
-        encoded = bao_encode(sys.stdin.buffer.read(), outboard=outboard)
-        output_file.write(encoded)
+            out_stream = open_output(args["--outboard"])
+        encoded = bao_encode(in_stream.read(), outboard=outboard)
+        out_stream.write(encoded)
     elif args["decode"]:
         hash_ = binascii.unhexlify(args["<hash>"])
         outboard_stream = None
         if args["--outboard"] is not None:
             outboard_stream = open(args["--outboard"], "rb")
         bao_decode(
-            sys.stdin.buffer,
-            sys.stdout.buffer,
-            hash_,
-            outboard_stream=outboard_stream)
+            in_stream, out_stream, hash_, outboard_stream=outboard_stream)
     elif args["hash"]:
         if args["--encoded"]:
-            hash_ = bao_hash_encoded(sys.stdin.buffer)
+            hash_ = bao_hash_encoded(in_stream)
         else:
-            hash_ = bao_hash(sys.stdin.buffer)
+            hash_ = bao_hash(in_stream)
         print(hash_.hex())
     elif args["slice"]:
         outboard_stream = None
         if args["--outboard"] is not None:
             outboard_stream = open(args["--outboard"], "rb")
-        bao_slice(sys.stdin.buffer, sys.stdout.buffer, int(args["<start>"]),
+        bao_slice(in_stream, out_stream, int(args["<start>"]),
                   int(args["<len>"]), outboard_stream)
     elif args["decode-slice"]:
         hash_ = binascii.unhexlify(args["<hash>"])
-        bao_decode_slice(sys.stdin.buffer, sys.stdout.buffer, hash_,
-                         int(args["<start>"]), int(args["<len>"]))
+        bao_decode_slice(in_stream, out_stream, hash_, int(args["<start>"]),
+                         int(args["<len>"]))
 
 
 if __name__ == "__main__":

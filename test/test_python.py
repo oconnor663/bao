@@ -37,11 +37,11 @@ cases = [
 bao_path = os.path.join(os.path.dirname(__file__), "bao.py")
 
 
-def bao(*args, **kwargs):
+def bao(*args, input=None):
     return subprocess.run(
         ["python3", bao_path, *args],
         stdout=subprocess.PIPE,
-        **kwargs,
+        input=input,
     ).stdout
 
 
@@ -56,12 +56,11 @@ for (name, input_bytes, bao_hash, encoded_blake2b, outboard_blake2b) in cases:
     assert computed_hash == bao_hash
 
     # Make sure that `bao hash --encoded` gives the same hash.
-    encoded = bao("encode", input=input_bytes)
     encoded_file = tempfile.NamedTemporaryFile()
-    encoded_file.write(encoded)
-    encoded_file.flush()
-    bao_hash_from_encoded = bao(
-        "hash", "--encoded", input=encoded).decode().strip()
+    bao("encode", "-", encoded_file.name, input=input_bytes)
+    encoded = open(encoded_file.name, "rb").read()
+    bao_hash_from_encoded = bao("hash", "--encoded",
+                                encoded_file.name).decode().strip()
     assert bao_hash_from_encoded == bao_hash
 
     # Make sure the encoded bytes are what we expect.
@@ -69,7 +68,7 @@ for (name, input_bytes, bao_hash, encoded_blake2b, outboard_blake2b) in cases:
     assert encoded_blake2b == computed_encoded_blake2b.hexdigest()
 
     outboard_file = tempfile.NamedTemporaryFile()
-    bao("encode", "--outboard", outboard_file.name, input=input_bytes)
+    bao("encode", "-", "--outboard", outboard_file.name, input=input_bytes)
     outboard = outboard_file.read()
 
     # Make sure the outboard encoded bytes are what we expect.
@@ -77,7 +76,7 @@ for (name, input_bytes, bao_hash, encoded_blake2b, outboard_blake2b) in cases:
     assert outboard_blake2b == computed_outboard_blake2b.hexdigest()
 
     # Make sure decoding works, and gives back the original input.
-    decoded = bao("decode", bao_hash, input=encoded)
+    decoded = bao("decode", bao_hash, encoded_file.name)
     assert decoded == input_bytes
 
     # Also make sure outboard decoding works.
@@ -90,8 +89,7 @@ for (name, input_bytes, bao_hash, encoded_blake2b, outboard_blake2b) in cases:
     assert outboard_decoded == input_bytes
 
     # Slicing the entire thing should be exactly the same as the full encoding.
-    full_slice = bao(
-        "slice", "0", str(len(input_bytes)), stdin=open(encoded_file.name))
+    full_slice = bao("slice", "0", str(len(input_bytes)), encoded_file.name)
     assert encoded == full_slice
     full_slice_from_outboard = bao(
         "slice",
@@ -99,28 +97,21 @@ for (name, input_bytes, bao_hash, encoded_blake2b, outboard_blake2b) in cases:
         str(len(input_bytes)),
         "--outboard",
         outboard_file.name,
-        stdin=open(input_file.name))
+        input=input_bytes)
     assert full_slice == full_slice_from_outboard
     assert full_slice == encoded
-    full_slice_decoded = bao(
-        "decode-slice", bao_hash, "0", str(len(input_bytes)), input=full_slice)
+    full_slice_decoded = bao("decode-slice", bao_hash, "0",
+                             str(len(input_bytes)), encoded_file.name)
     assert input_bytes == full_slice_decoded
 
     # Test decoding a slice from the middle.
     slice_start = len(input_bytes) // 4
     slice_len = len(input_bytes) // 2
-    middle_slice = bao(
-        "slice",
-        str(slice_start),
-        str(slice_len),
-        stdin=open(encoded_file.name))
-    middle_slice_from_outboard = bao(
-        "slice",
-        str(slice_start),
-        str(slice_len),
-        "--outboard",
-        outboard_file.name,
-        stdin=open(input_file.name))
+    middle_slice = bao("slice", str(slice_start), str(slice_len),
+                       encoded_file.name)
+    middle_slice_from_outboard = bao("slice", str(slice_start), str(slice_len),
+                                     input_file.name, "--outboard",
+                                     outboard_file.name)
     assert middle_slice == middle_slice_from_outboard
     middle_slice_decoded = bao(
         "decode-slice",
