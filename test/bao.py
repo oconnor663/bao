@@ -1,43 +1,53 @@
 #! /usr/bin/env python3
 
 # This is an example implementation of bao, with the goal of being as readable
-# as possible and a reference for tests. Some comments on how the three main
-# operations are implemented:
+# as possible and generating test vectors. There are a few differences that
+# make this code much simpler than the Rust version:
 #
-# *bao_decode* is a recursive streaming implementation. Recursion is easy here
-# because the length header at the start of the encoding tells us how deep the
-# tree is, and we can build up the callstack to match. The pre-order layout of
-# the tree means that no seeking is required, just regular reads.
+# 1. This version's encode implementation buffers all input and output in
+#    memory. The Rust version uses a more complicated tree-flipping strategy to
+#    avoid using extra storage.
+# 2. This version isn't incremental. The Rust version provides incremental
+#    encoders and decoders, which accept small reads and writes from the
+#    caller, and that require more bookkeeping.
+# 3. This version doesn't support arbitrary seeking. The most complicated bit
+#    of bookkeeping in the Rust version is seeking in the incremental decoder.
 #
-# *bao_hash* is an iterative streaming implementation. Recursion doesn't work
-# well here, because we don't know the length of the input file in advance.
-# Instead, we keep a stack of subtrees filled so far, merging them as we go
-# along. There is a very cute trick, where the number of trees that should
-# remain in the stack is the same as the number of 1's in the binary
-# representation of the count of chunks so far. (E.g. If you've read 255 chunks
-# so far, then you have 8 partial subtrees. One of 128 chunks, one of 64
+# Some more specific details about how each part of this implementation works:
+#
+# *bao_decode*, *bao_slice*, and *bao_decode_slice* are recursive streaming
+# implementations. Recursion is easy here because the length header at the
+# start of the encoding tells us all we need to know about the layout of the
+# tree. The pre-order layout means that neither of the decode functions needs
+# to seek (though bao_slice does, to skip the parts that aren't in the slice).
+#
+# *bao_hash* is an iterative streaming implementation, which is closer to an
+# incremental implementation than the recursive functions are. Recursion
+# doesn't work well here, because we don't know the length of the input in
+# advance. Instead, we keep a stack of subtrees filled so far, merging them as
+# we go along. There is a very cute trick, where the number of subtree hashes
+# that should remain in the stack is the same as the number of 1's in the
+# binary representation of the count of chunks so far. (E.g. If you've read 255
+# chunks so far, then you have 8 partial subtrees. One of 128 chunks, one of 64
 # chunks, and so on. After you read the 256th chunk, you can merge all of those
 # into a single subtree.) That, plus the fact that merging is always done
-# smallest-to-largest / right-to-left, means that we don't need to track the
-# size of each subtree at all; just the hashes and the size of the stack is
-# enough.
+# smallest-to-largest / at the top of the stack, means that we don't need to
+# remember the size of each subtree; just the hash is enough.
 #
-# *bao_encode* is a recursive implementation, but it's not streaming. Instead
-# it buffers the entire input in memory. The Rust implementation use a more
-# complicated strategy to avoid hogging memory like this. It writes the output
-# tree first in post-order, and then it does a second pass back-to-front to
-# flip it in place. (A pre-order-first approach suffers from not knowing how
-# much space to leave for parent nodes before the first chunk, until you find
-# out the final length of the input.) That two-pass-tree-flipping strategy is
-# pretty complicated, and this example doesn't try to reproduce it. Note that
-# in any implementation, if the ouput doesn't support seeking (like a Unix
-# pipe), the only options are to either use a temporary file or to buffer the
-# whole input.
+# *bao_encode* is a recursive implementation, but as noted above, it's not
+# streaming. Instead, it buffers the entire input and output in memory. The
+# Rust implementation uses either memory mapped files or a more complicated
+# tree-flipping strategy to avoid hogging memory like this. The tree-flipping
+# approach is to write the output tree first in a post-order layout, and then
+# to do a second pass back-to-front to flip it in place to pre-order. Without
+# knowing the total length of the input, a one-pass design wouldn't know how
+# much space to leave for pre-order parent nodes.
 
 __doc__ = """\
 Usage: bao.py encode [--outboard=<file>]
        bao.py decode <hash> [--outboard=<file>]
        bao.py hash [--encoded]
+       bao.py slice <start> <len> [--outboard=<file>]
 """
 
 import binascii
@@ -48,6 +58,7 @@ import sys
 
 CHUNK_SIZE = 4096
 DIGEST_SIZE = 32
+PARENT_SIZE = 2 * DIGEST_SIZE
 HEADER_SIZE = 8
 
 
@@ -115,7 +126,7 @@ def bao_encode(buf, *, outboard=False):
 
 
 def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
-    parent_stream = outboard_stream or input_stream
+    tree_stream = outboard_stream or input_stream
 
     def decode_recurse(hash_, content_len, root_len):
         if content_len <= CHUNK_SIZE:
@@ -123,8 +134,8 @@ def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
             verify_node(chunk, content_len, root_len, hash_)
             output_stream.write(chunk)
         else:
-            parent = parent_stream.read(2 * DIGEST_SIZE)
-            verify_node(parent, 2 * DIGEST_SIZE, root_len, hash_)
+            parent = tree_stream.read(PARENT_SIZE)
+            verify_node(parent, PARENT_SIZE, root_len, hash_)
             left_hash, right_hash = parent[:DIGEST_SIZE], parent[DIGEST_SIZE:]
             llen = left_len(content_len)
             # Interior nodes have no len suffix.
@@ -132,7 +143,7 @@ def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
             decode_recurse(right_hash, content_len - llen, None)
 
     # The first 8 bytes are the encoded content len.
-    root_len = decode_len(parent_stream.read(HEADER_SIZE))
+    root_len = decode_len(tree_stream.read(HEADER_SIZE))
     decode_recurse(hash_, root_len, root_len)
 
 
@@ -171,12 +182,64 @@ def bao_hash(input_stream):
 def bao_hash_encoded(input_stream):
     root_len = decode_len(input_stream.read(HEADER_SIZE))
     if root_len > CHUNK_SIZE:
-        root_node = input_stream.read(2 * DIGEST_SIZE)
-        assert len(root_node) == 2 * DIGEST_SIZE
+        root_node = input_stream.read(PARENT_SIZE)
+        assert len(root_node) == PARENT_SIZE
     else:
         root_node = input_stream.read(root_len)
         assert len(root_node) == root_len
     return hash_node(root_node, root_len)
+
+
+# Round up to the next full chunk, and remember that the empty tree still
+# counts as one chunk.
+def count_chunks(content_len):
+    if content_len == 0:
+        return 1
+    return (content_len + CHUNK_SIZE - 1) // CHUNK_SIZE
+
+
+def bao_slice(input_stream,
+              output_stream,
+              slice_start,
+              slice_len,
+              outboard_stream=None):
+    tree_stream = outboard_stream or input_stream
+
+    # Note that the root node is always included, regardless of whether the
+    # start is after EOF or the len is zero. This means the recipient always
+    # verifies the root hash.
+    def slice_recurse(subtree_start, subtree_len, is_root):
+        slice_end = slice_start + slice_len
+        subtree_end = subtree_start + subtree_len
+        if subtree_end <= slice_start and not is_root:
+            # Seek past the current subtree. Note that if there are N chunks in
+            # a subtree, there are always N-1 parent nodes.
+            parent_nodes_size = PARENT_SIZE * (count_chunks(subtree_len) - 1)
+            # `1` here means seek from the current position.
+            tree_stream.seek(parent_nodes_size, 1)
+            input_stream.seek(subtree_len, 1)
+        elif slice_end <= subtree_start and not is_root:
+            # We've sliced all the requested content, and we're done.
+            pass
+        elif subtree_len <= CHUNK_SIZE:
+            # The current subtree is just a chunk. Read the whole thing. The
+            # recipient will need the whole thing to verify its hash,
+            # regardless of whether it overlaps slice_end.
+            chunk = input_stream.read(subtree_len)
+            output_stream.write(chunk)
+        else:
+            # We need to read a parent node and recurse into the current
+            # subtree. Note that is_root is always False after this point.
+            parent = tree_stream.read(PARENT_SIZE)
+            output_stream.write(parent)
+            llen = left_len(subtree_len)
+            slice_recurse(subtree_start, llen, False)
+            slice_recurse(subtree_start + llen, subtree_len - llen, False)
+
+    root_len_bytes = input_stream.read(HEADER_SIZE)
+    output_stream.write(root_len_bytes)
+    root_len = decode_len(root_len_bytes)
+    slice_recurse(0, root_len, True)
 
 
 def main():
@@ -205,6 +268,12 @@ def main():
         else:
             hash_ = bao_hash(sys.stdin.buffer)
         print(hash_.hex())
+    elif args["slice"]:
+        outboard_stream = None
+        if args["--outboard"] is not None:
+            outboard_stream = open(args["--outboard"], "rb")
+        bao_slice(sys.stdin.buffer, sys.stdout.buffer, int(args["<start>"]),
+                  int(args["<len>"]), outboard_stream)
 
 
 if __name__ == "__main__":

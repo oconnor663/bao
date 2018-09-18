@@ -1034,6 +1034,7 @@ pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
 #[cfg(feature = "std")]
 impl<T: Read + Seek> SliceExtractor<T, T> {
     pub fn new(input: T, slice_start: u64, slice_len: u64) -> Self {
+        // TODO: normalize zero-length slices?
         Self::new_inner(input, None, slice_start, slice_len)
     }
 }
