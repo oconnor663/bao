@@ -171,14 +171,14 @@ fn slice(args: &Args) -> Result<(), Error> {
     if args.flag_outboard.is_some() {
         outboard_file = open_input(&args.flag_outboard)?;
         confirm_real_file(&outboard_file, "slicing input")?;
-        extractor = bao::decode::SliceExtractor::new_outboard(
+        extractor = bao::encode::SliceExtractor::new_outboard(
             in_file,
             outboard_file,
             args.arg_start,
             args.arg_len,
         );
     } else {
-        extractor = bao::decode::SliceExtractor::new(in_file, args.arg_start, args.arg_len);
+        extractor = bao::encode::SliceExtractor::new(in_file, args.arg_start, args.arg_len);
     }
     io::copy(&mut extractor, &mut out_file)?;
     Ok(())
