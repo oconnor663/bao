@@ -238,7 +238,7 @@ def bao_slice(input_stream,
             slice_recurse(subtree_start, llen, False)
             slice_recurse(subtree_start + llen, subtree_len - llen, False)
 
-    content_len_bytes = input_stream.read(HEADER_SIZE)
+    content_len_bytes = tree_stream.read(HEADER_SIZE)
     output_stream.write(content_len_bytes)
     content_len = decode_len(content_len_bytes)
     slice_recurse(0, content_len, True)
