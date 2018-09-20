@@ -44,7 +44,7 @@
 # much space to leave for pre-order parent nodes.
 
 __doc__ = """\
-Usage: bao.py hash [<input>] [--encoded | --outboard=<file>]
+Usage: bao.py hash [<input>] [<inputs>... | --encoded | --outboard=<file>]
        bao.py encode <input> (<output> | --outboard=<file>)
        bao.py decode <hash> [<input>] [<output>] [--outboard=<file>]
        bao.py slice <start> <len> [<input>] [<output>] [--outboard=<file>]
@@ -319,14 +319,22 @@ def main():
         bao_decode(
             in_stream, out_stream, hash_, outboard_stream=outboard_stream)
     elif args["hash"]:
-        if args["--encoded"]:
-            hash_ = bao_hash_encoded(in_stream)
-        elif args["--outboard"] is not None:
-            outboard_stream = open_input(args["--outboard"])
-            hash_ = bao_hash_encoded(in_stream, outboard_stream)
+        if len(args["<inputs>"]) > 0:
+            # This loop opens the first input a second time, and it doesn't
+            # handle errors, but that's not the end of the world.
+            all_inputs = [args["<input>"]] + args["<inputs>"]
+            for name in all_inputs:
+                hash_ = bao_hash(open_input(name))
+                print("{}  {}".format(hash_.hex(), name))
         else:
-            hash_ = bao_hash(in_stream)
-        print(hash_.hex())
+            if args["--encoded"]:
+                hash_ = bao_hash_encoded(in_stream)
+            elif args["--outboard"] is not None:
+                outboard_stream = open_input(args["--outboard"])
+                hash_ = bao_hash_encoded(in_stream, outboard_stream)
+            else:
+                hash_ = bao_hash(in_stream)
+            print(hash_.hex())
     elif args["slice"]:
         outboard_stream = None
         if args["--outboard"] is not None:
