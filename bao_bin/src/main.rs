@@ -18,12 +18,14 @@ use std::path::{Path, PathBuf};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+// Note that docopt.rs currently has a bug related to commands wrapped over multiple lines, so
+// don't wrap them. https://github.com/docopt/docopt.rs/issues/244
 const USAGE: &str = "
 Usage: bao hash [<input>] [<inputs>... | --encoded | --outboard=<file>]
        bao encode <input> (<output> | --outboard=<file>)
-       bao decode <hash> [<input>] [<output>] [--start=<offset>] [--outboard=<file>]
-       bao slice <start> <len> [<input>] [<output>] [--outboard=<file>]
-       bao decode-slice <hash> <start> <len> [<input>] [<output>]
+       bao decode <hash> [<input>] [<output>] [--outboard=<file>] [--start=<offset>] [--count=<count>]
+       bao slice <start> <count> [<input>] [<output>] [--outboard=<file>]
+       bao decode-slice <hash> <start> <count> [<input>] [<output>]
        bao (--help | --version)
 ";
 
@@ -39,7 +41,8 @@ struct Args {
     arg_output: Option<PathBuf>,
     arg_hash: String,
     arg_start: u64,
-    arg_len: u64,
+    arg_count: u64,
+    flag_count: Option<u64>,
     flag_encoded: bool,
     flag_help: bool,
     flag_outboard: Option<PathBuf>,
@@ -159,8 +162,10 @@ fn decode(args: &Args) -> Result<(), Error> {
     let in_file = open_input(&args.arg_input)?;
     let mut out_file = open_output(&args.arg_output)?;
     let hash = parse_hash(args)?;
+    let special_options =
+        args.flag_start.is_some() || args.flag_count.is_some() || args.flag_outboard.is_some();
     // If we're not seeking or outboard, try to memmap the files.
-    if args.flag_start.is_none() && args.flag_outboard.is_none() {
+    if !special_options {
         if let Some(in_map) = maybe_memmap_input(&in_file)? {
             let content_len = bao::decode::parse_and_check_content_len(&in_map)?;
             if let Some(mut out_map) = maybe_memmap_output(&out_file, content_len as u128)? {
@@ -185,7 +190,12 @@ fn decode(args: &Args) -> Result<(), Error> {
         confirm_real_file(&in_file, "when seeking, decode input")?;
         reader.seek(io::SeekFrom::Start(offset))?;
     }
-    allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
+    if let Some(count) = args.flag_count {
+        let mut taker = reader.take(count);
+        allow_broken_pipe(io::copy(&mut taker, &mut out_file))?;
+    } else {
+        allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
+    }
     Ok(())
 }
 
@@ -203,10 +213,10 @@ fn slice(args: &Args) -> Result<(), Error> {
             in_file,
             outboard_file,
             args.arg_start,
-            args.arg_len,
+            args.arg_count,
         );
     } else {
-        extractor = bao::encode::SliceExtractor::new(in_file, args.arg_start, args.arg_len);
+        extractor = bao::encode::SliceExtractor::new(in_file, args.arg_start, args.arg_count);
     }
     io::copy(&mut extractor, &mut out_file)?;
     Ok(())
@@ -216,7 +226,7 @@ fn decode_slice(args: &Args) -> Result<(), Error> {
     let in_file = open_input(&args.arg_input)?;
     let mut out_file = open_output(&args.arg_output)?;
     let hash = parse_hash(&args)?;
-    let mut reader = bao::decode::SliceReader::new(in_file, &hash, args.arg_start, args.arg_len);
+    let mut reader = bao::decode::SliceReader::new(in_file, &hash, args.arg_start, args.arg_count);
     allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
     Ok(())
 }

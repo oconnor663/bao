@@ -47,8 +47,8 @@ __doc__ = """\
 Usage: bao.py hash [<input>] [<inputs>... | --encoded | --outboard=<file>]
        bao.py encode <input> (<output> | --outboard=<file>)
        bao.py decode <hash> [<input>] [<output>] [--outboard=<file>]
-       bao.py slice <start> <len> [<input>] [<output>] [--outboard=<file>]
-       bao.py decode-slice <hash> <start> <len> [<input>] [<output>]
+       bao.py slice <start> <count> [<input>] [<output>] [--outboard=<file>]
+       bao.py decode-slice <hash> <start> <count> [<input>] [<output>]
 """
 
 import binascii
@@ -340,11 +340,11 @@ def main():
         if args["--outboard"] is not None:
             outboard_stream = open_input(args["--outboard"])
         bao_slice(in_stream, out_stream, int(args["<start>"]),
-                  int(args["<len>"]), outboard_stream)
+                  int(args["<count>"]), outboard_stream)
     elif args["decode-slice"]:
         hash_ = binascii.unhexlify(args["<hash>"])
         bao_decode_slice(in_stream, out_stream, hash_, int(args["<start>"]),
-                         int(args["<len>"]))
+                         int(args["<count>"]))
 
 
 if __name__ == "__main__":
