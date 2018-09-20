@@ -67,9 +67,13 @@ for (name, input_bytes, bao_hash, encoded_blake2b, outboard_blake2b) in cases:
     computed_encoded_blake2b = hashlib.blake2b(encoded, digest_size=32)
     assert encoded_blake2b == computed_encoded_blake2b.hexdigest()
 
+    # Make sure that `bao hash --outboard=...` gives the same hash.
     outboard_file = tempfile.NamedTemporaryFile()
     bao("encode", "-", "--outboard", outboard_file.name, input=input_bytes)
     outboard = outboard_file.read()
+    bao_hash_from_outboard = bao("hash", input_file.name, "--outboard",
+                                 outboard_file.name).decode().strip()
+    assert bao_hash_from_outboard == bao_hash
 
     # Make sure the outboard encoded bytes are what we expect.
     computed_outboard_blake2b = hashlib.blake2b(outboard, digest_size=32)

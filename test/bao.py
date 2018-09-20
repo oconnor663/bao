@@ -181,10 +181,11 @@ def bao_hash(input_stream):
         buf = buf + read
 
 
-def bao_hash_encoded(input_stream):
-    content_len = decode_len(input_stream.read(HEADER_SIZE))
+def bao_hash_encoded(input_stream, outboard_stream=None):
+    tree_stream = outboard_stream or input_stream
+    content_len = decode_len(tree_stream.read(HEADER_SIZE))
     if content_len > CHUNK_SIZE:
-        root_node = input_stream.read(PARENT_SIZE)
+        root_node = tree_stream.read(PARENT_SIZE)
         assert len(root_node) == PARENT_SIZE
     else:
         root_node = input_stream.read(content_len)
@@ -314,19 +315,22 @@ def main():
         hash_ = binascii.unhexlify(args["<hash>"])
         outboard_stream = None
         if args["--outboard"] is not None:
-            outboard_stream = open(args["--outboard"], "rb")
+            outboard_stream = open_input(args["--outboard"])
         bao_decode(
             in_stream, out_stream, hash_, outboard_stream=outboard_stream)
     elif args["hash"]:
         if args["--encoded"]:
             hash_ = bao_hash_encoded(in_stream)
+        elif args["--outboard"] is not None:
+            outboard_stream = open_input(args["--outboard"])
+            hash_ = bao_hash_encoded(in_stream, outboard_stream)
         else:
             hash_ = bao_hash(in_stream)
         print(hash_.hex())
     elif args["slice"]:
         outboard_stream = None
         if args["--outboard"] is not None:
-            outboard_stream = open(args["--outboard"], "rb")
+            outboard_stream = open_input(args["--outboard"])
         bao_slice(in_stream, out_stream, int(args["<start>"]),
                   int(args["<len>"]), outboard_stream)
     elif args["decode-slice"]:
