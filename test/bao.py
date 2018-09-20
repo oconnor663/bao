@@ -201,6 +201,12 @@ def count_chunks(content_len):
     return (content_len + CHUNK_SIZE - 1) // CHUNK_SIZE
 
 
+# A subtree of N chunks always has N-1 parent nodes.
+def encoded_subtree_size(content_len, outboard=False):
+    parents_size = PARENT_SIZE * (count_chunks(content_len) - 1)
+    return parents_size if outboard else parents_size + content_len
+
+
 def bao_slice(input_stream,
               output_stream,
               slice_start,
@@ -215,9 +221,9 @@ def bao_slice(input_stream,
         slice_end = slice_start + slice_len
         subtree_end = subtree_start + subtree_len
         if subtree_end <= slice_start and not is_root:
-            # Seek past the current subtree. Note that if there are N chunks in
-            # a subtree, there are always N-1 parent nodes.
-            parent_nodes_size = PARENT_SIZE * (count_chunks(subtree_len) - 1)
+            # Seek past the current subtree.
+            parent_nodes_size = encoded_subtree_size(
+                subtree_len, outboard=True)
             # `1` here means seek from the current position.
             tree_stream.seek(parent_nodes_size, 1)
             input_stream.seek(subtree_len, 1)
