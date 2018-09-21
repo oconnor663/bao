@@ -1,12 +1,15 @@
 #! /usr/bin/env python3
 
-import bao
-from bao import CHUNK_SIZE, HEADER_SIZE, PARENT_SIZE
 from collections import OrderedDict
 from hashlib import blake2b
 import io
 import json
 import sys
+
+# Imports from this directory.
+import bao
+from bao import CHUNK_SIZE, HEADER_SIZE, PARENT_SIZE
+from test_input import input_bytes
 
 SIZES = [
     0,
@@ -27,17 +30,6 @@ SIZES = [
 ]
 
 
-def inputbytes(size):
-    ret = bytearray()
-    i = 1
-    while len(ret) < size:
-        take = min(4, size - len(ret))
-        ibytes = i.to_bytes(4, "little")
-        ret.extend(ibytes[:take])
-        i += 1
-    return ret
-
-
 def blake2b_hash(b):
     return blake2b(b, digest_size=16).hexdigest()
 
@@ -45,7 +37,7 @@ def blake2b_hash(b):
 def hashes():
     ret = []
     for size in SIZES:
-        b = inputbytes(size)
+        b = input_bytes(size)
         h = bao.bao_hash(io.BytesIO(b))
         fields = [("input_len", size), ("bao_hash", h.hex())]
         ret.append(OrderedDict(fields))
@@ -75,7 +67,7 @@ def encode_corruption_points(content_len, outboard=False):
 def encoded():
     ret = []
     for size in SIZES:
-        b = inputbytes(size)
+        b = input_bytes(size)
         encoded = bao.bao_encode(b)
         fields = [
             ("input_len", size),
@@ -90,7 +82,7 @@ def encoded():
 def outboard():
     ret = []
     for size in SIZES:
-        b = inputbytes(size)
+        b = input_bytes(size)
         encoded = bao.bao_encode(b, outboard=True)
         fields = [
             ("input_len", size),
@@ -166,7 +158,7 @@ def slices():
     for case in seeks():
         size = case["input_len"]
         offsets = case["offsets"]
-        b = inputbytes(size)
+        b = input_bytes(size)
         encoded = bao.bao_encode(b)
         slice_hashes = []
         for offset in offsets:
