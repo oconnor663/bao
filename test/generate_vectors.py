@@ -103,13 +103,12 @@ def seeks():
             if offset > 0:
                 offsets.append(offset - 1)
             offsets.append(offset)
-            offsets.append(offset + 1)
             offset += CHUNK_SIZE
         if size > 0:
             offsets.append(size - 1)
         offsets.append(size)
         offsets.append(size + 1)
-        fields = [("input_len", size), ("offsets", offsets)]
+        fields = [("input_len", size), ("seek_offsets", offsets)]
         ret.append(OrderedDict(fields))
     return ret
 
@@ -157,7 +156,7 @@ def slices():
     ret = []
     for case in seeks():
         size = case["input_len"]
-        offsets = case["offsets"]
+        offsets = case["seek_offsets"]
         b = input_bytes(size)
         encoded = bao.bao_encode(b)
         slice_hashes = []
