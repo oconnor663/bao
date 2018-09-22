@@ -1,3 +1,4 @@
 Cargo.lock
 target
 __pycache__
+.pytest_cache
