@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 
 # Imports from this directory.
-import test_input
+import generate_input
 
 HERE = Path(__file__).parent
 BAO_PATH = HERE / "bao.py"
@@ -47,7 +47,7 @@ def bao_hash(input, encoded=False, outboard=None):
 def test_hashes():
     for case in VECTORS["hash"]:
         input_len = case["input_len"]
-        input_bytes = test_input.input_bytes(input_len)
+        input_bytes = generate_input.input_bytes(input_len)
         expected_hash = case["bao_hash"]
         print("hash", input_len)
 
@@ -61,7 +61,7 @@ def encoded_file(input_len, *, outboard=False):
     if outboard:
         args += ["--outboard"]
     args += [encoded_file.name]
-    bao(*args, input=test_input.input_bytes(input_len))
+    bao(*args, input=generate_input.input_bytes(input_len))
     return encoded_file
 
 
@@ -77,7 +77,7 @@ def blake2b(b):
 def test_encoded():
     for case in VECTORS["encoded"]:
         input_len = case["input_len"]
-        input_bytes = test_input.input_bytes(input_len)
+        input_bytes = generate_input.input_bytes(input_len)
         output_len = case["output_len"]
         expected_bao_hash = case["bao_hash"]
         encoded_blake2b = case["encoded_blake2b"]
@@ -107,7 +107,7 @@ def test_encoded():
 def test_outboard():
     for case in VECTORS["outboard"]:
         input_len = case["input_len"]
-        input_bytes = test_input.input_bytes(input_len)
+        input_bytes = generate_input.input_bytes(input_len)
         output_len = case["output_len"]
         expected_bao_hash = case["bao_hash"]
         encoded_blake2b = case["encoded_blake2b"]

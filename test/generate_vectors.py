@@ -9,7 +9,7 @@ import sys
 # Imports from this directory.
 import bao
 from bao import CHUNK_SIZE, HEADER_SIZE, PARENT_SIZE
-from test_input import input_bytes
+from generate_input import input_bytes
 
 SIZES = [
     0,
