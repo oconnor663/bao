@@ -1,6 +1,9 @@
 #! /usr/bin/env python3
 
 # This file is directly runnable, or you can run pytest in this directory.
+# Since test_vectors.json is generated from bao.py, it's slightly cheating to
+# then test bao.py against its own output. But at least this helps is notice
+# changes, since the vectors are checked in rather than generated every time.
 
 import hashlib
 import json
@@ -17,12 +20,18 @@ VECTORS_PATH = HERE / "test_vectors.json"
 VECTORS = json.load(VECTORS_PATH.open())
 
 
-def bao(*args, input=None, as_hex=False):
-    return subprocess.run(
+def bao(*args, input=None, should_fail=False):
+    output = subprocess.run(
         ["python3", str(BAO_PATH), *args],
         stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL if should_fail else None,
         input=input,
-    ).stdout
+    )
+    if output.returncode != 0 and not should_fail:
+        raise AssertionError("bao.py returned an error", output.returncode)
+    if output.returncode == 0 and should_fail:
+        raise AssertionError("bao.py should have failed")
+    return output.stdout
 
 
 def bao_hash(input, encoded=False, outboard=None):
@@ -81,6 +90,12 @@ def test_encoded():
         # Now test decoding.
         output = bao("decode", bao_hash_encoded, input=encoded)
         assert input_bytes(input_len) == output
+
+        # Finally, make sure each of the corruptions causes decoding to fail.
+        for c in corruptions:
+            corrupted = bytearray(encoded)
+            corrupted[c] ^= 1
+            bao("decode", bao_hash_encoded, input=corrupted, should_fail=True)
 
 
 def main():
