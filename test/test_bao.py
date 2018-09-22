@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 
 # Imports from this directory.
-from test_input import input_bytes
+import test_input
 
 HERE = Path(__file__).parent
 BAO_PATH = HERE / "bao.py"
@@ -47,21 +47,26 @@ def bao_hash(input, encoded=False, outboard=None):
 def test_hashes():
     for case in VECTORS["hash"]:
         input_len = case["input_len"]
+        input_bytes = test_input.input_bytes(input_len)
         expected_hash = case["bao_hash"]
         print("hash", input_len)
 
-        computed_hash = bao_hash(input_bytes(input_len))
+        computed_hash = bao_hash(input_bytes)
         assert expected_hash == computed_hash
 
 
-def encoded_file(input_len):
+def encoded_file(input_len, *, outboard=False):
     encoded_file = tempfile.NamedTemporaryFile()
-    bao("encode", "-", encoded_file.name, input=input_bytes(input_len))
+    args = ["encode", "-"]
+    if outboard:
+        args += ["--outboard"]
+    args += [encoded_file.name]
+    bao(*args, input=test_input.input_bytes(input_len))
     return encoded_file
 
 
-def encoded_bytes(input_len):
-    f = encoded_file(input_len)
+def encoded_bytes(input_len, *, outboard=False):
+    f = encoded_file(input_len, outboard=outboard)
     return f.read()
 
 
@@ -72,6 +77,7 @@ def blake2b(b):
 def test_encoded():
     for case in VECTORS["encoded"]:
         input_len = case["input_len"]
+        input_bytes = test_input.input_bytes(input_len)
         output_len = case["output_len"]
         expected_bao_hash = case["bao_hash"]
         encoded_blake2b = case["encoded_blake2b"]
@@ -88,8 +94,8 @@ def test_encoded():
         assert expected_bao_hash == bao_hash_encoded
 
         # Now test decoding.
-        output = bao("decode", bao_hash_encoded, input=encoded)
-        assert input_bytes(input_len) == output
+        output = bao("decode", expected_bao_hash, input=encoded)
+        assert input_bytes == output
 
         # Finally, make sure each of the corruptions causes decoding to fail.
         for c in corruptions:
@@ -98,9 +104,52 @@ def test_encoded():
             bao("decode", bao_hash_encoded, input=corrupted, should_fail=True)
 
 
+def test_outboard():
+    for case in VECTORS["outboard"]:
+        input_len = case["input_len"]
+        input_bytes = test_input.input_bytes(input_len)
+        output_len = case["output_len"]
+        expected_bao_hash = case["bao_hash"]
+        encoded_blake2b = case["encoded_blake2b"]
+        corruptions = case["corruptions"]
+        print("outboard", input_len)
+
+        # First make sure the encoded output is what it's supposed to be.
+        outboard_file = encoded_file(input_len, outboard=True)
+        outboard_bytes = outboard_file.read()
+        assert output_len == len(outboard_bytes)
+        assert encoded_blake2b == blake2b(outboard_bytes)
+
+        # Test `bao hash --outboard`.
+        bao_hash_encoded = bao_hash(input_bytes, outboard=outboard_file.name)
+        assert expected_bao_hash == bao_hash_encoded
+
+        # Now test decoding.
+        output = bao(
+            "decode",
+            expected_bao_hash,
+            "--outboard",
+            outboard_file.name,
+            input=input_bytes)
+        assert input_bytes == output
+
+        # Make sure each of the outboard corruptions causes decoding to fail.
+        for c in corruptions:
+            corrupted = bytearray(outboard_bytes)
+            corrupted[c] ^= 1
+            corrupted_file = tempfile.NamedTemporaryFile()
+            corrupted_file.write(corrupted)
+            corrupted_file.flush()
+            bao("decode",
+                bao_hash_encoded,
+                input=input_bytes,
+                should_fail=True)
+
+
 def main():
     test_hashes()
     test_encoded()
+    test_outboard()
 
 
 if __name__ == "__main__":

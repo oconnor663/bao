@@ -88,7 +88,8 @@ def outboard():
         fields = [
             ("input_len", size),
             ("output_len", len(encoded)),
-            ("blake2b_hash", blake2b_hash(encoded)),
+            ("bao_hash", bao.bao_hash(io.BytesIO(b)).hex()),
+            ("encoded_blake2b", blake2b_hash(encoded)),
             ("corruptions", encode_corruption_points(size, outboard=True)),
         ]
         ret.append(OrderedDict(fields))
