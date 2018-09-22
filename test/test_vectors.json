@@ -54,7 +54,7 @@
             "bao_hash": "dbcd3a1289d40bbc226c4e63023d6727ca98ba9b057ded4d6e68c7b3f323cb2f"
         }
     ],
-    "encoded": [
+    "encode": [
         {
             "input_len": 0,
             "output_len": 8,
@@ -477,7 +477,7 @@
             ]
         }
     ],
-    "seeks": [
+    "seek": [
         {
             "input_len": 0,
             "seek_offsets": [
@@ -655,24 +655,25 @@
             ]
         }
     ],
-    "slices": [
+    "slice": [
         {
             "input_len": 0,
-            "slice_hashes": [
+            "bao_hash": "4c21d0993c7daa84190d0212a684a05af6a9be4c294ec84612635938b91b3d9c",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 8,
-                    "blake2b_hash": "c804ce198ec337e3dc762bdd1a09aece",
+                    "output_blake2b": "c804ce198ec337e3dc762bdd1a09aece",
                     "corruptions": [
                         0
                     ]
                 },
                 {
-                    "offset": 1,
-                    "slice_len": 8192,
+                    "start": 1,
+                    "len": 8192,
                     "output_len": 8,
-                    "blake2b_hash": "c804ce198ec337e3dc762bdd1a09aece",
+                    "output_blake2b": "c804ce198ec337e3dc762bdd1a09aece",
                     "corruptions": [
                         0
                     ]
@@ -681,32 +682,33 @@
         },
         {
             "input_len": 1,
-            "slice_hashes": [
+            "bao_hash": "9a176f09686a58bf3cab527c181070525cc29985e71cbab0a6c24bdf69b4a081",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 9,
-                    "blake2b_hash": "66fee2554b39a75dd893612ae0e7c070",
+                    "output_blake2b": "66fee2554b39a75dd893612ae0e7c070",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 1,
-                    "slice_len": 8192,
+                    "start": 1,
+                    "len": 8192,
                     "output_len": 9,
-                    "blake2b_hash": "66fee2554b39a75dd893612ae0e7c070",
+                    "output_blake2b": "66fee2554b39a75dd893612ae0e7c070",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 2,
-                    "slice_len": 8192,
+                    "start": 2,
+                    "len": 8192,
                     "output_len": 9,
-                    "blake2b_hash": "66fee2554b39a75dd893612ae0e7c070",
+                    "output_blake2b": "66fee2554b39a75dd893612ae0e7c070",
                     "corruptions": [
                         0,
                         8
@@ -716,42 +718,43 @@
         },
         {
             "input_len": 4095,
-            "slice_hashes": [
+            "bao_hash": "d75596b007831b5034deeac126f1e8cbe163061f1d2543cf0b48a1ebc14f10f1",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 4103,
-                    "blake2b_hash": "537c37402ee3b327363a07876763726f",
+                    "output_blake2b": "537c37402ee3b327363a07876763726f",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 4094,
-                    "slice_len": 8192,
+                    "start": 4094,
+                    "len": 8192,
                     "output_len": 4103,
-                    "blake2b_hash": "537c37402ee3b327363a07876763726f",
+                    "output_blake2b": "537c37402ee3b327363a07876763726f",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 4095,
-                    "slice_len": 8192,
+                    "start": 4095,
+                    "len": 8192,
                     "output_len": 4103,
-                    "blake2b_hash": "537c37402ee3b327363a07876763726f",
+                    "output_blake2b": "537c37402ee3b327363a07876763726f",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 4096,
-                    "slice_len": 8192,
+                    "start": 4096,
+                    "len": 8192,
                     "output_len": 4103,
-                    "blake2b_hash": "537c37402ee3b327363a07876763726f",
+                    "output_blake2b": "537c37402ee3b327363a07876763726f",
                     "corruptions": [
                         0,
                         8
@@ -761,42 +764,43 @@
         },
         {
             "input_len": 4096,
-            "slice_hashes": [
+            "bao_hash": "6dd6b6df0e4a7b35197bc1a7db99e2263e1244c4536f6b19cb9642fd6d1217ca",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 4104,
-                    "blake2b_hash": "2fd251b18c4f92a28f4f1b2eead9bff3",
+                    "output_blake2b": "2fd251b18c4f92a28f4f1b2eead9bff3",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 4095,
-                    "slice_len": 8192,
+                    "start": 4095,
+                    "len": 8192,
                     "output_len": 4104,
-                    "blake2b_hash": "2fd251b18c4f92a28f4f1b2eead9bff3",
+                    "output_blake2b": "2fd251b18c4f92a28f4f1b2eead9bff3",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 4096,
-                    "slice_len": 8192,
+                    "start": 4096,
+                    "len": 8192,
                     "output_len": 4104,
-                    "blake2b_hash": "2fd251b18c4f92a28f4f1b2eead9bff3",
+                    "output_blake2b": "2fd251b18c4f92a28f4f1b2eead9bff3",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 4097,
-                    "slice_len": 8192,
+                    "start": 4097,
+                    "len": 8192,
                     "output_len": 4104,
-                    "blake2b_hash": "2fd251b18c4f92a28f4f1b2eead9bff3",
+                    "output_blake2b": "2fd251b18c4f92a28f4f1b2eead9bff3",
                     "corruptions": [
                         0,
                         8
@@ -806,12 +810,13 @@
         },
         {
             "input_len": 4097,
-            "slice_hashes": [
+            "bao_hash": "0eac66ed1b531880c21d1d2e624e0b41e4055d85838924477c1525321ec26f87",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 4169,
-                    "blake2b_hash": "8e7d2c960e549316dbb6f2f090cdbb2e",
+                    "output_blake2b": "8e7d2c960e549316dbb6f2f090cdbb2e",
                     "corruptions": [
                         0,
                         8,
@@ -820,10 +825,10 @@
                     ]
                 },
                 {
-                    "offset": 4096,
-                    "slice_len": 8192,
+                    "start": 4096,
+                    "len": 8192,
                     "output_len": 73,
-                    "blake2b_hash": "1a6c39e9bbf7cba68c6f6765dbc62313",
+                    "output_blake2b": "1a6c39e9bbf7cba68c6f6765dbc62313",
                     "corruptions": [
                         0,
                         8,
@@ -831,20 +836,20 @@
                     ]
                 },
                 {
-                    "offset": 4097,
-                    "slice_len": 8192,
+                    "start": 4097,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "d8cdf27287151050df7574d16482c354",
+                    "output_blake2b": "d8cdf27287151050df7574d16482c354",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 4098,
-                    "slice_len": 8192,
+                    "start": 4098,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "d8cdf27287151050df7574d16482c354",
+                    "output_blake2b": "d8cdf27287151050df7574d16482c354",
                     "corruptions": [
                         0,
                         8
@@ -854,12 +859,13 @@
         },
         {
             "input_len": 8191,
-            "slice_hashes": [
+            "bao_hash": "a30fb8dd6affe8c5cd209b300fe97fb963fb37e0f3b518e421caf248af40df2c",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 8263,
-                    "blake2b_hash": "56e09d83bdd18d00327fbbf6d8cdb1a1",
+                    "output_blake2b": "56e09d83bdd18d00327fbbf6d8cdb1a1",
                     "corruptions": [
                         0,
                         8,
@@ -868,10 +874,10 @@
                     ]
                 },
                 {
-                    "offset": 4095,
-                    "slice_len": 8192,
+                    "start": 4095,
+                    "len": 8192,
                     "output_len": 8263,
-                    "blake2b_hash": "56e09d83bdd18d00327fbbf6d8cdb1a1",
+                    "output_blake2b": "56e09d83bdd18d00327fbbf6d8cdb1a1",
                     "corruptions": [
                         0,
                         8,
@@ -880,10 +886,10 @@
                     ]
                 },
                 {
-                    "offset": 4096,
-                    "slice_len": 8192,
+                    "start": 4096,
+                    "len": 8192,
                     "output_len": 4167,
-                    "blake2b_hash": "d4a9cd2b3302b8a57011981a41ce7466",
+                    "output_blake2b": "d4a9cd2b3302b8a57011981a41ce7466",
                     "corruptions": [
                         0,
                         8,
@@ -891,10 +897,10 @@
                     ]
                 },
                 {
-                    "offset": 8190,
-                    "slice_len": 8192,
+                    "start": 8190,
+                    "len": 8192,
                     "output_len": 4167,
-                    "blake2b_hash": "d4a9cd2b3302b8a57011981a41ce7466",
+                    "output_blake2b": "d4a9cd2b3302b8a57011981a41ce7466",
                     "corruptions": [
                         0,
                         8,
@@ -902,20 +908,20 @@
                     ]
                 },
                 {
-                    "offset": 8191,
-                    "slice_len": 8192,
+                    "start": 8191,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "d2c9715b40dcc84fa0ffbe0c12c919ca",
+                    "output_blake2b": "d2c9715b40dcc84fa0ffbe0c12c919ca",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 8192,
-                    "slice_len": 8192,
+                    "start": 8192,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "d2c9715b40dcc84fa0ffbe0c12c919ca",
+                    "output_blake2b": "d2c9715b40dcc84fa0ffbe0c12c919ca",
                     "corruptions": [
                         0,
                         8
@@ -925,12 +931,13 @@
         },
         {
             "input_len": 8192,
-            "slice_hashes": [
+            "bao_hash": "bfbc2f0878798ea1b73e67a8c49c1050c2b43af8ca5ac0cd10cad72fc11790fe",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 8264,
-                    "blake2b_hash": "8b050dd58d7b575cda00c62c105de2cd",
+                    "output_blake2b": "8b050dd58d7b575cda00c62c105de2cd",
                     "corruptions": [
                         0,
                         8,
@@ -939,10 +946,10 @@
                     ]
                 },
                 {
-                    "offset": 4095,
-                    "slice_len": 8192,
+                    "start": 4095,
+                    "len": 8192,
                     "output_len": 8264,
-                    "blake2b_hash": "8b050dd58d7b575cda00c62c105de2cd",
+                    "output_blake2b": "8b050dd58d7b575cda00c62c105de2cd",
                     "corruptions": [
                         0,
                         8,
@@ -951,10 +958,10 @@
                     ]
                 },
                 {
-                    "offset": 4096,
-                    "slice_len": 8192,
+                    "start": 4096,
+                    "len": 8192,
                     "output_len": 4168,
-                    "blake2b_hash": "8021878c43845e3b6883b5c8e2d1ec3a",
+                    "output_blake2b": "8021878c43845e3b6883b5c8e2d1ec3a",
                     "corruptions": [
                         0,
                         8,
@@ -962,10 +969,10 @@
                     ]
                 },
                 {
-                    "offset": 8191,
-                    "slice_len": 8192,
+                    "start": 8191,
+                    "len": 8192,
                     "output_len": 4168,
-                    "blake2b_hash": "8021878c43845e3b6883b5c8e2d1ec3a",
+                    "output_blake2b": "8021878c43845e3b6883b5c8e2d1ec3a",
                     "corruptions": [
                         0,
                         8,
@@ -973,20 +980,20 @@
                     ]
                 },
                 {
-                    "offset": 8192,
-                    "slice_len": 8192,
+                    "start": 8192,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "3c3e948a1f135089414183a66140b2e3",
+                    "output_blake2b": "3c3e948a1f135089414183a66140b2e3",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 8193,
-                    "slice_len": 8192,
+                    "start": 8193,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "3c3e948a1f135089414183a66140b2e3",
+                    "output_blake2b": "3c3e948a1f135089414183a66140b2e3",
                     "corruptions": [
                         0,
                         8
@@ -996,12 +1003,13 @@
         },
         {
             "input_len": 8193,
-            "slice_hashes": [
+            "bao_hash": "f23eb5b6d0f465b983622cc1ad0ef6bd7894ce889ec431cd8017157feca7e32f",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 8328,
-                    "blake2b_hash": "7667293b0ef1703dcac3efdb81f95836",
+                    "output_blake2b": "7667293b0ef1703dcac3efdb81f95836",
                     "corruptions": [
                         0,
                         8,
@@ -1011,37 +1019,37 @@
                     ]
                 },
                 {
-                    "offset": 4095,
-                    "slice_len": 8192,
+                    "start": 4095,
+                    "len": 8192,
                     "output_len": 8329,
-                    "blake2b_hash": "46ef95f3aa644d683581e662ad115ec1",
+                    "output_blake2b": "46ef95f3aa644d683581e662ad115ec1",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
                         4232,
-                        8400
+                        8328
                     ]
                 },
                 {
-                    "offset": 4096,
-                    "slice_len": 8192,
+                    "start": 4096,
+                    "len": 8192,
                     "output_len": 4233,
-                    "blake2b_hash": "378b2c8436d76dd897d4bad83c18c938",
+                    "output_blake2b": "378b2c8436d76dd897d4bad83c18c938",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
-                        4304
+                        4232
                     ]
                 },
                 {
-                    "offset": 8192,
-                    "slice_len": 8192,
+                    "start": 8192,
+                    "len": 8192,
                     "output_len": 73,
-                    "blake2b_hash": "61e7e40df88a958601fc71016765ffa0",
+                    "output_blake2b": "61e7e40df88a958601fc71016765ffa0",
                     "corruptions": [
                         0,
                         8,
@@ -1049,20 +1057,20 @@
                     ]
                 },
                 {
-                    "offset": 8193,
-                    "slice_len": 8192,
+                    "start": 8193,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "2b896780c5f3c829fe878c2a9cc449e2",
+                    "output_blake2b": "2b896780c5f3c829fe878c2a9cc449e2",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 8194,
-                    "slice_len": 8192,
+                    "start": 8194,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "2b896780c5f3c829fe878c2a9cc449e2",
+                    "output_blake2b": "2b896780c5f3c829fe878c2a9cc449e2",
                     "corruptions": [
                         0,
                         8
@@ -1072,12 +1080,13 @@
         },
         {
             "input_len": 12287,
-            "slice_hashes": [
+            "bao_hash": "5ac0fe6eb672d0a14eac9a42e26def8ad407bb6b1464f7b451d7aad46ab15bb3",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 8328,
-                    "blake2b_hash": "81ea727a5255fa4c61aea0215f0a2542",
+                    "output_blake2b": "81ea727a5255fa4c61aea0215f0a2542",
                     "corruptions": [
                         0,
                         8,
@@ -1087,50 +1096,50 @@
                     ]
                 },
                 {
-                    "offset": 4095,
-                    "slice_len": 8192,
+                    "start": 4095,
+                    "len": 8192,
                     "output_len": 12423,
-                    "blake2b_hash": "25f43c985861b1926177d4b212f68e7f",
+                    "output_blake2b": "25f43c985861b1926177d4b212f68e7f",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
                         4232,
-                        8400
+                        8328
                     ]
                 },
                 {
-                    "offset": 4096,
-                    "slice_len": 8192,
+                    "start": 4096,
+                    "len": 8192,
                     "output_len": 8327,
-                    "blake2b_hash": "fb139809fba740ee4f95f634bdfa4479",
+                    "output_blake2b": "fb139809fba740ee4f95f634bdfa4479",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
-                        4304
+                        4232
                     ]
                 },
                 {
-                    "offset": 8191,
-                    "slice_len": 8192,
+                    "start": 8191,
+                    "len": 8192,
                     "output_len": 8327,
-                    "blake2b_hash": "fb139809fba740ee4f95f634bdfa4479",
+                    "output_blake2b": "fb139809fba740ee4f95f634bdfa4479",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
-                        4304
+                        4232
                     ]
                 },
                 {
-                    "offset": 8192,
-                    "slice_len": 8192,
+                    "start": 8192,
+                    "len": 8192,
                     "output_len": 4167,
-                    "blake2b_hash": "c78b113ee9d0a9769a824c2ad5360e52",
+                    "output_blake2b": "c78b113ee9d0a9769a824c2ad5360e52",
                     "corruptions": [
                         0,
                         8,
@@ -1138,10 +1147,10 @@
                     ]
                 },
                 {
-                    "offset": 12286,
-                    "slice_len": 8192,
+                    "start": 12286,
+                    "len": 8192,
                     "output_len": 4167,
-                    "blake2b_hash": "c78b113ee9d0a9769a824c2ad5360e52",
+                    "output_blake2b": "c78b113ee9d0a9769a824c2ad5360e52",
                     "corruptions": [
                         0,
                         8,
@@ -1149,20 +1158,20 @@
                     ]
                 },
                 {
-                    "offset": 12287,
-                    "slice_len": 8192,
+                    "start": 12287,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "4c2fd057bbb19b795884f9d55872a374",
+                    "output_blake2b": "4c2fd057bbb19b795884f9d55872a374",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 12288,
-                    "slice_len": 8192,
+                    "start": 12288,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "4c2fd057bbb19b795884f9d55872a374",
+                    "output_blake2b": "4c2fd057bbb19b795884f9d55872a374",
                     "corruptions": [
                         0,
                         8
@@ -1172,12 +1181,13 @@
         },
         {
             "input_len": 12288,
-            "slice_hashes": [
+            "bao_hash": "82376168f2d74fd9a758170e5749d937236467bd4097c9124ed0d9ec4a840019",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 8328,
-                    "blake2b_hash": "db3e6f5410e2ad2ae6ca0aeb3be0ba73",
+                    "output_blake2b": "db3e6f5410e2ad2ae6ca0aeb3be0ba73",
                     "corruptions": [
                         0,
                         8,
@@ -1187,50 +1197,50 @@
                     ]
                 },
                 {
-                    "offset": 4095,
-                    "slice_len": 8192,
+                    "start": 4095,
+                    "len": 8192,
                     "output_len": 12424,
-                    "blake2b_hash": "676388bd16d51989c24e6ed15138342f",
+                    "output_blake2b": "676388bd16d51989c24e6ed15138342f",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
                         4232,
-                        8400
+                        8328
                     ]
                 },
                 {
-                    "offset": 4096,
-                    "slice_len": 8192,
+                    "start": 4096,
+                    "len": 8192,
                     "output_len": 8328,
-                    "blake2b_hash": "e3c580620415cf5eea1e06d79ee892a3",
+                    "output_blake2b": "e3c580620415cf5eea1e06d79ee892a3",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
-                        4304
+                        4232
                     ]
                 },
                 {
-                    "offset": 8191,
-                    "slice_len": 8192,
+                    "start": 8191,
+                    "len": 8192,
                     "output_len": 8328,
-                    "blake2b_hash": "e3c580620415cf5eea1e06d79ee892a3",
+                    "output_blake2b": "e3c580620415cf5eea1e06d79ee892a3",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
-                        4304
+                        4232
                     ]
                 },
                 {
-                    "offset": 8192,
-                    "slice_len": 8192,
+                    "start": 8192,
+                    "len": 8192,
                     "output_len": 4168,
-                    "blake2b_hash": "9541d87475e0aad5538b36c0f77568ba",
+                    "output_blake2b": "9541d87475e0aad5538b36c0f77568ba",
                     "corruptions": [
                         0,
                         8,
@@ -1238,10 +1248,10 @@
                     ]
                 },
                 {
-                    "offset": 12287,
-                    "slice_len": 8192,
+                    "start": 12287,
+                    "len": 8192,
                     "output_len": 4168,
-                    "blake2b_hash": "9541d87475e0aad5538b36c0f77568ba",
+                    "output_blake2b": "9541d87475e0aad5538b36c0f77568ba",
                     "corruptions": [
                         0,
                         8,
@@ -1249,20 +1259,20 @@
                     ]
                 },
                 {
-                    "offset": 12288,
-                    "slice_len": 8192,
+                    "start": 12288,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "7ab3887255264c4739b1eb69d6dc589e",
+                    "output_blake2b": "7ab3887255264c4739b1eb69d6dc589e",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 12289,
-                    "slice_len": 8192,
+                    "start": 12289,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "7ab3887255264c4739b1eb69d6dc589e",
+                    "output_blake2b": "7ab3887255264c4739b1eb69d6dc589e",
                     "corruptions": [
                         0,
                         8
@@ -1272,12 +1282,13 @@
         },
         {
             "input_len": 12289,
-            "slice_hashes": [
+            "bao_hash": "27af52c347a96aee0c10ccd51cf348ab193795336a0da2712fa41fd81224f23b",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 8328,
-                    "blake2b_hash": "b95121cf0a3b5b4da32c5e61e9c1ee0d",
+                    "output_blake2b": "b95121cf0a3b5b4da32c5e61e9c1ee0d",
                     "corruptions": [
                         0,
                         8,
@@ -1287,54 +1298,54 @@
                     ]
                 },
                 {
-                    "offset": 4095,
-                    "slice_len": 8192,
+                    "start": 4095,
+                    "len": 8192,
                     "output_len": 12488,
-                    "blake2b_hash": "174b13ed7a3511f897843ab1adcf46ed",
+                    "output_blake2b": "174b13ed7a3511f897843ab1adcf46ed",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
                         4232,
-                        8400,
-                        8464
+                        8328,
+                        8392
                     ]
                 },
                 {
-                    "offset": 4096,
-                    "slice_len": 8192,
+                    "start": 4096,
+                    "len": 8192,
                     "output_len": 8392,
-                    "blake2b_hash": "edbcc5341c8e7e3b2fc189a5cab10c6c",
+                    "output_blake2b": "edbcc5341c8e7e3b2fc189a5cab10c6c",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
-                        4304,
-                        4368
+                        4232,
+                        4296
                     ]
                 },
                 {
-                    "offset": 8191,
-                    "slice_len": 8192,
+                    "start": 8191,
+                    "len": 8192,
                     "output_len": 8393,
-                    "blake2b_hash": "2091dbbc9090e190790a712bc882dff6",
+                    "output_blake2b": "2091dbbc9090e190790a712bc882dff6",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
-                        4304,
-                        4368,
-                        8464
+                        4232,
+                        4296,
+                        8392
                     ]
                 },
                 {
-                    "offset": 8192,
-                    "slice_len": 8192,
+                    "start": 8192,
+                    "len": 8192,
                     "output_len": 4233,
-                    "blake2b_hash": "6ca71cbfecf5263356cf22aad89268b9",
+                    "output_blake2b": "6ca71cbfecf5263356cf22aad89268b9",
                     "corruptions": [
                         0,
                         8,
@@ -1344,10 +1355,10 @@
                     ]
                 },
                 {
-                    "offset": 12288,
-                    "slice_len": 8192,
+                    "start": 12288,
+                    "len": 8192,
                     "output_len": 137,
-                    "blake2b_hash": "6ea6885d986216a2b9b7ca3efb4b22d5",
+                    "output_blake2b": "6ea6885d986216a2b9b7ca3efb4b22d5",
                     "corruptions": [
                         0,
                         8,
@@ -1356,20 +1367,20 @@
                     ]
                 },
                 {
-                    "offset": 12289,
-                    "slice_len": 8192,
+                    "start": 12289,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "8a92211f5bbab7100f02f1b12ce8475a",
+                    "output_blake2b": "8a92211f5bbab7100f02f1b12ce8475a",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 12290,
-                    "slice_len": 8192,
+                    "start": 12290,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "8a92211f5bbab7100f02f1b12ce8475a",
+                    "output_blake2b": "8a92211f5bbab7100f02f1b12ce8475a",
                     "corruptions": [
                         0,
                         8
@@ -1379,12 +1390,13 @@
         },
         {
             "input_len": 45056,
-            "slice_hashes": [
+            "bao_hash": "dbc5c1d9a59a7c27a324c57059949f79bfca955c0b22ced28e1048dfd717c3f0",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "9df59f406840c728b41093001d612820",
+                    "output_blake2b": "9df59f406840c728b41093001d612820",
                     "corruptions": [
                         0,
                         8,
@@ -1396,10 +1408,10 @@
                     ]
                 },
                 {
-                    "offset": 4095,
-                    "slice_len": 8192,
+                    "start": 4095,
+                    "len": 8192,
                     "output_len": 12616,
-                    "blake2b_hash": "b980a3df28340adbccb9601bb43f913b",
+                    "output_blake2b": "b980a3df28340adbccb9601bb43f913b",
                     "corruptions": [
                         0,
                         8,
@@ -1408,15 +1420,15 @@
                         200,
                         264,
                         4360,
-                        8656,
-                        8720
+                        8456,
+                        8520
                     ]
                 },
                 {
-                    "offset": 4096,
-                    "slice_len": 8192,
+                    "start": 4096,
+                    "len": 8192,
                     "output_len": 8520,
-                    "blake2b_hash": "96d6eea770dd77eb45114e978ff4a28a",
+                    "output_blake2b": "96d6eea770dd77eb45114e978ff4a28a",
                     "corruptions": [
                         0,
                         8,
@@ -1424,15 +1436,15 @@
                         136,
                         200,
                         264,
-                        4560,
-                        4624
+                        4360,
+                        4424
                     ]
                 },
                 {
-                    "offset": 8191,
-                    "slice_len": 8192,
+                    "start": 8191,
+                    "len": 8192,
                     "output_len": 12616,
-                    "blake2b_hash": "0343586b2105c3bdc38bb4beb8e5759c",
+                    "output_blake2b": "0343586b2105c3bdc38bb4beb8e5759c",
                     "corruptions": [
                         0,
                         8,
@@ -1440,16 +1452,16 @@
                         136,
                         200,
                         264,
-                        4560,
-                        4624,
-                        8720
+                        4360,
+                        4424,
+                        8520
                     ]
                 },
                 {
-                    "offset": 8192,
-                    "slice_len": 8192,
+                    "start": 8192,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "990ecabd4a2997cc12af7f6935bcc191",
+                    "output_blake2b": "990ecabd4a2997cc12af7f6935bcc191",
                     "corruptions": [
                         0,
                         8,
@@ -1461,10 +1473,10 @@
                     ]
                 },
                 {
-                    "offset": 12287,
-                    "slice_len": 8192,
+                    "start": 12287,
+                    "len": 8192,
                     "output_len": 12680,
-                    "blake2b_hash": "02c97c75bfd7381e24ad1beab7a43148",
+                    "output_blake2b": "02c97c75bfd7381e24ad1beab7a43148",
                     "corruptions": [
                         0,
                         8,
@@ -1473,16 +1485,16 @@
                         200,
                         264,
                         4360,
-                        8792,
-                        8856,
-                        8920
+                        8456,
+                        8520,
+                        8584
                     ]
                 },
                 {
-                    "offset": 12288,
-                    "slice_len": 8192,
+                    "start": 12288,
+                    "len": 8192,
                     "output_len": 8584,
-                    "blake2b_hash": "dcc3257a9dc82615274bd1206fda9b86",
+                    "output_blake2b": "dcc3257a9dc82615274bd1206fda9b86",
                     "corruptions": [
                         0,
                         8,
@@ -1490,16 +1502,16 @@
                         136,
                         200,
                         264,
-                        4696,
-                        4760,
-                        4824
+                        4360,
+                        4424,
+                        4488
                     ]
                 },
                 {
-                    "offset": 16383,
-                    "slice_len": 8192,
+                    "start": 16383,
+                    "len": 8192,
                     "output_len": 12680,
-                    "blake2b_hash": "a3c1cadf1f8c785a3216de1a07515e47",
+                    "output_blake2b": "a3c1cadf1f8c785a3216de1a07515e47",
                     "corruptions": [
                         0,
                         8,
@@ -1507,17 +1519,17 @@
                         136,
                         200,
                         264,
-                        4696,
-                        4760,
-                        4824,
-                        8920
+                        4360,
+                        4424,
+                        4488,
+                        8584
                     ]
                 },
                 {
-                    "offset": 16384,
-                    "slice_len": 8192,
+                    "start": 16384,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "93a7e1506029b7dfed388ba31f794452",
+                    "output_blake2b": "93a7e1506029b7dfed388ba31f794452",
                     "corruptions": [
                         0,
                         8,
@@ -1529,10 +1541,10 @@
                     ]
                 },
                 {
-                    "offset": 20479,
-                    "slice_len": 8192,
+                    "start": 20479,
+                    "len": 8192,
                     "output_len": 12616,
-                    "blake2b_hash": "d5e7c43deb3374c3b22ce587f49d8265",
+                    "output_blake2b": "d5e7c43deb3374c3b22ce587f49d8265",
                     "corruptions": [
                         0,
                         8,
@@ -1541,15 +1553,15 @@
                         200,
                         264,
                         4360,
-                        8656,
-                        8720
+                        8456,
+                        8520
                     ]
                 },
                 {
-                    "offset": 20480,
-                    "slice_len": 8192,
+                    "start": 20480,
+                    "len": 8192,
                     "output_len": 8520,
-                    "blake2b_hash": "f3bed10ec5b0e0db17517c7de1cd413b",
+                    "output_blake2b": "f3bed10ec5b0e0db17517c7de1cd413b",
                     "corruptions": [
                         0,
                         8,
@@ -1557,15 +1569,15 @@
                         136,
                         200,
                         264,
-                        4560,
-                        4624
+                        4360,
+                        4424
                     ]
                 },
                 {
-                    "offset": 24575,
-                    "slice_len": 8192,
+                    "start": 24575,
+                    "len": 8192,
                     "output_len": 12616,
-                    "blake2b_hash": "6c2286b4ff99e574d888744df33acd00",
+                    "output_blake2b": "6c2286b4ff99e574d888744df33acd00",
                     "corruptions": [
                         0,
                         8,
@@ -1573,16 +1585,16 @@
                         136,
                         200,
                         264,
-                        4560,
-                        4624,
-                        8720
+                        4360,
+                        4424,
+                        8520
                     ]
                 },
                 {
-                    "offset": 24576,
-                    "slice_len": 8192,
+                    "start": 24576,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "f202d4393e31017bfe1ed88da439ed5c",
+                    "output_blake2b": "f202d4393e31017bfe1ed88da439ed5c",
                     "corruptions": [
                         0,
                         8,
@@ -1594,10 +1606,10 @@
                     ]
                 },
                 {
-                    "offset": 28671,
-                    "slice_len": 8192,
+                    "start": 28671,
+                    "len": 8192,
                     "output_len": 12680,
-                    "blake2b_hash": "d542912aa661c856b1212b0799eb7ba9",
+                    "output_blake2b": "d542912aa661c856b1212b0799eb7ba9",
                     "corruptions": [
                         0,
                         8,
@@ -1606,16 +1618,16 @@
                         200,
                         264,
                         4360,
-                        8864,
-                        8928,
-                        8992
+                        8456,
+                        8520,
+                        8584
                     ]
                 },
                 {
-                    "offset": 28672,
-                    "slice_len": 8192,
+                    "start": 28672,
+                    "len": 8192,
                     "output_len": 8584,
-                    "blake2b_hash": "2726f1d1453d9ef4066ab5039be88b30",
+                    "output_blake2b": "2726f1d1453d9ef4066ab5039be88b30",
                     "corruptions": [
                         0,
                         8,
@@ -1623,16 +1635,16 @@
                         136,
                         200,
                         264,
-                        4768,
-                        4832,
-                        4896
+                        4360,
+                        4424,
+                        4488
                     ]
                 },
                 {
-                    "offset": 32767,
-                    "slice_len": 8192,
+                    "start": 32767,
+                    "len": 8192,
                     "output_len": 12680,
-                    "blake2b_hash": "5339ab9fc76f0f13d879a15fbe477498",
+                    "output_blake2b": "5339ab9fc76f0f13d879a15fbe477498",
                     "corruptions": [
                         0,
                         8,
@@ -1640,17 +1652,17 @@
                         136,
                         200,
                         264,
-                        4768,
-                        4832,
-                        4896,
-                        8992
+                        4360,
+                        4424,
+                        4488,
+                        8584
                     ]
                 },
                 {
-                    "offset": 32768,
-                    "slice_len": 8192,
+                    "start": 32768,
+                    "len": 8192,
                     "output_len": 8392,
-                    "blake2b_hash": "d71ff5ec2771387b4e54a835aafb6d23",
+                    "output_blake2b": "d71ff5ec2771387b4e54a835aafb6d23",
                     "corruptions": [
                         0,
                         8,
@@ -1661,10 +1673,10 @@
                     ]
                 },
                 {
-                    "offset": 36863,
-                    "slice_len": 8192,
+                    "start": 36863,
+                    "len": 8192,
                     "output_len": 12488,
-                    "blake2b_hash": "94a4aeab42ca154713fd7261e5dd5424",
+                    "output_blake2b": "94a4aeab42ca154713fd7261e5dd5424",
                     "corruptions": [
                         0,
                         8,
@@ -1672,42 +1684,42 @@
                         136,
                         200,
                         4296,
-                        8528
+                        8392
                     ]
                 },
                 {
-                    "offset": 36864,
-                    "slice_len": 8192,
+                    "start": 36864,
+                    "len": 8192,
                     "output_len": 8392,
-                    "blake2b_hash": "2014b0853e08768db8958297fe9086e4",
+                    "output_blake2b": "2014b0853e08768db8958297fe9086e4",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
                         200,
-                        4432
+                        4296
                     ]
                 },
                 {
-                    "offset": 40959,
-                    "slice_len": 8192,
+                    "start": 40959,
+                    "len": 8192,
                     "output_len": 8392,
-                    "blake2b_hash": "2014b0853e08768db8958297fe9086e4",
+                    "output_blake2b": "2014b0853e08768db8958297fe9086e4",
                     "corruptions": [
                         0,
                         8,
                         72,
                         136,
                         200,
-                        4432
+                        4296
                     ]
                 },
                 {
-                    "offset": 40960,
-                    "slice_len": 8192,
+                    "start": 40960,
+                    "len": 8192,
                     "output_len": 4232,
-                    "blake2b_hash": "a0682f3feae29f695f80aaabf03ade80",
+                    "output_blake2b": "a0682f3feae29f695f80aaabf03ade80",
                     "corruptions": [
                         0,
                         8,
@@ -1716,10 +1728,10 @@
                     ]
                 },
                 {
-                    "offset": 45055,
-                    "slice_len": 8192,
+                    "start": 45055,
+                    "len": 8192,
                     "output_len": 4232,
-                    "blake2b_hash": "a0682f3feae29f695f80aaabf03ade80",
+                    "output_blake2b": "a0682f3feae29f695f80aaabf03ade80",
                     "corruptions": [
                         0,
                         8,
@@ -1728,20 +1740,20 @@
                     ]
                 },
                 {
-                    "offset": 45056,
-                    "slice_len": 8192,
+                    "start": 45056,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "1aaa5027fe2810adac8107c68ee2321f",
+                    "output_blake2b": "1aaa5027fe2810adac8107c68ee2321f",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 45057,
-                    "slice_len": 8192,
+                    "start": 45057,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "1aaa5027fe2810adac8107c68ee2321f",
+                    "output_blake2b": "1aaa5027fe2810adac8107c68ee2321f",
                     "corruptions": [
                         0,
                         8
@@ -1751,12 +1763,13 @@
         },
         {
             "input_len": 53248,
-            "slice_hashes": [
+            "bao_hash": "dbcd3a1289d40bbc226c4e63023d6727ca98ba9b057ded4d6e68c7b3f323cb2f",
+            "slices": [
                 {
-                    "offset": 0,
-                    "slice_len": 8192,
+                    "start": 0,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "fe9c4dd4d42dd08b11f424abd35b3984",
+                    "output_blake2b": "fe9c4dd4d42dd08b11f424abd35b3984",
                     "corruptions": [
                         0,
                         8,
@@ -1768,10 +1781,10 @@
                     ]
                 },
                 {
-                    "offset": 4095,
-                    "slice_len": 8192,
+                    "start": 4095,
+                    "len": 8192,
                     "output_len": 12616,
-                    "blake2b_hash": "07ca3282f705a3b96e90ba0e478786ba",
+                    "output_blake2b": "07ca3282f705a3b96e90ba0e478786ba",
                     "corruptions": [
                         0,
                         8,
@@ -1780,15 +1793,15 @@
                         200,
                         264,
                         4360,
-                        8656,
-                        8720
+                        8456,
+                        8520
                     ]
                 },
                 {
-                    "offset": 4096,
-                    "slice_len": 8192,
+                    "start": 4096,
+                    "len": 8192,
                     "output_len": 8520,
-                    "blake2b_hash": "e228013111e8b29f2337461bf274b01e",
+                    "output_blake2b": "e228013111e8b29f2337461bf274b01e",
                     "corruptions": [
                         0,
                         8,
@@ -1796,15 +1809,15 @@
                         136,
                         200,
                         264,
-                        4560,
-                        4624
+                        4360,
+                        4424
                     ]
                 },
                 {
-                    "offset": 8191,
-                    "slice_len": 8192,
+                    "start": 8191,
+                    "len": 8192,
                     "output_len": 12616,
-                    "blake2b_hash": "4d922767771c3656397c7fe1559220bd",
+                    "output_blake2b": "4d922767771c3656397c7fe1559220bd",
                     "corruptions": [
                         0,
                         8,
@@ -1812,16 +1825,16 @@
                         136,
                         200,
                         264,
-                        4560,
-                        4624,
-                        8720
+                        4360,
+                        4424,
+                        8520
                     ]
                 },
                 {
-                    "offset": 8192,
-                    "slice_len": 8192,
+                    "start": 8192,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "a8d111270c44fed88ffcf76c69c78179",
+                    "output_blake2b": "a8d111270c44fed88ffcf76c69c78179",
                     "corruptions": [
                         0,
                         8,
@@ -1833,10 +1846,10 @@
                     ]
                 },
                 {
-                    "offset": 12287,
-                    "slice_len": 8192,
+                    "start": 12287,
+                    "len": 8192,
                     "output_len": 12680,
-                    "blake2b_hash": "701654b25d07f25ba50eff411cdb2a98",
+                    "output_blake2b": "701654b25d07f25ba50eff411cdb2a98",
                     "corruptions": [
                         0,
                         8,
@@ -1845,16 +1858,16 @@
                         200,
                         264,
                         4360,
-                        8792,
-                        8856,
-                        8920
+                        8456,
+                        8520,
+                        8584
                     ]
                 },
                 {
-                    "offset": 12288,
-                    "slice_len": 8192,
+                    "start": 12288,
+                    "len": 8192,
                     "output_len": 8584,
-                    "blake2b_hash": "e24c001a8e52332b5270d358c4d0e000",
+                    "output_blake2b": "e24c001a8e52332b5270d358c4d0e000",
                     "corruptions": [
                         0,
                         8,
@@ -1862,16 +1875,16 @@
                         136,
                         200,
                         264,
-                        4696,
-                        4760,
-                        4824
+                        4360,
+                        4424,
+                        4488
                     ]
                 },
                 {
-                    "offset": 16383,
-                    "slice_len": 8192,
+                    "start": 16383,
+                    "len": 8192,
                     "output_len": 12680,
-                    "blake2b_hash": "0bb04a6261f755ac5d7eda1e024adc37",
+                    "output_blake2b": "0bb04a6261f755ac5d7eda1e024adc37",
                     "corruptions": [
                         0,
                         8,
@@ -1879,17 +1892,17 @@
                         136,
                         200,
                         264,
-                        4696,
-                        4760,
-                        4824,
-                        8920
+                        4360,
+                        4424,
+                        4488,
+                        8584
                     ]
                 },
                 {
-                    "offset": 16384,
-                    "slice_len": 8192,
+                    "start": 16384,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "5a6d4d1bbd49d16a56af72b6fce99636",
+                    "output_blake2b": "5a6d4d1bbd49d16a56af72b6fce99636",
                     "corruptions": [
                         0,
                         8,
@@ -1901,10 +1914,10 @@
                     ]
                 },
                 {
-                    "offset": 20479,
-                    "slice_len": 8192,
+                    "start": 20479,
+                    "len": 8192,
                     "output_len": 12616,
-                    "blake2b_hash": "cb996de0f904a7863074acd418d68eb0",
+                    "output_blake2b": "cb996de0f904a7863074acd418d68eb0",
                     "corruptions": [
                         0,
                         8,
@@ -1913,15 +1926,15 @@
                         200,
                         264,
                         4360,
-                        8656,
-                        8720
+                        8456,
+                        8520
                     ]
                 },
                 {
-                    "offset": 20480,
-                    "slice_len": 8192,
+                    "start": 20480,
+                    "len": 8192,
                     "output_len": 8520,
-                    "blake2b_hash": "4c738e9c680dd4f17b931178d5d6c88d",
+                    "output_blake2b": "4c738e9c680dd4f17b931178d5d6c88d",
                     "corruptions": [
                         0,
                         8,
@@ -1929,15 +1942,15 @@
                         136,
                         200,
                         264,
-                        4560,
-                        4624
+                        4360,
+                        4424
                     ]
                 },
                 {
-                    "offset": 24575,
-                    "slice_len": 8192,
+                    "start": 24575,
+                    "len": 8192,
                     "output_len": 12616,
-                    "blake2b_hash": "dc14df9a044b77a5713e7b50c99e4d98",
+                    "output_blake2b": "dc14df9a044b77a5713e7b50c99e4d98",
                     "corruptions": [
                         0,
                         8,
@@ -1945,16 +1958,16 @@
                         136,
                         200,
                         264,
-                        4560,
-                        4624,
-                        8720
+                        4360,
+                        4424,
+                        8520
                     ]
                 },
                 {
-                    "offset": 24576,
-                    "slice_len": 8192,
+                    "start": 24576,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "845fd6f7999b883d351b12e564d5bc46",
+                    "output_blake2b": "845fd6f7999b883d351b12e564d5bc46",
                     "corruptions": [
                         0,
                         8,
@@ -1966,10 +1979,10 @@
                     ]
                 },
                 {
-                    "offset": 28671,
-                    "slice_len": 8192,
+                    "start": 28671,
+                    "len": 8192,
                     "output_len": 12744,
-                    "blake2b_hash": "90031252741d5c8d6469421baedfd32c",
+                    "output_blake2b": "90031252741d5c8d6469421baedfd32c",
                     "corruptions": [
                         0,
                         8,
@@ -1978,17 +1991,17 @@
                         200,
                         264,
                         4360,
-                        8864,
-                        8928,
-                        8992,
-                        9056
+                        8456,
+                        8520,
+                        8584,
+                        8648
                     ]
                 },
                 {
-                    "offset": 28672,
-                    "slice_len": 8192,
+                    "start": 28672,
+                    "len": 8192,
                     "output_len": 8648,
-                    "blake2b_hash": "f4e7ab25e997fb7c379a96b3284b8d9f",
+                    "output_blake2b": "f4e7ab25e997fb7c379a96b3284b8d9f",
                     "corruptions": [
                         0,
                         8,
@@ -1996,17 +2009,17 @@
                         136,
                         200,
                         264,
-                        4768,
-                        4832,
-                        4896,
-                        4960
+                        4360,
+                        4424,
+                        4488,
+                        4552
                     ]
                 },
                 {
-                    "offset": 32767,
-                    "slice_len": 8192,
+                    "start": 32767,
+                    "len": 8192,
                     "output_len": 12744,
-                    "blake2b_hash": "c769109c1cd7950b1e3caa853e039ec4",
+                    "output_blake2b": "c769109c1cd7950b1e3caa853e039ec4",
                     "corruptions": [
                         0,
                         8,
@@ -2014,18 +2027,18 @@
                         136,
                         200,
                         264,
-                        4768,
-                        4832,
-                        4896,
-                        4960,
-                        9056
+                        4360,
+                        4424,
+                        4488,
+                        4552,
+                        8648
                     ]
                 },
                 {
-                    "offset": 32768,
-                    "slice_len": 8192,
+                    "start": 32768,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "553c389329f65ffaf1510754f764f38f",
+                    "output_blake2b": "553c389329f65ffaf1510754f764f38f",
                     "corruptions": [
                         0,
                         8,
@@ -2037,10 +2050,10 @@
                     ]
                 },
                 {
-                    "offset": 36863,
-                    "slice_len": 8192,
+                    "start": 36863,
+                    "len": 8192,
                     "output_len": 12616,
-                    "blake2b_hash": "2311add7781cce34fdd4913b3ae544d9",
+                    "output_blake2b": "2311add7781cce34fdd4913b3ae544d9",
                     "corruptions": [
                         0,
                         8,
@@ -2049,15 +2062,15 @@
                         200,
                         264,
                         4360,
-                        8656,
-                        8720
+                        8456,
+                        8520
                     ]
                 },
                 {
-                    "offset": 36864,
-                    "slice_len": 8192,
+                    "start": 36864,
+                    "len": 8192,
                     "output_len": 8520,
-                    "blake2b_hash": "ccd6f45740660cb0ba1ee4bcb51847d0",
+                    "output_blake2b": "ccd6f45740660cb0ba1ee4bcb51847d0",
                     "corruptions": [
                         0,
                         8,
@@ -2065,15 +2078,15 @@
                         136,
                         200,
                         264,
-                        4560,
-                        4624
+                        4360,
+                        4424
                     ]
                 },
                 {
-                    "offset": 40959,
-                    "slice_len": 8192,
+                    "start": 40959,
+                    "len": 8192,
                     "output_len": 12616,
-                    "blake2b_hash": "520b2f3eb5547fd2dfd77fdfa04f8e85",
+                    "output_blake2b": "520b2f3eb5547fd2dfd77fdfa04f8e85",
                     "corruptions": [
                         0,
                         8,
@@ -2081,16 +2094,16 @@
                         136,
                         200,
                         264,
-                        4560,
-                        4624,
-                        8720
+                        4360,
+                        4424,
+                        8520
                     ]
                 },
                 {
-                    "offset": 40960,
-                    "slice_len": 8192,
+                    "start": 40960,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "85690febf084d95fed8945087af1f3fe",
+                    "output_blake2b": "85690febf084d95fed8945087af1f3fe",
                     "corruptions": [
                         0,
                         8,
@@ -2102,10 +2115,10 @@
                     ]
                 },
                 {
-                    "offset": 45055,
-                    "slice_len": 8192,
+                    "start": 45055,
+                    "len": 8192,
                     "output_len": 12552,
-                    "blake2b_hash": "a51d3cb5509a1a2c666ac6b2bf109dc1",
+                    "output_blake2b": "a51d3cb5509a1a2c666ac6b2bf109dc1",
                     "corruptions": [
                         0,
                         8,
@@ -2114,14 +2127,14 @@
                         200,
                         264,
                         4360,
-                        8792
+                        8456
                     ]
                 },
                 {
-                    "offset": 45056,
-                    "slice_len": 8192,
+                    "start": 45056,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "8791e5eac0417e13006319f3e87a4da8",
+                    "output_blake2b": "8791e5eac0417e13006319f3e87a4da8",
                     "corruptions": [
                         0,
                         8,
@@ -2129,14 +2142,14 @@
                         136,
                         200,
                         264,
-                        4696
+                        4360
                     ]
                 },
                 {
-                    "offset": 49151,
-                    "slice_len": 8192,
+                    "start": 49151,
+                    "len": 8192,
                     "output_len": 8456,
-                    "blake2b_hash": "8791e5eac0417e13006319f3e87a4da8",
+                    "output_blake2b": "8791e5eac0417e13006319f3e87a4da8",
                     "corruptions": [
                         0,
                         8,
@@ -2144,14 +2157,14 @@
                         136,
                         200,
                         264,
-                        4696
+                        4360
                     ]
                 },
                 {
-                    "offset": 49152,
-                    "slice_len": 8192,
+                    "start": 49152,
+                    "len": 8192,
                     "output_len": 4232,
-                    "blake2b_hash": "a3980b15a361952cf8a8a41f9fb9273e",
+                    "output_blake2b": "a3980b15a361952cf8a8a41f9fb9273e",
                     "corruptions": [
                         0,
                         8,
@@ -2160,10 +2173,10 @@
                     ]
                 },
                 {
-                    "offset": 53247,
-                    "slice_len": 8192,
+                    "start": 53247,
+                    "len": 8192,
                     "output_len": 4232,
-                    "blake2b_hash": "a3980b15a361952cf8a8a41f9fb9273e",
+                    "output_blake2b": "a3980b15a361952cf8a8a41f9fb9273e",
                     "corruptions": [
                         0,
                         8,
@@ -2172,20 +2185,20 @@
                     ]
                 },
                 {
-                    "offset": 53248,
-                    "slice_len": 8192,
+                    "start": 53248,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "d7c29da3a4e51e706f79e48472570936",
+                    "output_blake2b": "d7c29da3a4e51e706f79e48472570936",
                     "corruptions": [
                         0,
                         8
                     ]
                 },
                 {
-                    "offset": 53249,
-                    "slice_len": 8192,
+                    "start": 53249,
+                    "len": 8192,
                     "output_len": 72,
-                    "blake2b_hash": "d7c29da3a4e51e706f79e48472570936",
+                    "output_blake2b": "d7c29da3a4e51e706f79e48472570936",
                     "corruptions": [
                         0,
                         8

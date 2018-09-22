@@ -152,8 +152,7 @@ def slice_corruption_points(content_len, slice_start, slice_len):
             offset += left_size
             right_size = recurse(subtree_start + llen, subtree_len - llen,
                                  False, offset, ret)
-            offset += right_size
-            return offset
+            return PARENT_SIZE + left_size + right_size
 
     # Start with just the first byte of the header.
     ret = [0]
@@ -168,22 +167,26 @@ def slices():
         offsets = case["seek_offsets"]
         b = input_bytes(size)
         encoded = bao.bao_encode(b)
-        slice_hashes = []
+        slices = []
         for offset in offsets:
             slice_bytes = io.BytesIO()
             slice_len = 2 * CHUNK_SIZE
             bao.bao_slice(io.BytesIO(encoded), slice_bytes, offset, slice_len)
             slice_hash = blake2b_hash(slice_bytes.getbuffer())
             fields = [
-                ("offset", offset),
-                ("slice_len", slice_len),
+                ("start", offset),
+                ("len", slice_len),
                 ("output_len", len(slice_bytes.getbuffer())),
-                ("blake2b_hash", slice_hash),
+                ("output_blake2b", slice_hash),
                 ("corruptions", slice_corruption_points(
                     size, offset, slice_len)),
             ]
-            slice_hashes.append(OrderedDict(fields))
-        fields = [("input_len", size), ("slice_hashes", slice_hashes)]
+            slices.append(OrderedDict(fields))
+        fields = [
+            ("input_len", size),
+            ("bao_hash", bao.bao_hash(io.BytesIO(b)).hex()),
+            ("slices", slices),
+        ]
         ret.append(OrderedDict(fields))
     return ret
 
@@ -201,10 +204,10 @@ def main():
     output = OrderedDict()
     output["_comment"] = comment
     output["hash"] = hashes()
-    output["encoded"] = encoded()
+    output["encode"] = encoded()
     output["outboard"] = outboard()
-    output["seeks"] = seeks()
-    output["slices"] = slices()
+    output["seek"] = seeks()
+    output["slice"] = slices()
     json.dump(output, sys.stdout, indent="    ")
     print()  # a terminating newline
 

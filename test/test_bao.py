@@ -75,7 +75,7 @@ def blake2b(b):
 
 
 def test_encoded():
-    for case in VECTORS["encoded"]:
+    for case in VECTORS["encode"]:
         input_len = case["input_len"]
         input_bytes = generate_input.input_bytes(input_len)
         output_len = case["output_len"]
@@ -141,8 +141,7 @@ def test_outboard():
             corrupted_file = tempfile.NamedTemporaryFile()
             corrupted_file.write(corrupted)
             corrupted_file.flush()
-            bao(
-                "decode",
+            bao("decode",
                 expected_bao_hash,
                 "--outboard",
                 corrupted_file.name,
@@ -153,8 +152,7 @@ def test_outboard():
         for c in input_corruptions:
             corrupted = bytearray(input_bytes)
             corrupted[c] ^= 1
-            bao(
-                "decode",
+            bao("decode",
                 expected_bao_hash,
                 "--outboard",
                 outboard_file.name,
@@ -162,10 +160,58 @@ def test_outboard():
                 should_fail=True)
 
 
+def test_slices():
+    for case in VECTORS["slice"]:
+        input_len = case["input_len"]
+        input_bytes = generate_input.input_bytes(input_len)
+        expected_bao_hash = case["bao_hash"]
+        slices = case["slices"]
+        print("slice", input_len)
+
+        encoded = encoded_file(input_len)
+
+        for slice_case in slices:
+            slice_start = slice_case["start"]
+            slice_len = slice_case["len"]
+            output_len = slice_case["output_len"]
+            output_blake2b = slice_case["output_blake2b"]
+            corruptions = slice_case["corruptions"]
+
+            # Make sure the slice output is what it should be.
+            slice_bytes = bao("slice", str(slice_start), str(slice_len),
+                              encoded.name)
+            assert output_len == len(slice_bytes)
+            assert output_blake2b == blake2b(slice_bytes)
+
+            # Test decoding the slice, and compare it to the input. Note that
+            # slicing a byte array in Python allows indices past the end of the
+            # array, and sort of silently caps them.
+            input_slice = input_bytes[slice_start:][:slice_len]
+            decoded = bao(
+                "decode-slice",
+                expected_bao_hash,
+                str(slice_start),
+                str(slice_len),
+                input=slice_bytes)
+            assert input_slice == decoded
+
+            for c in corruptions:
+                corrupted = bytearray(slice_bytes)
+                corrupted[c] ^= 1
+                bao("decode-slice",
+                    expected_bao_hash,
+                    str(slice_start),
+                    str(slice_len),
+                    input=corrupted,
+                    should_fail=True)
+
+
 def main():
     test_hashes()
     test_encoded()
     test_outboard()
+    # Note that bao.py doesn't do seeks, so we don't use the seek tests here.
+    test_slices()
 
 
 if __name__ == "__main__":
