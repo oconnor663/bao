@@ -111,7 +111,8 @@ def test_outboard():
         output_len = case["output_len"]
         expected_bao_hash = case["bao_hash"]
         encoded_blake2b = case["encoded_blake2b"]
-        corruptions = case["corruptions"]
+        outboard_corruptions = case["outboard_corruptions"]
+        input_corruptions = case["input_corruptions"]
         print("outboard", input_len)
 
         # First make sure the encoded output is what it's supposed to be.
@@ -134,15 +135,30 @@ def test_outboard():
         assert input_bytes == output
 
         # Make sure each of the outboard corruptions causes decoding to fail.
-        for c in corruptions:
+        for c in outboard_corruptions:
             corrupted = bytearray(outboard_bytes)
             corrupted[c] ^= 1
             corrupted_file = tempfile.NamedTemporaryFile()
             corrupted_file.write(corrupted)
             corrupted_file.flush()
-            bao("decode",
-                bao_hash_encoded,
+            bao(
+                "decode",
+                expected_bao_hash,
+                "--outboard",
+                corrupted_file.name,
                 input=input_bytes,
+                should_fail=True)
+
+        # Make sure each of the input corruptions causes decoding to fail.
+        for c in input_corruptions:
+            corrupted = bytearray(input_bytes)
+            corrupted[c] ^= 1
+            bao(
+                "decode",
+                expected_bao_hash,
+                "--outboard",
+                outboard_file.name,
+                input=corrupted,
                 should_fail=True)
 
 

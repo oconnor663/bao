@@ -85,12 +85,19 @@ def outboard():
     for size in SIZES:
         b = input_bytes(size)
         encoded = bao.bao_encode(b, outboard=True)
+        input_corruptions = []
+        corruption = 0
+        while corruption < size:
+            input_corruptions.append(corruption)
+            corruption += CHUNK_SIZE
         fields = [
             ("input_len", size),
             ("output_len", len(encoded)),
             ("bao_hash", bao.bao_hash(io.BytesIO(b)).hex()),
             ("encoded_blake2b", blake2b_hash(encoded)),
-            ("corruptions", encode_corruption_points(size, outboard=True)),
+            ("outboard_corruptions",
+             encode_corruption_points(size, outboard=True)),
+            ("input_corruptions", input_corruptions),
         ]
         ret.append(OrderedDict(fields))
     return ret

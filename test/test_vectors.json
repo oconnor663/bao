@@ -259,16 +259,20 @@
             "output_len": 8,
             "bao_hash": "4c21d0993c7daa84190d0212a684a05af6a9be4c294ec84612635938b91b3d9c",
             "encoded_blake2b": "c804ce198ec337e3dc762bdd1a09aece",
-            "corruptions": [
+            "outboard_corruptions": [
                 0
-            ]
+            ],
+            "input_corruptions": []
         },
         {
             "input_len": 1,
             "output_len": 8,
             "bao_hash": "9a176f09686a58bf3cab527c181070525cc29985e71cbab0a6c24bdf69b4a081",
             "encoded_blake2b": "9ea2d098b5f70192f96c06f38d3fbc97",
-            "corruptions": [
+            "outboard_corruptions": [
+                0
+            ],
+            "input_corruptions": [
                 0
             ]
         },
@@ -277,7 +281,10 @@
             "output_len": 8,
             "bao_hash": "d75596b007831b5034deeac126f1e8cbe163061f1d2543cf0b48a1ebc14f10f1",
             "encoded_blake2b": "70bfd7a0c7e5055567253658340d4783",
-            "corruptions": [
+            "outboard_corruptions": [
+                0
+            ],
+            "input_corruptions": [
                 0
             ]
         },
@@ -286,7 +293,10 @@
             "output_len": 8,
             "bao_hash": "6dd6b6df0e4a7b35197bc1a7db99e2263e1244c4536f6b19cb9642fd6d1217ca",
             "encoded_blake2b": "5e1aa186aad6c0fd92697505642e0af3",
-            "corruptions": [
+            "outboard_corruptions": [
+                0
+            ],
+            "input_corruptions": [
                 0
             ]
         },
@@ -295,9 +305,13 @@
             "output_len": 72,
             "bao_hash": "0eac66ed1b531880c21d1d2e624e0b41e4055d85838924477c1525321ec26f87",
             "encoded_blake2b": "d8cdf27287151050df7574d16482c354",
-            "corruptions": [
+            "outboard_corruptions": [
                 0,
                 8
+            ],
+            "input_corruptions": [
+                0,
+                4096
             ]
         },
         {
@@ -305,9 +319,13 @@
             "output_len": 72,
             "bao_hash": "a30fb8dd6affe8c5cd209b300fe97fb963fb37e0f3b518e421caf248af40df2c",
             "encoded_blake2b": "d2c9715b40dcc84fa0ffbe0c12c919ca",
-            "corruptions": [
+            "outboard_corruptions": [
                 0,
                 8
+            ],
+            "input_corruptions": [
+                0,
+                4096
             ]
         },
         {
@@ -315,9 +333,13 @@
             "output_len": 72,
             "bao_hash": "bfbc2f0878798ea1b73e67a8c49c1050c2b43af8ca5ac0cd10cad72fc11790fe",
             "encoded_blake2b": "3c3e948a1f135089414183a66140b2e3",
-            "corruptions": [
+            "outboard_corruptions": [
                 0,
                 8
+            ],
+            "input_corruptions": [
+                0,
+                4096
             ]
         },
         {
@@ -325,10 +347,15 @@
             "output_len": 136,
             "bao_hash": "f23eb5b6d0f465b983622cc1ad0ef6bd7894ce889ec431cd8017157feca7e32f",
             "encoded_blake2b": "e7216b4096cb8f14764a9177fa348c1e",
-            "corruptions": [
+            "outboard_corruptions": [
                 0,
                 8,
                 72
+            ],
+            "input_corruptions": [
+                0,
+                4096,
+                8192
             ]
         },
         {
@@ -336,10 +363,15 @@
             "output_len": 136,
             "bao_hash": "5ac0fe6eb672d0a14eac9a42e26def8ad407bb6b1464f7b451d7aad46ab15bb3",
             "encoded_blake2b": "47ba4aed6893350e2da840bf0dd79a9a",
-            "corruptions": [
+            "outboard_corruptions": [
                 0,
                 8,
                 72
+            ],
+            "input_corruptions": [
+                0,
+                4096,
+                8192
             ]
         },
         {
@@ -347,10 +379,15 @@
             "output_len": 136,
             "bao_hash": "82376168f2d74fd9a758170e5749d937236467bd4097c9124ed0d9ec4a840019",
             "encoded_blake2b": "e663389e0ee163ade14bb8ae8891cb15",
-            "corruptions": [
+            "outboard_corruptions": [
                 0,
                 8,
                 72
+            ],
+            "input_corruptions": [
+                0,
+                4096,
+                8192
             ]
         },
         {
@@ -358,11 +395,17 @@
             "output_len": 200,
             "bao_hash": "27af52c347a96aee0c10ccd51cf348ab193795336a0da2712fa41fd81224f23b",
             "encoded_blake2b": "fbd03e0c0e8225993f937fbd8ac44493",
-            "corruptions": [
+            "outboard_corruptions": [
                 0,
                 8,
                 72,
                 136
+            ],
+            "input_corruptions": [
+                0,
+                4096,
+                8192,
+                12288
             ]
         },
         {
@@ -370,7 +413,7 @@
             "output_len": 648,
             "bao_hash": "dbc5c1d9a59a7c27a324c57059949f79bfca955c0b22ced28e1048dfd717c3f0",
             "encoded_blake2b": "2f275267261539587cf82126ad875148",
-            "corruptions": [
+            "outboard_corruptions": [
                 0,
                 8,
                 72,
@@ -382,6 +425,19 @@
                 456,
                 520,
                 584
+            ],
+            "input_corruptions": [
+                0,
+                4096,
+                8192,
+                12288,
+                16384,
+                20480,
+                24576,
+                28672,
+                32768,
+                36864,
+                40960
             ]
         },
         {
@@ -389,7 +445,7 @@
             "output_len": 776,
             "bao_hash": "dbcd3a1289d40bbc226c4e63023d6727ca98ba9b057ded4d6e68c7b3f323cb2f",
             "encoded_blake2b": "1d0b525b2f13a43c51e26416c312c9ab",
-            "corruptions": [
+            "outboard_corruptions": [
                 0,
                 8,
                 72,
@@ -403,6 +459,21 @@
                 584,
                 648,
                 712
+            ],
+            "input_corruptions": [
+                0,
+                4096,
+                8192,
+                12288,
+                16384,
+                20480,
+                24576,
+                28672,
+                32768,
+                36864,
+                40960,
+                45056,
+                49152
             ]
         }
     ],
