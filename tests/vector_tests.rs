@@ -1,6 +1,7 @@
 //! The tests in this file run bao against the standard set of test vectors.
 
 extern crate bao;
+extern crate blake2b_simd;
 extern crate byteorder;
 extern crate hex;
 #[macro_use]
@@ -87,11 +88,55 @@ fn make_input(len: usize) -> Vec<u8> {
     output
 }
 
+fn blake2b(bytes: &[u8]) -> String {
+    blake2b_simd::Params::new()
+        .hash_length(16)
+        .to_state()
+        .update(bytes)
+        .finalize()
+        .to_hex()
+        .to_string()
+}
+
 #[test]
 fn test_hash_vectors() {
     for case in &TEST_VECTORS.hash {
         let input = make_input(case.input_len);
         let hash = bao::hash::hash(&input);
         assert_eq!(case.bao_hash, hex::encode(&hash));
+    }
+}
+
+#[test]
+fn test_encode_vectors() {
+    for case in &TEST_VECTORS.encode {
+        let input = make_input(case.input_len);
+        let (_, encoded) = bao::encode::encode_to_vec(&input);
+
+        // Make sure the encoded output is what it's supposed to be.
+        assert_eq!(case.encoded_blake2b, blake2b(&encoded));
+
+        // Test getting the hash from the encoding. TODO: other implementations too
+        let hash = bao::decode::hash_from_encoded(&mut &*encoded).unwrap();
+        assert_eq!(case.bao_hash, hex::encode(&hash));
+
+        // Test decoding. TODO: other implementations too
+        let output = bao::decode::decode_to_vec(&encoded, &hash).unwrap();
+        assert_eq!(input, output);
+
+        // Make sure decoding with a bad hash fails.
+        let mut bad_hash = hash;
+        bad_hash[0] ^= 1;
+        let err = bao::decode::decode_to_vec(&encoded, &bad_hash).unwrap_err();
+        assert_eq!(bao::decode::Error::HashMismatch, err);
+
+        // Make sure each corruption point fails the decode.
+        for &point in &case.corruptions {
+            let mut corrupt = encoded.clone();
+            corrupt[point] ^= 1;
+            bao::decode::decode_to_vec(&corrupt, &hash).unwrap_err();
+            // The error can be either HashMismatch or Truncated, depending on whether the header
+            // was corrupted.
+        }
     }
 }
