@@ -1,9 +1,11 @@
 #! /usr/bin/env python3
 
-# This file is directly runnable, or you can run pytest in this directory.
-# Since test_vectors.json is generated from bao.py, it's slightly cheating to
-# then test bao.py against its own output. But at least this helps is notice
-# changes, since the vectors are checked in rather than generated every time.
+# Run this file using pytest, either in this folder or at the root of the
+# project. Since test_vectors.json is generated from bao.py, it's slightly
+# cheating to then test bao.py against its own output. But at least this helps
+# is notice changes, since the vectors are checked in rather than generated
+# every time. Testing the Rust implementation against the same test vectors
+# gives us some confidence that they're correct.
 
 from binascii import unhexlify
 import hashlib
@@ -104,7 +106,6 @@ def test_hashes():
         input_len = case["input_len"]
         input_bytes = generate_input.input_bytes(input_len)
         expected_hash = case["bao_hash"]
-        print("hash", input_len)
 
         computed_hash = bao_hash(input_bytes)
         assert expected_hash == computed_hash
@@ -134,7 +135,6 @@ def test_hash_cli():
     input_len = case["input_len"]
     input_bytes = generate_input.input_bytes(input_len)
     expected_hash = case["bao_hash"]
-    print("hash cli", input_len)
 
     computed_hash = bao_cli("hash", input=input_bytes).decode().strip()
     assert expected_hash == computed_hash
@@ -161,7 +161,6 @@ def test_encoded():
         expected_bao_hash = case["bao_hash"]
         encoded_blake2b = case["encoded_blake2b"]
         corruptions = case["corruptions"]
-        print("encoded", input_len)
 
         # First make sure the encoded output is what it's supposed to be.
         encoded = bao_encode(input_bytes)
@@ -202,7 +201,6 @@ def test_encoded_cli():
     output_len = case["output_len"]
     expected_bao_hash = case["bao_hash"]
     encoded_blake2b = case["encoded_blake2b"]
-    print("encoded cli", input_len)
 
     # First make sure the encoded output is what it's supposed to be.
     input_file = make_tempfile(input_bytes)
@@ -235,7 +233,6 @@ def test_outboard():
         encoded_blake2b = case["encoded_blake2b"]
         outboard_corruptions = case["outboard_corruptions"]
         input_corruptions = case["input_corruptions"]
-        print("outboard", input_len)
 
         # First make sure the encoded output is what it's supposed to be.
         outboard = bao_encode_outboard(input_bytes)
@@ -279,7 +276,6 @@ def test_outboard_cli():
     output_len = case["output_len"]
     expected_bao_hash = case["bao_hash"]
     encoded_blake2b = case["encoded_blake2b"]
-    print("outboard cli", input_len)
 
     # First make sure the encoded output is what it's supposed to be.
     input_file = make_tempfile(input_bytes)
@@ -316,7 +312,6 @@ def test_slices():
         input_bytes = generate_input.input_bytes(input_len)
         expected_bao_hash = case["bao_hash"]
         slices = case["slices"]
-        print("slice", input_len)
 
         encoded = bao_encode(input_bytes)
         outboard = bao_encode_outboard(input_bytes)
@@ -367,7 +362,6 @@ def test_slices_cli():
     input_bytes = generate_input.input_bytes(input_len)
     expected_bao_hash = case["bao_hash"]
     slices = case["slices"]
-    print("slice cli", input_len)
 
     input_file = make_tempfile(input_bytes)
     encoded_file = make_tempfile()
@@ -415,19 +409,3 @@ def test_slices_cli():
         str(slice_len),
         input=slice_bytes,
         should_fail=True)
-
-
-def main():
-    test_hashes()
-    test_hash_cli()
-    test_encoded()
-    test_encoded_cli()
-    test_outboard()
-    test_outboard_cli()
-    # Note that bao.py doesn't do seeks, so we don't use the seek tests here.
-    test_slices()
-    test_slices_cli()
-
-
-if __name__ == "__main__":
-    main()
