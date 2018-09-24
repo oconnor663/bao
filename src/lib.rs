@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(copy_within)]
 
 #[cfg(feature = "std")]
 extern crate core;
@@ -9,7 +10,6 @@ extern crate arrayvec;
 extern crate blake2b_simd;
 extern crate byteorder;
 extern crate constant_time_eq;
-extern crate copy_in_place;
 #[cfg(feature = "std")]
 extern crate rayon;
 

@@ -1,6 +1,5 @@
 use arrayvec::ArrayVec;
 use blake2b_simd;
-use copy_in_place::copy_in_place;
 use core::cmp;
 use core::fmt;
 use hash::Finalization::{self, NotRoot, Root};
@@ -198,7 +197,7 @@ fn layout_chunks_in_place(
     content_len: usize,
 ) {
     if content_len <= CHUNK_SIZE {
-        copy_in_place(buf, read_offset..read_offset + content_len, write_offset);
+        buf.copy_within(read_offset..read_offset + content_len, write_offset);
     } else {
         let left_len = hash::left_len(content_len as u64) as usize;
         let left_write_offset = write_offset + PARENT_SIZE;
