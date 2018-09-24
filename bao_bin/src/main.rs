@@ -231,31 +231,35 @@ fn decode_slice(args: &Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn open_input(maybe_path: &Option<PathBuf>) -> Result<File, Error> {
-    Ok(if let Some(ref path) = maybe_path {
+fn path_if_some_and_not_dash(maybe_path: &Option<PathBuf>) -> Option<&Path> {
+    if let Some(ref path) = maybe_path {
         if path == Path::new("-") {
-            os_pipe::dup_stdin()?.into()
+            None
         } else {
-            File::open(path)?
+            Some(path)
         }
+    } else {
+        None
+    }
+}
+
+fn open_input(maybe_path: &Option<PathBuf>) -> Result<File, Error> {
+    Ok(if let Some(path) = path_if_some_and_not_dash(maybe_path) {
+        File::open(path)?
     } else {
         os_pipe::dup_stdin()?.into()
     })
 }
 
 fn open_output(maybe_path: &Option<PathBuf>) -> Result<File, Error> {
-    Ok(if let Some(ref path) = maybe_path {
-        if path == Path::new("-") {
-            os_pipe::dup_stdout()?.into()
-        } else {
-            // Both reading and writing permissions are required for MmapMut.
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(path)?
-        }
+    Ok(if let Some(path) = path_if_some_and_not_dash(maybe_path) {
+        // Both reading and writing permissions are required for MmapMut.
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)?
     } else {
         os_pipe::dup_stdout()?.into()
     })
