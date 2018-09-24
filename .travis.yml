@@ -11,3 +11,5 @@ script:
   - cargo test -vv --no-default-features --features std
   # Without std. Currently only the build is supported.
   - cargo build -vv --no-default-features
+  # Manually run the Python tests. Installing pytest is too much trouble :p
+  - python3 test/test_bao.py
