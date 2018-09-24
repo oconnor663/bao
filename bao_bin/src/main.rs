@@ -128,6 +128,11 @@ fn encode(args: &Args) -> Result<(), Error> {
     } else {
         &args.arg_output
     };
+    // The output will always require read permissions, either to flip the tree or to mmap it, and
+    // stdout practically never has the right permissions. Return an error if the output is "-".
+    if path_if_some_and_not_dash(out_maybe_path).is_none() {
+        return Err(err_msg(format!("encode output cannot be stdout")));
+    }
     let out_file = open_output(out_maybe_path)?;
     if let Some(in_map) = maybe_memmap_input(&in_file)? {
         let target_len = if args.flag_outboard.is_some() {
@@ -162,10 +167,12 @@ fn decode(args: &Args) -> Result<(), Error> {
     let in_file = open_input(&args.arg_input)?;
     let mut out_file = open_output(&args.arg_output)?;
     let hash = parse_hash(args)?;
+    // Don't mmap stdout. It practically never has the read permissions required for mapping.
+    let is_stdout = path_if_some_and_not_dash(&args.arg_output).is_none();
     let special_options =
         args.flag_start.is_some() || args.flag_count.is_some() || args.flag_outboard.is_some();
-    // If we're not seeking or outboard, try to memmap the files.
-    if !special_options {
+    // If we're not seeking or outboard or stdout, try to memmap the files.
+    if !special_options && !is_stdout {
         if let Some(in_map) = maybe_memmap_input(&in_file)? {
             let content_len = bao::decode::parse_and_check_content_len(&in_map)?;
             if let Some(mut out_map) = maybe_memmap_output(&out_file, content_len as u128)? {
