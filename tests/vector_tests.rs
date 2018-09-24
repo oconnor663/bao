@@ -287,3 +287,87 @@ fn test_outboard_vectors() {
         }
     }
 }
+
+#[test]
+fn test_seek_vectors() {
+    for case in &TEST_VECTORS.seek {
+        println!("\n\ninput_len {}", case.input_len);
+        let input = make_input(case.input_len);
+        let encoded_size = bao::encode::encoded_size(case.input_len as u64) as usize;
+        let mut encoded = vec![0; encoded_size];
+        let hash = bao::encode::encode(&input, &mut encoded);
+        let outboard_size = bao::encode::outboard_size(case.input_len as u64) as usize;
+        let mut outboard = vec![0; outboard_size];
+        let outboard_hash = bao::encode::encode_outboard(&input, &mut outboard);
+        assert_eq!(hash, outboard_hash);
+
+        // First, test all the different seek points using fresh readers.
+        println!();
+        for &seek in &case.seek_offsets {
+            println!("seek {}", seek);
+            let capped_seek = cmp::min(seek, input.len());
+            let expected_input = &input[capped_seek..];
+
+            // Test seeking in the combined mode.
+            let mut combined_reader = bao::decode::Reader::new(Cursor::new(&encoded), &hash);
+            combined_reader
+                .seek(io::SeekFrom::Start(seek as u64))
+                .unwrap();
+            let mut combined_output = Vec::new();
+            combined_reader.read_to_end(&mut combined_output).unwrap();
+            assert_eq!(expected_input, &*combined_output);
+
+            // Test seeking in the outboard mode.
+            let mut outboard_reader = bao::decode::Reader::new_outboard(
+                Cursor::new(&input),
+                Cursor::new(&outboard),
+                &hash,
+            );
+            outboard_reader
+                .seek(io::SeekFrom::Start(seek as u64))
+                .unwrap();
+            let mut combined_output = Vec::new();
+            outboard_reader.read_to_end(&mut combined_output).unwrap();
+            assert_eq!(expected_input, &*combined_output);
+        }
+
+        // Then, test repeatedly seeking using the same reader. First, iterate forwards through the
+        // list of seek positions. Then, iterate backwards. Finally, iterate interleaved between
+        // forwards and backwards. At each step, read a few bytes as a sanity check.
+        let mut repeated_seeks: Vec<usize> = Vec::new();
+        repeated_seeks.extend(case.seek_offsets.iter());
+        repeated_seeks.extend(case.seek_offsets.iter().rev());
+        for (&x, &y) in case.seek_offsets.iter().zip(case.seek_offsets.iter().rev()) {
+            repeated_seeks.push(x);
+            repeated_seeks.push(y);
+        }
+        let mut combined_reader = bao::decode::Reader::new(Cursor::new(&encoded), &hash);
+        let mut outboard_reader =
+            bao::decode::Reader::new_outboard(Cursor::new(&input), Cursor::new(&outboard), &hash);
+        println!();
+        for &seek in &repeated_seeks {
+            println!("repeated seek {}", seek);
+            let capped_seek = cmp::min(seek, input.len());
+            let capped_len = cmp::min(100, input.len() - capped_seek);
+            let mut read_buf = [0; 100];
+
+            // Test seeking in the combined mode.
+            combined_reader
+                .seek(io::SeekFrom::Start(seek as u64))
+                .unwrap();
+            combined_reader
+                .read_exact(&mut read_buf[..capped_len])
+                .unwrap();
+            assert_eq!(&input[capped_seek..][..capped_len], &read_buf[..capped_len]);
+
+            // Test seeking in the outboard mode.
+            outboard_reader
+                .seek(io::SeekFrom::Start(seek as u64))
+                .unwrap();
+            outboard_reader
+                .read_exact(&mut read_buf[..capped_len])
+                .unwrap();
+            assert_eq!(&input[capped_seek..][..capped_len], &read_buf[..capped_len]);
+        }
+    }
+}
