@@ -144,8 +144,6 @@ fn extract_in_place(
     content_len: usize,
 ) {
     if content_len <= CHUNK_SIZE {
-        // This function might eventually make its way into libcore:
-        // https://github.com/rust-lang/rust/pull/53652
         buf.copy_within(read_offset..read_offset + content_len, write_offset);
     } else {
         read_offset += PARENT_SIZE;
