@@ -1051,7 +1051,7 @@ mod test {
             println!("starting case {}", case);
             let input = vec![9; case];
             let (_, encoded) = encode_to_vec(&input);
-            let output = cmd!("python3", "./test/bao.py", "encode", "-", "-")
+            let output = cmd!("python3", "./tests/bao.py", "encode", "-", "-")
                 .input(input)
                 .stdout_capture()
                 .run()
@@ -1216,7 +1216,7 @@ mod test {
             extractor.read_to_end(&mut slice).unwrap();
             let python_output = cmd!(
                 "python3",
-                "./test/bao.py",
+                "./tests/bao.py",
                 "slice",
                 slice_start.to_string(),
                 slice_len.to_string()
