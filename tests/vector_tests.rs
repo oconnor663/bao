@@ -11,8 +11,11 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 
+use bao::hash::Hash;
 use byteorder::{ByteOrder, LittleEndian};
 use std::cmp;
+use std::io::prelude::*;
+use std::io::Cursor;
 
 lazy_static! {
     static ref TEST_VECTORS: TestVectors =
@@ -107,34 +110,97 @@ fn test_hash_vectors() {
     }
 }
 
+fn all_decode_implementations(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>, bao::decode::Error> {
+    let content_len = bao::decode::parse_and_check_content_len(encoded)?;
+    let mut output = vec![0; content_len];
+    let result = bao::decode::decode(&encoded, &mut output, &hash).map(|_| output);
+
+    // Make sure all the other implementations of decode give the same answer.
+    {
+        let to_vec_result = bao::decode::decode_to_vec(&encoded, &hash);
+        assert_eq!(result, to_vec_result);
+
+        let mut in_place = encoded.to_vec();
+        let in_place_result = bao::decode::decode_in_place(&mut in_place, &hash);
+        assert_eq!(
+            result,
+            in_place_result.map(|_| in_place[..content_len].to_vec())
+        );
+
+        let mut output = Vec::new();
+        let mut reader = bao::decode::Reader::new(&*encoded, &hash);
+        let reader_result = reader.read_to_end(&mut output);
+        match (&result, &reader_result) {
+            (&Ok(ref expected_output), &Ok(_)) => assert_eq!(expected_output, &output),
+            (&Err(expected_error), &Err(ref found_error)) => {
+                let expected_io_err: std::io::Error = expected_error.into();
+                assert_eq!(expected_io_err.kind(), found_error.kind());
+                assert_eq!(expected_io_err.to_string(), found_error.to_string());
+            }
+            _ => panic!("mismatch"),
+        }
+    }
+
+    result
+}
+
 #[test]
 fn test_encode_vectors() {
     for case in &TEST_VECTORS.encode {
+        println!("input_len {}", case.input_len);
         let input = make_input(case.input_len);
-        let (_, encoded) = bao::encode::encode_to_vec(&input);
+        let encoded_size = bao::encode::encoded_size(case.input_len as u64) as usize;
+        let mut encoded = vec![0; encoded_size];
+        let hash = bao::encode::encode(&input, &mut encoded);
 
-        // Make sure the encoded output is what it's supposed to be.
-        assert_eq!(case.encoded_blake2b, blake2b(&encoded));
-
-        // Test getting the hash from the encoding. TODO: other implementations too
-        let hash = bao::decode::hash_from_encoded(&mut &*encoded).unwrap();
+        // Make sure the encoded hash is correct.
         assert_eq!(case.bao_hash, hex::encode(&hash));
 
-        // Test decoding. TODO: other implementations too
-        let output = bao::decode::decode_to_vec(&encoded, &hash).unwrap();
+        // Make sure the encoded output is correct.
+        assert_eq!(case.encoded_blake2b, blake2b(&encoded));
+
+        // Make sure all the other implementations of encode give the same answer.
+        {
+            let (to_vec_hash, to_vec) = bao::encode::encode_to_vec(&input);
+            assert_eq!(hash, to_vec_hash);
+            assert_eq!(encoded, to_vec);
+
+            let mut in_place = vec![0; encoded_size];
+            in_place[..case.input_len].copy_from_slice(&input);
+            let in_place_hash = bao::encode::encode_in_place(&mut in_place, case.input_len);
+            assert_eq!(hash, in_place_hash);
+            assert_eq!(encoded, in_place);
+
+            let mut output = Vec::new();
+            {
+                let mut writer = bao::encode::Writer::new(Cursor::new(&mut output));
+                writer.write_all(&input).unwrap();
+                let writer_hash = writer.finish().unwrap();
+                assert_eq!(hash, writer_hash);
+            }
+            assert_eq!(encoded, output);
+        }
+
+        // Test getting the hash from the encoding.
+        let hash_encoded = bao::decode::hash_from_encoded(&mut &*encoded).unwrap();
+        assert_eq!(hash, hash_encoded);
+
+        // Test decoding.
+        let output = all_decode_implementations(&encoded, &hash).unwrap();
         assert_eq!(input, output);
 
         // Make sure decoding with a bad hash fails.
         let mut bad_hash = hash;
         bad_hash[0] ^= 1;
-        let err = bao::decode::decode_to_vec(&encoded, &bad_hash).unwrap_err();
+        let err = all_decode_implementations(&encoded, &bad_hash).unwrap_err();
         assert_eq!(bao::decode::Error::HashMismatch, err);
 
         // Make sure each corruption point fails the decode.
         for &point in &case.corruptions {
+            println!("corruption {}", point);
             let mut corrupt = encoded.clone();
             corrupt[point] ^= 1;
-            bao::decode::decode_to_vec(&corrupt, &hash).unwrap_err();
+            all_decode_implementations(&corrupt, &hash).unwrap_err();
             // The error can be either HashMismatch or Truncated, depending on whether the header
             // was corrupted.
         }
