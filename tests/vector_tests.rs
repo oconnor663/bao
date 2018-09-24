@@ -14,6 +14,7 @@ extern crate serde_json;
 use bao::hash::Hash;
 use byteorder::{ByteOrder, LittleEndian};
 use std::cmp;
+use std::io;
 use std::io::prelude::*;
 use std::io::Cursor;
 
@@ -206,9 +207,83 @@ fn test_encode_vectors() {
             println!("corruption {}", point);
             let mut corrupt = encoded.clone();
             corrupt[point] ^= 1;
-            all_decode_implementations(&corrupt, &hash).unwrap_err();
             // The error can be either HashMismatch or Truncated, depending on whether the header
             // was corrupted.
+            all_decode_implementations(&corrupt, &hash).unwrap_err();
+        }
+    }
+}
+
+fn decode_outboard(input: &[u8], outboard: &[u8], hash: &Hash) -> io::Result<Vec<u8>> {
+    let mut reader = bao::decode::Reader::new_outboard(input, outboard, hash);
+    let mut output = Vec::with_capacity(input.len());
+    reader.read_to_end(&mut output)?;
+    Ok(output)
+}
+
+#[test]
+fn test_outboard_vectors() {
+    for case in &TEST_VECTORS.outboard {
+        println!("input_len {}", case.input_len);
+        let input = make_input(case.input_len);
+        let encoded_size = bao::encode::outboard_size(case.input_len as u64) as usize;
+        let mut outboard = vec![0; encoded_size];
+        let hash = bao::encode::encode_outboard(&input, &mut outboard);
+
+        // Make sure the encoded hash is correct.
+        assert_eq!(case.bao_hash, hex::encode(&hash));
+
+        // Make sure the outboard output is correct.
+        assert_eq!(case.encoded_blake2b, blake2b(&outboard));
+
+        // Make sure all the other implementations of encode give the same answer.
+        {
+            let (to_vec_hash, to_vec) = bao::encode::encode_outboard_to_vec(&input);
+            assert_eq!(hash, to_vec_hash);
+            assert_eq!(outboard, to_vec);
+
+            let mut output = Vec::new();
+            {
+                let mut writer = bao::encode::Writer::new_outboard(Cursor::new(&mut output));
+                writer.write_all(&input).unwrap();
+                let writer_hash = writer.finish().unwrap();
+                assert_eq!(hash, writer_hash);
+            }
+            assert_eq!(outboard, output);
+        }
+
+        // Test getting the hash from the encoding.
+        let hash_encoded =
+            bao::decode::hash_from_outboard_encoded(&mut &*input, &mut &*outboard).unwrap();
+        assert_eq!(hash, hash_encoded);
+
+        // Test decoding. Currently only the Reader implements it.
+        let output = decode_outboard(&input, &outboard, &hash).unwrap();
+        assert_eq!(input, output);
+
+        // Make sure decoding with a bad hash fails.
+        let mut bad_hash = hash;
+        bad_hash[0] ^= 1;
+        let err = decode_outboard(&input, &outboard, &bad_hash).unwrap_err();
+        assert_eq!(io::ErrorKind::InvalidData, err.kind());
+
+        // Make sure each tree corruption point fails the decode.
+        for &point in &case.outboard_corruptions {
+            println!("corruption {}", point);
+            let mut corrupt = outboard.clone();
+            corrupt[point] ^= 1;
+            // The error can be either InvalidData or UnexpectedEof, depending on whether the
+            // header was corrupted.
+            decode_outboard(&input, &corrupt, &hash).unwrap_err();
+        }
+
+        // Make sure each input corruption point fails the decode.
+        for &point in &case.input_corruptions {
+            println!("corruption {}", point);
+            let mut corrupt = input.clone();
+            corrupt[point] ^= 1;
+            let err = decode_outboard(&corrupt, &outboard, &hash).unwrap_err();
+            assert_eq!(io::ErrorKind::InvalidData, err.kind());
         }
     }
 }
