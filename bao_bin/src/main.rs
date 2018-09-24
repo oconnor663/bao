@@ -290,6 +290,11 @@ fn maybe_memmap_input(in_file: &File) -> Result<Option<memmap::Mmap>, Error> {
     })
 }
 
+// Note that memory mapping stdout will almost always fail for lack of read permissions, but it's
+// difficult to check for that condition here. Getting the access mode of the file requires an
+// operation like `libc::fcntl(..., F_GETFL) & libc::O_RDWR`, which isn't portable, so we prefer to
+// just avoid calling this when we know we're using stdout. The alternative would be to catch
+// permissions errors in general, which could hide bugs.
 fn maybe_memmap_output(
     out_file: &File,
     target_len: u128,
