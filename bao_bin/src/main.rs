@@ -269,6 +269,9 @@ fn maybe_memmap_input(in_file: &File) -> Result<Option<memmap::Mmap>, Error> {
     } else if metadata.len() > isize::max_value() as u64 {
         // Too long to safely map. https://github.com/danburkert/memmap-rs/issues/69
         None
+    } else if metadata.len() == 0 {
+        // Mapping an empty file currently fails. https://github.com/danburkert/memmap-rs/issues/72
+        None
     } else {
         let map = unsafe { memmap::Mmap::map(&in_file)? };
         assert!(map.len() <= isize::max_value() as usize);
@@ -289,6 +292,9 @@ fn maybe_memmap_output(
         None
     } else if metadata.len() != 0 {
         // The output file hasn't been truncated. Likely opened in append mode.
+        None
+    } else if target_len == 0 {
+        // Mapping an empty file currently fails. https://github.com/danburkert/memmap-rs/issues/72
         None
     } else if target_len > isize::max_value() as u128 {
         // Too long to safely map. https://github.com/danburkert/memmap-rs/issues/69
