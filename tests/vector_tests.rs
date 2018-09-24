@@ -107,6 +107,12 @@ fn test_hash_vectors() {
         let input = make_input(case.input_len);
         let hash = bao::hash::hash(&input);
         assert_eq!(case.bao_hash, hex::encode(&hash));
+
+        // Make sure the Writer gives the same answer.
+        let mut writer = bao::hash::Writer::new();
+        writer.write_all(&input).unwrap();
+        let writer_hash = writer.finish();
+        assert_eq!(hash, writer_hash);
     }
 }
 
