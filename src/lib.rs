@@ -22,26 +22,3 @@ extern crate hex;
 pub mod decode;
 pub mod encode;
 pub mod hash;
-
-#[cfg(test)]
-mod test {
-    use std::process::Command;
-
-    #[cfg(feature = "python")]
-    #[test]
-    fn run_python_tests() {
-        let output = Command::new("python3")
-            .arg("./test/test_python.py")
-            .output()
-            .expect("Python test script failed to run.");
-        println!(
-            "=== stdout ===\n{}",
-            String::from_utf8_lossy(&output.stdout)
-        );
-        println!(
-            "=== stderr ===\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert!(output.status.success(), "Python tests failed.");
-    }
-}
