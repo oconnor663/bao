@@ -72,8 +72,8 @@ struct SliceTest {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SliceTestSlice {
-    start: usize,
-    len: usize,
+    start: u64,
+    len: u64,
     output_len: usize,
     output_blake2b: String,
     corruptions: Vec<usize>,
@@ -368,6 +368,75 @@ fn test_seek_vectors() {
                 .read_exact(&mut read_buf[..capped_len])
                 .unwrap();
             assert_eq!(&input[capped_seek..][..capped_len], &read_buf[..capped_len]);
+        }
+    }
+}
+
+fn decode_slice(slice: &[u8], hash: &Hash, start: u64, len: u64) -> io::Result<Vec<u8>> {
+    let mut reader = bao::decode::SliceReader::new(slice, hash, start, len);
+    let mut output = Vec::new();
+    reader.read_to_end(&mut output)?;
+    Ok(output)
+}
+
+#[test]
+fn test_slice_vectors() {
+    for case in &TEST_VECTORS.slice {
+        println!("\n\ninput_len {}", case.input_len);
+        let input = make_input(case.input_len);
+        let encoded_size = bao::encode::encoded_size(case.input_len as u64) as usize;
+        let mut encoded = vec![0; encoded_size];
+        let hash = bao::encode::encode(&input, &mut encoded);
+        let outboard_size = bao::encode::outboard_size(case.input_len as u64) as usize;
+        let mut outboard = vec![0; outboard_size];
+        let outboard_hash = bao::encode::encode_outboard(&input, &mut outboard);
+        assert_eq!(hash, outboard_hash);
+
+        for slice in &case.slices {
+            println!("\nslice {} {}", slice.start, slice.len);
+            let capped_start = cmp::min(input.len(), slice.start as usize);
+            let capped_len = cmp::min(input.len() - capped_start, slice.len as usize);
+            let expected_content = &input[capped_start..][..capped_len];
+
+            // Make sure slicing the combined encoding has the output that it should.
+            let mut combined_extractor =
+                bao::encode::SliceExtractor::new(Cursor::new(&encoded), slice.start, slice.len);
+            let mut combined_slice = Vec::new();
+            combined_extractor.read_to_end(&mut combined_slice).unwrap();
+            assert_eq!(slice.output_len, combined_slice.len());
+            assert_eq!(slice.output_blake2b, blake2b(&combined_slice));
+
+            // Make sure slicing the outboard encoding also gives the right output.
+            let mut outboard_extractor = bao::encode::SliceExtractor::new_outboard(
+                Cursor::new(&input),
+                Cursor::new(&outboard),
+                slice.start,
+                slice.len,
+            );
+            let mut outboard_slice = Vec::new();
+            outboard_extractor.read_to_end(&mut outboard_slice).unwrap();
+            assert_eq!(combined_slice, outboard_slice);
+
+            // Test decoding the slice.
+            let output = decode_slice(&combined_slice, &hash, slice.start, slice.len).unwrap();
+            assert_eq!(expected_content, &*output);
+
+            // Make sure that using the wrong hash breaks decoding.
+            let mut wrong_hash = hash;
+            wrong_hash[0] ^= 1;
+            let err =
+                decode_slice(&combined_slice, &wrong_hash, slice.start, slice.len).unwrap_err();
+            assert_eq!(io::ErrorKind::InvalidData, err.kind());
+
+            // Test that each of the corruption points breaks decoding the slice.
+            for &point in &slice.corruptions {
+                println!("corruption {}", point);
+                let mut corrupted = combined_slice.clone();
+                corrupted[point] ^= 1;
+                // The error can be either HashMismatch or Truncated, depending on whether the header
+                // was corrupted.
+                decode_slice(&combined_slice, &wrong_hash, slice.start, slice.len).unwrap_err();
+            }
         }
     }
 }
