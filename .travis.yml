@@ -11,3 +11,5 @@ script:
   - cargo test -vv --no-default-features --features std
   # Without std. Currently only the build is supported.
   - cargo build -vv --no-default-features
+  # Test the bao_bin sub-crate.
+  - (cd bao_bin && cargo test -vv)
