@@ -354,7 +354,6 @@ pub(crate) const TEST_CASES: &[usize] = &[
 #[cfg(test)]
 mod test {
     use super::*;
-    use hex;
     use std::io::prelude::*;
 
     #[test]
@@ -390,24 +389,6 @@ mod test {
         for &(input, output) in input_output {
             println!("testing {} and {}", input, output);
             assert_eq!(left_len(input), output);
-        }
-    }
-
-    #[cfg(feature = "python")]
-    #[test]
-    fn test_compare_python() {
-        for &case in TEST_CASES {
-            println!("case {}", case);
-            let input = vec![0x42; case];
-            let hash_hex = hex::encode(hash(&input));
-
-            // Have the Python implementation hash the same input, and make
-            // sure the result is identical.
-            let python_hash = cmd!("python3", "./tests/bao.py", "hash")
-                .input(input.clone())
-                .read()
-                .expect("is python3 installed?");
-            assert_eq!(hash_hex, python_hash, "hashes don't match");
         }
     }
 

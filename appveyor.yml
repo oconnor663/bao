@@ -29,8 +29,8 @@ install:
 build: false
 
 test_script:
-  # With std, but skip python tests.
-  - cargo test -vv --no-default-features --features std
+  # With std (and any other optional features that might be added in the future).
+  - cargo test -vv --all-features
   # Without std. Currently only the build is supported.
   - cargo build -vv --no-default-features
   # Test the bao_bin sub-crate.

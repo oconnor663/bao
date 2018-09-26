@@ -1044,22 +1044,6 @@ mod test {
         }
     }
 
-    #[cfg(feature = "python")]
-    #[test]
-    fn compare_encoded_to_python() {
-        for &case in hash::TEST_CASES {
-            println!("starting case {}", case);
-            let input = vec![9; case];
-            let (_, encoded) = encode_to_vec(&input);
-            let output = cmd!("python3", "./tests/bao.py", "encode", "-", "-")
-                .input(input)
-                .stdout_capture()
-                .run()
-                .unwrap();
-            assert_eq!(output.stdout, encoded, "encoded mismatch");
-        }
-    }
-
     #[test]
     fn test_encode() {
         for &case in hash::TEST_CASES {
@@ -1195,36 +1179,6 @@ mod test {
                     chunk, total_chunks
                 );
             }
-        }
-    }
-
-    #[cfg(feature = "python")]
-    #[test]
-    fn compare_slice_to_python() {
-        for &case in hash::TEST_CASES {
-            let input = make_test_input(case);
-            let (_, encoded) = encode_to_vec(&input);
-            let mut encoded_file = tempfile::NamedTempFile::new().unwrap();
-            encoded_file.write_all(&encoded).unwrap();
-            encoded_file.flush().unwrap();
-            let slice_start = input.len() / 4;
-            let slice_len = input.len() / 2;
-            println!("\ncase {} start {} len {}", case, slice_start, slice_len);
-            let mut slice = Vec::new();
-            let mut extractor =
-                SliceExtractor::new(Cursor::new(&encoded), slice_start as u64, slice_len as u64);
-            extractor.read_to_end(&mut slice).unwrap();
-            let python_output = cmd!(
-                "python3",
-                "./tests/bao.py",
-                "slice",
-                slice_start.to_string(),
-                slice_len.to_string()
-            ).stdin(encoded_file.path())
-            .stdout_capture()
-            .run()
-            .unwrap();
-            assert_eq!(python_output.stdout, slice, "slice mismatch");
         }
     }
 }
