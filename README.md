@@ -4,7 +4,7 @@
 [Docs](https://docs.rs/bao) —
 [Crate](https://crates.io/crates/bao)
 
-`bao` (pronounced "bough") is a general purpose tree hash for files.
+`bao` (rhymes with bough 🌳) is a general purpose tree hash for files.
 Tree hashes have two big benefits over regular serial hashes:
 
 - **Parallelism.** Regular hashes are single threaded, but a tree hash
