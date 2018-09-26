@@ -7,13 +7,16 @@
 `bao` (pronounced "bough") is a general purpose tree hash for files.
 Tree hashes have two big benefits over regular serial hashes:
 
-- **Parallelism.** A regular hash can only occupy one CPU core, but a
-  tree hash with enough input can spread the work over any number of
-  cores.
-- **Streaming verification.** The only way to verify that a regular file
-  matches a hash is to download the entire file. A tree hash makes it
-  efficient to stream verified bytes out of a file, or to consume
-  arbitrary pieces of a file BitTorrent-style.
+- **Parallelism.** Regular hashes are single threaded, but a tree hash
+  with enough input can split the work over any number of threads. That
+  makes `bao hash` many times faster than similar commands like
+  `md5sum`.
+- **Streaming.** To verify a regular hash, you need to hash the whole
+  input over again, but a tree hash can verify small sections of input
+  by themselves. Given the input hash, `bao decode` can stream verified
+  bytes from an encoded version of the input file. `bao slice` can
+  extract sections of that encoded file, which can be verified
+  independently using the same hash.
 
 `bao hash` is quite fast. The underlying hash function is BLAKE2b, with
 an AVX2 implementation provided by
