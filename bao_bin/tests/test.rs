@@ -1,7 +1,9 @@
 #[macro_use]
 extern crate duct;
+extern crate rand;
 extern crate tempfile;
 
+use rand::RngCore;
 use std::env::consts::EXE_EXTENSION;
 use std::fs;
 use std::io::prelude::*;
@@ -168,4 +170,57 @@ fn test_encode_decode_outboard() {
     .unwrap()
     .stdout;
     assert_eq!(input_bytes[1..2], *partial_output);
+}
+
+#[test]
+fn test_slice() {
+    let input_len = 1_000_000;
+    let slice_start = input_len / 4;
+    let slice_len = input_len / 2;
+
+    let mut input = vec![0; input_len];
+    rand::thread_rng().fill_bytes(&mut input);
+    let encoded_file = tempfile::NamedTempFile::new().unwrap();
+    cmd!(bao_exe(), "encode", "-", encoded_file.path())
+        .input(&*input)
+        .run()
+        .unwrap();
+    let hash = cmd!(bao_exe(), "hash", "--encoded", encoded_file.path())
+        .read()
+        .unwrap();
+    let outboard_file = tempfile::NamedTempFile::new().unwrap();
+    cmd!(bao_exe(), "encode", "-", "--outboard", outboard_file.path())
+        .input(&*input)
+        .run()
+        .unwrap();
+    let outboard_hash = cmd!(bao_exe(), "hash", "--outboard", outboard_file.path())
+        .read()
+        .unwrap();
+    assert_eq!(hash, outboard_hash);
+
+    // Do a combined mode slice to a file.
+    let slice_file = tempfile::NamedTempFile::new().unwrap();
+    cmd!(
+        bao_exe(),
+        "slice",
+        slice_start.to_string(),
+        slice_len.to_string(),
+        encoded_file.path(),
+        slice_file.path()
+    ).run()
+    .unwrap();
+    let slice_bytes = fs::read(slice_file.path()).unwrap();
+
+    // Make sure the outboard mode gives the same result. Do this one to stdout.
+    let outboard_slice_bytes = cmd!(
+        bao_exe(),
+        "slice",
+        slice_start.to_string(),
+        slice_len.to_string(),
+        encoded_file.path()
+    ).stdout_capture()
+    .run()
+    .unwrap()
+    .stdout;
+    assert_eq!(slice_bytes, outboard_slice_bytes);
 }

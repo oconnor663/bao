@@ -20,4 +20,5 @@ serde_derive = "1.0.75"
 
 [dev-dependencies]
 duct = "0.11.0"
+rand = "0.5.5"
 tempfile = "3.0.3"
