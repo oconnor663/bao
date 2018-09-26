@@ -58,11 +58,11 @@ d99e7ff490091c550718f89a6046974ec84a0bcc4d9c393f32eb9e7afa4146a0  -",
 #[test]
 fn test_encode_decode_combined() {
     let input_bytes = &b"abc"[..];
-    let mut input = tempfile::NamedTempFile::new().unwrap();
-    input.write_all(input_bytes).unwrap();
-    input.flush().unwrap();
+    let mut input_file = tempfile::NamedTempFile::new().unwrap();
+    input_file.write_all(input_bytes).unwrap();
+    input_file.flush().unwrap();
     let encoded_file = tempfile::NamedTempFile::new().unwrap();
-    cmd!(bao_exe(), "encode", input.path(), encoded_file.path())
+    cmd!(bao_exe(), "encode", input_file.path(), encoded_file.path())
         .run()
         .unwrap();
     let encoded_bytes = fs::read(encoded_file.path()).unwrap();
@@ -101,6 +101,66 @@ fn test_encode_decode_combined() {
         "decode",
         &input_hash,
         encoded_file.path(),
+        "--start=1",
+        "--count=1"
+    ).stdout_capture()
+    .run()
+    .unwrap()
+    .stdout;
+    assert_eq!(input_bytes[1..2], *partial_output);
+}
+
+#[test]
+fn test_encode_decode_outboard() {
+    let input_bytes = &b"abc"[..];
+    let mut input_file = tempfile::NamedTempFile::new().unwrap();
+    input_file.write_all(input_bytes).unwrap();
+    input_file.flush().unwrap();
+    let outboard_file = tempfile::NamedTempFile::new().unwrap();
+    cmd!(
+        bao_exe(),
+        "encode",
+        input_file.path(),
+        "--outboard",
+        outboard_file.path()
+    ).run()
+    .unwrap();
+
+    // Test hash --outboard.
+    let input_hash = cmd!(bao_exe(), "hash").input(input_bytes).read().unwrap();
+    let outboard_hash = cmd!(
+        bao_exe(),
+        "hash",
+        input_file.path(),
+        "--outboard",
+        outboard_file.path()
+    ).read()
+    .unwrap();
+    assert_eq!(input_hash, outboard_hash);
+
+    // Test decode using stdin and stdout.
+    let decoded_bytes = cmd!(
+        bao_exe(),
+        "decode",
+        &input_hash,
+        "--outboard",
+        outboard_file.path()
+    ).input(input_bytes)
+    .stdout_capture()
+    .run()
+    .unwrap()
+    .stdout;
+    assert_eq!(input_bytes, &*decoded_bytes);
+
+    // Test decode using --start and --count. Note that --start requires that the input is a file.
+    // (Note that the outboard case is never memmapped, so we don't need a separate test for that.)
+    let partial_output = cmd!(
+        bao_exe(),
+        "decode",
+        &input_hash,
+        input_file.path(),
+        "--outboard",
+        outboard_file.path(),
         "--start=1",
         "--count=1"
     ).stdout_capture()
