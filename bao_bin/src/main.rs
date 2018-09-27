@@ -77,17 +77,17 @@ fn main() -> Result<(), Error> {
 }
 
 fn hash_one(maybe_path: &Option<PathBuf>, args: &Args) -> Result<bao::hash::Hash, Error> {
-    let mut in_file = open_input(maybe_path)?;
+    let mut input = open_input(maybe_path)?;
     Ok(if args.flag_outboard.is_some() {
-        let mut outboard_file = open_input(&args.flag_outboard)?;
-        bao::decode::hash_from_outboard_encoded(&mut in_file, &mut outboard_file)?
+        let mut outboard = open_input(&args.flag_outboard)?;
+        bao::decode::hash_from_outboard_encoded(&mut input, &mut outboard)?
     } else if args.flag_encoded {
-        bao::decode::hash_from_encoded(&mut in_file)?
-    } else if let Some(map) = maybe_memmap_input(&in_file)? {
+        bao::decode::hash_from_encoded(&mut input)?
+    } else if let Some(map) = maybe_memmap_input(&input)? {
         bao::hash::hash(&map)
     } else {
         let mut writer = bao::hash::Writer::new();
-        io::copy(&mut in_file, &mut writer)?;
+        io::copy(&mut input, &mut writer)?;
         writer.finish()
     })
 }
@@ -122,25 +122,20 @@ fn hash(args: &Args) -> Result<(), Error> {
 }
 
 fn encode(args: &Args) -> Result<(), Error> {
-    let mut in_file = open_input(&args.arg_input)?;
+    let mut input = open_input(&args.arg_input)?;
     let out_maybe_path = if args.flag_outboard.is_some() {
         &args.flag_outboard
     } else {
         &args.arg_output
     };
-    // The output will always require read permissions, either to flip the tree or to mmap it, and
-    // stdout practically never has the right permissions. Return an error if the output is "-".
-    if path_if_some_and_not_dash(out_maybe_path).is_none() {
-        return Err(err_msg(format!("encode output cannot be stdout")));
-    }
-    let out_file = open_output(out_maybe_path)?;
-    if let Some(in_map) = maybe_memmap_input(&in_file)? {
+    let output = open_output(out_maybe_path)?;
+    if let Some(in_map) = maybe_memmap_input(&input)? {
         let target_len = if args.flag_outboard.is_some() {
             bao::encode::outboard_size(in_map.len() as u64)
         } else {
             bao::encode::encoded_size(in_map.len() as u64)
         };
-        if let Some(mut out_map) = maybe_memmap_output(&out_file, target_len)? {
+        if let Some(mut out_map) = maybe_memmap_output(&output, target_len)? {
             if args.flag_outboard.is_some() {
                 bao::encode::encode_outboard(&in_map, &mut out_map);
             } else {
@@ -151,91 +146,179 @@ fn encode(args: &Args) -> Result<(), Error> {
     }
     // If one or both of the files weren't mappable, fall back to the writer. First check that we
     // have an actual file and not a pipe, because the writer requires seek.
-    confirm_real_file(&out_file, "encode output")?;
     let mut writer;
     if args.flag_outboard.is_some() {
-        writer = bao::encode::Writer::new_outboard(out_file);
+        writer = bao::encode::Writer::new_outboard(output.require_file()?);
     } else {
-        writer = bao::encode::Writer::new(out_file);
+        writer = bao::encode::Writer::new(output.require_file()?);
     };
-    io::copy(&mut in_file, &mut writer)?;
+    io::copy(&mut input, &mut writer)?;
     writer.finish()?;
     Ok(())
 }
 
 fn decode(args: &Args) -> Result<(), Error> {
-    let in_file = open_input(&args.arg_input)?;
-    let mut out_file = open_output(&args.arg_output)?;
+    let input = open_input(&args.arg_input)?;
+    let mut output = open_output(&args.arg_output)?;
     let hash = parse_hash(args)?;
-    // Don't mmap stdout. It practically never has the read permissions required for mapping.
-    let is_stdout = path_if_some_and_not_dash(&args.arg_output).is_none();
+    // If we're not seeking or outboard or stdout, try to memmap the files.
     let special_options =
         args.flag_start.is_some() || args.flag_count.is_some() || args.flag_outboard.is_some();
-    // If we're not seeking or outboard or stdout, try to memmap the files.
-    if !special_options && !is_stdout {
-        if let Some(in_map) = maybe_memmap_input(&in_file)? {
+    if !special_options {
+        if let Some(in_map) = maybe_memmap_input(&input)? {
             let content_len = bao::decode::parse_and_check_content_len(&in_map)?;
-            if let Some(mut out_map) = maybe_memmap_output(&out_file, content_len as u128)? {
+            if let Some(mut out_map) = maybe_memmap_output(&output, content_len as u128)? {
                 bao::decode::decode(&in_map, &mut out_map, &hash)?;
                 return Ok(());
             }
         }
     }
     // If the files weren't mappable, or if we're seeking or outboard, fall back to the reader.
-    let outboard_file;
-    let mut reader;
+    // Unfortunately there are a 2x2 different cases here, becuase seeking requires statically
+    // knowing that the inputs are files.
+    let outboard;
+    let mut generic_reader;
+    let mut file_reader;
+    let mut reader: &mut dyn Read;
     if args.flag_outboard.is_some() {
-        outboard_file = open_input(&args.flag_outboard)?;
-        if args.flag_start.is_some() {
-            confirm_real_file(&outboard_file, "when seeking, decode input")?;
+        outboard = open_input(&args.flag_outboard)?;
+        if let Some(offset) = args.flag_start {
+            file_reader = bao::decode::Reader::new_outboard(
+                input.require_file()?,
+                outboard.require_file()?,
+                &hash,
+            );
+            file_reader.seek(io::SeekFrom::Start(offset))?;
+            reader = &mut file_reader;
+        } else {
+            generic_reader = bao::decode::Reader::new_outboard(input, outboard, &hash);
+            reader = &mut generic_reader;
         }
-        reader = bao::decode::Reader::new_outboard(&in_file, &outboard_file, &hash);
     } else {
-        reader = bao::decode::Reader::new(&in_file, &hash);
-    }
-    if let Some(offset) = args.flag_start {
-        confirm_real_file(&in_file, "when seeking, decode input")?;
-        reader.seek(io::SeekFrom::Start(offset))?;
+        if let Some(offset) = args.flag_start {
+            file_reader = bao::decode::Reader::new(input.require_file()?, &hash);
+            file_reader.seek(io::SeekFrom::Start(offset))?;
+            reader = &mut file_reader;
+        } else {
+            generic_reader = bao::decode::Reader::new(input, &hash);
+            reader = &mut generic_reader;
+        }
     }
     if let Some(count) = args.flag_count {
         let mut taker = reader.take(count);
-        allow_broken_pipe(io::copy(&mut taker, &mut out_file))?;
+        allow_broken_pipe(io::copy(&mut taker, &mut output))?;
     } else {
-        allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
+        allow_broken_pipe(io::copy(&mut reader, &mut output))?;
     }
     Ok(())
 }
 
 fn slice(args: &Args) -> Result<(), Error> {
-    let in_file = open_input(&args.arg_input)?;
-    let mut out_file = open_output(&args.arg_output)?;
+    let input = open_input(&args.arg_input)?;
+    let mut output = open_output(&args.arg_output)?;
     // Slice extraction requires seek.
-    confirm_real_file(&in_file, "slicing input")?;
-    let outboard_file;
+    let outboard;
     let mut extractor;
     if args.flag_outboard.is_some() {
-        outboard_file = open_input(&args.flag_outboard)?;
-        confirm_real_file(&outboard_file, "slicing input")?;
+        outboard = open_input(&args.flag_outboard)?;
         extractor = bao::encode::SliceExtractor::new_outboard(
-            in_file,
-            outboard_file,
+            input.require_file()?,
+            outboard.require_file()?,
             args.arg_start,
             args.arg_count,
         );
     } else {
-        extractor = bao::encode::SliceExtractor::new(in_file, args.arg_start, args.arg_count);
+        extractor =
+            bao::encode::SliceExtractor::new(input.require_file()?, args.arg_start, args.arg_count);
     }
-    io::copy(&mut extractor, &mut out_file)?;
+    io::copy(&mut extractor, &mut output)?;
     Ok(())
 }
 
 fn decode_slice(args: &Args) -> Result<(), Error> {
-    let in_file = open_input(&args.arg_input)?;
-    let mut out_file = open_output(&args.arg_output)?;
+    let input = open_input(&args.arg_input)?;
+    let mut output = open_output(&args.arg_output)?;
     let hash = parse_hash(&args)?;
-    let mut reader = bao::decode::SliceReader::new(in_file, &hash, args.arg_start, args.arg_count);
-    allow_broken_pipe(io::copy(&mut reader, &mut out_file))?;
+    let mut reader = bao::decode::SliceReader::new(input, &hash, args.arg_start, args.arg_count);
+    allow_broken_pipe(io::copy(&mut reader, &mut output))?;
     Ok(())
+}
+
+fn open_input(maybe_path: &Option<PathBuf>) -> Result<Input, Error> {
+    Ok(
+        if let Some(ref path) = path_if_some_and_not_dash(maybe_path) {
+            Input::File(File::open(path)?)
+        } else {
+            Input::Stdin
+        },
+    )
+}
+
+enum Input {
+    Stdin,
+    File(File),
+}
+
+impl Input {
+    fn require_file(self) -> Result<File, Error> {
+        match self {
+            Input::Stdin => Err(err_msg(format!("input must be a real file"))),
+            Input::File(file) => Ok(file),
+        }
+    }
+}
+
+impl Read for Input {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match *self {
+            Input::Stdin => io::stdin().read(buf),
+            Input::File(ref mut file) => file.read(buf),
+        }
+    }
+}
+
+fn open_output(maybe_path: &Option<PathBuf>) -> Result<Output, Error> {
+    if let Some(ref path) = path_if_some_and_not_dash(maybe_path) {
+        // Both reading and writing permissions are required for MmapMut.
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)?;
+        return Ok(Output::File(file));
+    }
+    Ok(Output::Stdout)
+}
+
+enum Output {
+    Stdout,
+    File(File),
+}
+
+impl Output {
+    fn require_file(self) -> Result<File, Error> {
+        match self {
+            Output::Stdout => Err(err_msg(format!("output must be a real file"))),
+            Output::File(file) => Ok(file),
+        }
+    }
+}
+
+impl Write for Output {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match *self {
+            Output::Stdout => io::stdout().write(buf),
+            Output::File(ref mut file) => file.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match *self {
+            Output::Stdout => io::stdout().flush(),
+            Output::File(ref mut file) => file.flush(),
+        }
+    }
 }
 
 fn path_if_some_and_not_dash(maybe_path: &Option<PathBuf>) -> Option<&Path> {
@@ -250,32 +333,14 @@ fn path_if_some_and_not_dash(maybe_path: &Option<PathBuf>) -> Option<&Path> {
     }
 }
 
-fn open_input(maybe_path: &Option<PathBuf>) -> Result<File, Error> {
-    Ok(if let Some(path) = path_if_some_and_not_dash(maybe_path) {
-        File::open(path)?
-    } else {
-        os_pipe::dup_stdin()?.into()
-    })
-}
-
-fn open_output(maybe_path: &Option<PathBuf>) -> Result<File, Error> {
-    Ok(if let Some(path) = path_if_some_and_not_dash(maybe_path) {
-        // Both reading and writing permissions are required for MmapMut.
-        OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)?
-    } else {
-        os_pipe::dup_stdout()?.into()
-    })
-}
-
-fn maybe_memmap_input(in_file: &File) -> Result<Option<memmap::Mmap>, Error> {
+fn maybe_memmap_input(input: &Input) -> Result<Option<memmap::Mmap>, Error> {
+    let in_file = match *input {
+        Input::Stdin => return Ok(None),
+        Input::File(ref file) => file,
+    };
     let metadata = in_file.metadata()?;
     Ok(if !metadata.is_file() {
-        // Not a file.
+        // Not a real file.
         None
     } else if metadata.len() > isize::max_value() as u64 {
         // Too long to safely map. https://github.com/danburkert/memmap-rs/issues/69
@@ -284,27 +349,31 @@ fn maybe_memmap_input(in_file: &File) -> Result<Option<memmap::Mmap>, Error> {
         // Mapping an empty file currently fails. https://github.com/danburkert/memmap-rs/issues/72
         None
     } else {
-        let map = unsafe { memmap::Mmap::map(&in_file)? };
-        assert!(map.len() <= isize::max_value() as usize);
+        // Explicitly set the length of the memory map, so that filesystem changes can't race to
+        // violate the invariants we just checked.
+        let map = unsafe {
+            memmap::MmapOptions::new()
+                .len(metadata.len() as usize)
+                .map(&in_file)?
+        };
         Some(map)
     })
 }
 
-// Note that memory mapping stdout will almost always fail for lack of read permissions, but it's
-// difficult to check for that condition here. Getting the access mode of the file requires an
-// operation like `libc::fcntl(..., F_GETFL) & libc::O_RDWR`, which isn't portable, so we prefer to
-// just avoid calling this when we know we're using stdout. The alternative would be to catch
-// permissions errors in general, which could hide bugs.
 fn maybe_memmap_output(
-    out_file: &File,
+    output: &Output,
     target_len: u128,
 ) -> Result<Option<memmap::MmapMut>, Error> {
+    let out_file = match *output {
+        Output::Stdout => return Ok(None),
+        Output::File(ref file) => file,
+    };
     if target_len > u64::max_value() as u128 {
         panic!(format!("unreasonable target length: {}", target_len));
     }
     let metadata = out_file.metadata()?;
     Ok(if !metadata.is_file() {
-        // Not a file.
+        // Not a real file.
         None
     } else if metadata.len() != 0 {
         // The output file hasn't been truncated. Likely opened in append mode.
@@ -317,18 +386,15 @@ fn maybe_memmap_output(
         None
     } else {
         out_file.set_len(target_len as u64)?;
-        let map = unsafe { memmap::MmapMut::map_mut(&out_file)? };
-        assert_eq!(map.len() as u128, target_len);
+        // Explicitly set the length of the memory map, so that filesystem changes can't race to
+        // violate the invariants we just checked.
+        let map = unsafe {
+            memmap::MmapOptions::new()
+                .len(target_len as usize)
+                .map_mut(&out_file)?
+        };
         Some(map)
     })
-}
-
-fn confirm_real_file(file: &File, name: &str) -> Result<(), Error> {
-    if !file.metadata()?.is_file() {
-        Err(err_msg(format!("{} must be a real file", name)))
-    } else {
-        Ok(())
-    }
 }
 
 fn parse_hash(args: &Args) -> Result<[u8; bao::hash::HASH_SIZE], Error> {
