@@ -6,9 +6,9 @@ extern crate tempfile;
 use rand::RngCore;
 use std::env::consts::EXE_EXTENSION;
 use std::fs;
-use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use std::sync::{Once, ONCE_INIT};
+use tempfile::tempdir;
 
 pub fn bao_exe() -> PathBuf {
     // `cargo test` doesn't automatically run `cargo build`, so we do that ourselves.
@@ -36,13 +36,12 @@ fn test_hash_one() {
 
 #[test]
 fn test_hash_many() {
-    let mut file1 = tempfile::NamedTempFile::new().unwrap();
-    file1.write_all(b"foo").unwrap();
-    file1.flush().unwrap();
-    let mut file2 = tempfile::NamedTempFile::new().unwrap();
-    file2.write_all(b"bar").unwrap();
-    file2.flush().unwrap();
-    let output = cmd!(bao_exe(), "hash", file1.path(), file2.path(), "-")
+    let dir = tempdir().unwrap();
+    let file1 = dir.path().join("file1");
+    fs::write(&file1, b"foo").unwrap();
+    let file2 = dir.path().join("file2");
+    fs::write(&file2, b"bar").unwrap();
+    let output = cmd!(bao_exe(), "hash", &file1, &file2, "-")
         .input("baz")
         .read()
         .unwrap();
@@ -51,27 +50,27 @@ fn test_hash_many() {
 81fcbc391ab46bfb6a0c68393c0c48a55abc6d6e6cd6705447bc7c2ae67e5946  {}
 86cb1ecbc885b22862b5800f86d5f5588eaef9c7b967287ef4596e526ee06e65  {}
 d99e7ff490091c550718f89a6046974ec84a0bcc4d9c393f32eb9e7afa4146a0  -",
-        file1.path().to_string_lossy(),
-        file2.path().to_string_lossy()
+        file1.to_string_lossy(),
+        file2.to_string_lossy()
     );
     assert_eq!(expected, output);
 }
 
 #[test]
 fn test_encode_decode_combined() {
+    let dir = tempdir().unwrap();
+    let input_path = dir.path().join("input");
     let input_bytes = &b"abc"[..];
-    let mut input_file = tempfile::NamedTempFile::new().unwrap();
-    input_file.write_all(input_bytes).unwrap();
-    input_file.flush().unwrap();
-    let encoded_file = tempfile::NamedTempFile::new().unwrap();
-    cmd!(bao_exe(), "encode", input_file.path(), encoded_file.path())
+    fs::write(&input_path, input_bytes).unwrap();
+    let encoded_path = dir.path().join("encoded");
+    cmd!(bao_exe(), "encode", &input_path, &encoded_path)
         .run()
         .unwrap();
-    let encoded_bytes = fs::read(encoded_file.path()).unwrap();
+    let encoded_bytes = fs::read(&encoded_path).unwrap();
 
     // Test hash --encoded.
     let input_hash = cmd!(bao_exe(), "hash").input(input_bytes).read().unwrap();
-    let encoded_hash = cmd!(bao_exe(), "hash", "--encoded", encoded_file.path())
+    let encoded_hash = cmd!(bao_exe(), "hash", "--encoded", &encoded_path)
         .read()
         .unwrap();
     assert_eq!(input_hash, encoded_hash);
@@ -86,13 +85,13 @@ fn test_encode_decode_combined() {
     assert_eq!(input_bytes, &*decoded_bytes);
 
     // Test decode using files. This exercises memmapping.
-    let decoded_file = tempfile::NamedTempFile::new().unwrap();
+    let decoded_path = dir.path().join("decoded");
     cmd!(
         bao_exe(),
         "decode",
         &input_hash,
-        encoded_file.path(),
-        decoded_file.path()
+        &encoded_path,
+        &decoded_path
     ).run()
     .unwrap();
     assert_eq!(input_bytes, &*decoded_bytes);
@@ -102,7 +101,7 @@ fn test_encode_decode_combined() {
         bao_exe(),
         "decode",
         &input_hash,
-        encoded_file.path(),
+        &encoded_path,
         "--start=1",
         "--count=1"
     ).stdout_capture()
@@ -114,30 +113,25 @@ fn test_encode_decode_combined() {
 
 #[test]
 fn test_encode_decode_outboard() {
+    let dir = tempdir().unwrap();
+    let input_path = dir.path().join("input");
     let input_bytes = &b"abc"[..];
-    let mut input_file = tempfile::NamedTempFile::new().unwrap();
-    input_file.write_all(input_bytes).unwrap();
-    input_file.flush().unwrap();
-    let outboard_file = tempfile::NamedTempFile::new().unwrap();
+    fs::write(&input_path, input_bytes).unwrap();
+    let outboard_path = dir.path().join("outboard");
     cmd!(
         bao_exe(),
         "encode",
-        input_file.path(),
+        &input_path,
         "--outboard",
-        outboard_file.path()
+        &outboard_path
     ).run()
     .unwrap();
 
     // Test hash --outboard.
     let input_hash = cmd!(bao_exe(), "hash").input(input_bytes).read().unwrap();
-    let outboard_hash = cmd!(
-        bao_exe(),
-        "hash",
-        input_file.path(),
-        "--outboard",
-        outboard_file.path()
-    ).read()
-    .unwrap();
+    let outboard_hash = cmd!(bao_exe(), "hash", &input_path, "--outboard", &outboard_path)
+        .read()
+        .unwrap();
     assert_eq!(input_hash, outboard_hash);
 
     // Test decode using stdin and stdout.
@@ -146,7 +140,7 @@ fn test_encode_decode_outboard() {
         "decode",
         &input_hash,
         "--outboard",
-        outboard_file.path()
+        &outboard_path
     ).input(input_bytes)
     .stdout_capture()
     .run()
@@ -160,9 +154,9 @@ fn test_encode_decode_outboard() {
         bao_exe(),
         "decode",
         &input_hash,
-        input_file.path(),
+        &input_path,
         "--outboard",
-        outboard_file.path(),
+        &outboard_path,
         "--start=1",
         "--count=1"
     ).stdout_capture()
@@ -180,36 +174,37 @@ fn test_slice() {
 
     let mut input = vec![0; input_len];
     rand::thread_rng().fill_bytes(&mut input);
-    let encoded_file = tempfile::NamedTempFile::new().unwrap();
-    cmd!(bao_exe(), "encode", "-", encoded_file.path())
+    let dir = tempdir().unwrap();
+    let encoded_path = dir.path().join("encoded");
+    cmd!(bao_exe(), "encode", "-", &encoded_path)
         .input(&*input)
         .run()
         .unwrap();
-    let hash = cmd!(bao_exe(), "hash", "--encoded", encoded_file.path())
+    let hash = cmd!(bao_exe(), "hash", "--encoded", &encoded_path)
         .read()
         .unwrap();
-    let outboard_file = tempfile::NamedTempFile::new().unwrap();
-    cmd!(bao_exe(), "encode", "-", "--outboard", outboard_file.path())
+    let outboard_path = dir.path().join("outboard");
+    cmd!(bao_exe(), "encode", "-", "--outboard", &outboard_path)
         .input(&*input)
         .run()
         .unwrap();
-    let outboard_hash = cmd!(bao_exe(), "hash", "--outboard", outboard_file.path())
+    let outboard_hash = cmd!(bao_exe(), "hash", "--outboard", &outboard_path)
         .read()
         .unwrap();
     assert_eq!(hash, outboard_hash);
 
     // Do a combined mode slice to a file.
-    let slice_file = tempfile::NamedTempFile::new().unwrap();
+    let slice_path = dir.path().join("slice");
     cmd!(
         bao_exe(),
         "slice",
         slice_start.to_string(),
         slice_len.to_string(),
-        encoded_file.path(),
-        slice_file.path()
+        &encoded_path,
+        &slice_path
     ).run()
     .unwrap();
-    let slice_bytes = fs::read(slice_file.path()).unwrap();
+    let slice_bytes = fs::read(&slice_path).unwrap();
 
     // Make sure the outboard mode gives the same result. Do this one to stdout.
     let outboard_slice_bytes = cmd!(
@@ -217,7 +212,7 @@ fn test_slice() {
         "slice",
         slice_start.to_string(),
         slice_len.to_string(),
-        encoded_file.path()
+        &encoded_path
     ).stdout_capture()
     .run()
     .unwrap()
