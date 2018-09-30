@@ -4,6 +4,8 @@
 [Docs](https://docs.rs/bao) —
 [Crate](https://crates.io/crates/bao)
 
+[![asciicast](https://asciinema.org/a/tw4lOrVzXMcxdBeOnHBIOvvL8.png)](https://asciinema.org/a/tw4lOrVzXMcxdBeOnHBIOvvL8)
+
 `bao` (rhymes with bough 🌳) is a general purpose tree hash for files.
 Tree hashes have two big benefits over regular serial hashes:
 
