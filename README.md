@@ -5,6 +5,10 @@
 [Crate](https://crates.io/crates/bao)
 
 `bao` (rhymes with bough 🌳) is a general purpose tree hash for files.
+It's many times faster than the hashes available from coreutils:
+
+![snazzy gif](docs/bao_hash.gif)
+
 Tree hashes have two big benefits over regular serial hashes:
 
 - **Parallelism.** Regular hashes are single threaded, but a tree hash
