@@ -16,11 +16,11 @@ multiple threads. Arranging the input into a tree lets different threads
 work on different branches of the tree in parallel. Given enough input,
 the tree hash can occupy any number of processors: in-memory benchmarks
 on one of Amazon's 96-core m5.24xlarge instances measure 60 GB/s of
-throughput. Bao is also built with BLAKE2b, which was [designed to
+throughput. Bao is also based on BLAKE2b, which was [designed to
 outperform SHA1](https://blake2.net/), and it includes the [fastest SIMD
 implementation available](https://github.com/oconnor663/blake2b_simd).
 
-Apart from speed, a tree hash has another benefits over regular hashes:
+Apart from speed, a tree hash has another benefit over regular hashes:
 fancy streaming features. To verify a regular hash, you need to hash the
 whole input over again, but a tree hash can verify small sections of
 input by themselves. Bao exposes a number of different tree operations
