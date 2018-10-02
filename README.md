@@ -4,37 +4,36 @@
 [Docs](https://docs.rs/bao) —
 [Crate](https://crates.io/crates/bao)
 
-`bao` (rhymes with bough 🌳) is a general purpose tree hash for files.
-It's many times faster than the hashes available from coreutils:
+Bao (rhymes with bough 🌳) is a general purpose tree hash for files.
+What makes a tree hash different from a regular hash? Well depending on
+how many cores you've got in your machine, the first thing you might
+notice is that it's five times faster:
 
 ![snazzy gif](docs/bao_hash.gif)
 
-Tree hashes have two big benefits over regular serial hashes:
+Why is `bao hash` so fast? The main reason is that it's able to run on
+multiple threads. Arranging the input into a tree lets different threads
+work on different branches of the tree in parallel. Given enough input,
+the tree hash can occupy any number of processors: in-memory benchmarks
+on one of Amazon's 96-core m5.24xlarge instances measure 60 GB/s of
+throughput. Bao is also built with BLAKE2b, which was [designed to
+outperform SHA1](https://blake2.net/), and it includes the [fastest SIMD
+implementation available](https://github.com/oconnor663/blake2b_simd).
 
-- **Parallelism.** Regular hashes are single threaded, but a tree hash
-  with enough input can split the work over any number of threads. That
-  makes `bao hash` many times faster than similar commands like
-  `md5sum`.
-- **Streaming.** To verify a regular hash, you need to hash the whole
-  input over again, but a tree hash can verify small sections of input
-  by themselves. Given the input hash, `bao decode` can stream verified
-  bytes from an encoded version of the input file. `bao slice` can
-  extract sections of that encoded file, which can be verified
-  independently using the same hash.
+Apart from speed, a tree hash has another benefits over regular hashes:
+fancy streaming features. To verify a regular hash, you need to hash the
+whole input over again, but a tree hash can verify small sections of
+input by themselves. Bao exposes a number of different tree operations
+on the command line.
 
-`bao hash` is quite fast. The underlying hash function is BLAKE2b, with
-an AVX2 implementation provided by
-[`blake2b_simd`](https://github.com/oconnor663/blake2b_simd). The input
-gets memory mapped and then split among worker threads with
-[`rayon`](https://github.com/rayon-rs/rayon). On the i5-8250U processor
-in my laptop, it hashes a 1 gigabyte file in 0.25 seconds, or 4 GB/s
-including startup and IO. By comparison the fastest Coreutils hash,
-`sha1sum`, takes 1.32 seconds. Large input in-memory benchmarks on an
-AWS m5.24xlarge instance (96 cores) measure 60 GB/s throughput. (That's
-61% of the per-core throughput of BLAKE2b, mostly due to [CPU frequency
-scaling](https://blog.cloudflare.com/on-the-dangers-of-intels-frequency-scaling).)
-When input is piped and memory mapping isn't possible, `bao hash` falls
-back to a single-threaded streaming implementation.
+```
+Usage: bao hash [<input>] [<inputs>... | --encoded | --outboard=<file>]
+       bao encode <input> (<output> | --outboard=<file>)
+       bao decode <hash> [<input>] [<output>] [--outboard=<file>] [--start=<offset>] [--count=<count>]
+       bao slice <start> <count> [<input>] [<output>] [--outboard=<file>]
+       bao decode-slice <hash> <start> <count> [<input>] [<output>]
+       bao (--help | --version)
+```
 
 `bao encode` copies its input and produces an encoded file with a small
 header and subtree hashes interspersed throughout, currently 1.5% larger
