@@ -14,7 +14,6 @@ docopt = "1.0.1"
 failure = "0.1.2"
 hex = "0.3.2"
 memmap = "0.6.2"
-os_pipe = "0.7.0"
 serde = "1.0.75"
 serde_derive = "1.0.75"
 

@@ -4,7 +4,6 @@ extern crate bao;
 extern crate docopt;
 extern crate failure;
 extern crate hex;
-extern crate os_pipe;
 #[macro_use]
 extern crate serde_derive;
 extern crate memmap;
