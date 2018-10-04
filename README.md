@@ -64,7 +64,7 @@ file apart from the input bytes, so that you can keep the unmodified
 input file without taking up twice as much disk space. The total size of
 an input file plus an outboard tree file is the same as the size of an
 encoded file in the default combined mode. Note that if you `slice` the
-entire input (using the slice parameters start=0 and len=size), the
+entire input (using the slice parameters start=0 and count=size), the
 result is exactly the same as an entire combined-mode encoding, so
 `slice` can be an efficient way of converting from outboard to combined
 without re-hashing or writing to disk.
