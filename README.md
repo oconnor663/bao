@@ -4,6 +4,10 @@
 [Docs](https://docs.rs/bao) —
 [Crate](https://crates.io/crates/bao)
 
+**Caution:** Bao is intended to be a cryptographic hash function, but it
+hasn't yet been reviewed. The output may change prior to the 1.0
+release.
+
 Bao (rhymes with bough 🌳) is a general purpose tree hash for files.
 What makes a tree hash different from a regular hash? Well depending on
 how many cores you've got in your machine, the first thing you might
