@@ -1,3 +1,19 @@
+//! Compute a Bao hash from some input bytes.
+//!
+//! # Example
+//!
+//! ```
+//! let hash_at_once = bao::hash::hash(b"input bytes");
+//!
+//! let mut hasher = bao::hash::Writer::new();
+//! hasher.update(b"input");
+//! hasher.update(b" ");
+//! hasher.update(b"bytes");
+//! let hash_incremental = hasher.finish();
+//!
+//! assert_eq!(hash_at_once, hash_incremental);
+//! ```
+
 use arrayvec::ArrayVec;
 use blake2b_simd;
 use byteorder::{ByteOrder, LittleEndian};
@@ -9,6 +25,7 @@ use rayon;
 #[cfg(feature = "std")]
 use std::io;
 
+/// The size of a `Hash`.
 pub const HASH_SIZE: usize = 32;
 pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
 pub(crate) const HEADER_SIZE: usize = 8;
@@ -19,6 +36,7 @@ pub(crate) const CHUNK_SIZE: usize = 4096;
 pub(crate) const MAX_DEPTH: usize = 64;
 pub(crate) const MAX_SINGLE_THREADED: usize = 4 * CHUNK_SIZE;
 
+/// An array of `HASH_SIZE` bytes. This will be a wrapper type in a future version.
 pub type Hash = [u8; HASH_SIZE];
 pub(crate) type ParentNode = [u8; 2 * HASH_SIZE];
 
@@ -118,8 +136,14 @@ fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
     parent_hash(&left_hash, &right_hash, finalization)
 }
 
-/// Hash a slice of input bytes all at once. Above about 16 kilobytes, this will parallelize using
-/// [Rayon](https://crates.io/crates/rayon).
+/// Hash a slice of input bytes all at once. If the `std` feature is enabled, as it is by default,
+/// this will use multiple threads via Rayon.
+///
+/// # Example
+///
+/// ```
+/// let hash_at_once = bao::hash::hash(b"input bytes");
+/// ```
 pub fn hash(input: &[u8]) -> Hash {
     #[cfg(feature = "std")]
     {
@@ -270,6 +294,16 @@ impl fmt::Debug for State {
     }
 }
 
+/// An incremental hasher. This implementation is single-threaded.
+///
+/// # Example
+/// ```
+/// let mut hasher = bao::hash::Writer::new();
+/// hasher.update(b"input");
+/// hasher.update(b" ");
+/// hasher.update(b"bytes");
+/// let hash_incremental = hasher.finish();
+/// ```
 #[derive(Clone, Debug)]
 pub struct Writer {
     chunk: blake2b_simd::State,

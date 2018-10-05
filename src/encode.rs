@@ -1,3 +1,42 @@
+//! Encode some input bytes into the Bao format, or slice an existing encoding.
+//!
+//! The Bao encoding format makes it possible to stream content bytes while verifying that they
+//! match the root hash. It also supports extracting encoded slices that can be verified apart from
+//! the rest of the encoding. This module handles the sending side of these operations. For the
+//! receiving side, see the `decode` module.
+//!
+//! There are two modes of encoding, combined (the default) and outboard. The combined mode mixes
+//! subtree hashes together with the input bytes, producing a single file that can be decoded by
+//! itself. The outboard mode avoids copying any input bytes. The outboard encoding is much
+//! smaller, but it can only be used together with the original input file.
+//!
+//! # Example
+//!
+//! ```
+//! # fn main() -> Result<(), Box<std::error::Error>> {
+//! use std::io::prelude::*;
+//!
+//! let input = b"some input";
+//! let expected_hash = bao::hash::hash(input);
+//!
+//! let (hash, encoded_at_once) = bao::encode::encode_to_vec(b"some input");
+//! assert_eq!(expected_hash, hash);
+//!
+//! let mut encoded_incrementally = Vec::new();
+//! {
+//!     // The inner block here limits the lifetime of this mutable borrow.
+//!     let encoded_cursor = std::io::Cursor::new(&mut encoded_incrementally);
+//!     let mut encoder = bao::encode::Writer::new(encoded_cursor);
+//!     encoder.write_all(b"some input")?;
+//!     let hash = encoder.finish()?;
+//!     assert_eq!(expected_hash, hash);
+//! }
+//!
+//! assert_eq!(encoded_at_once, encoded_incrementally);
+//! # Ok(())
+//! # }
+//! ```
+
 use arrayvec::ArrayVec;
 use blake2b_simd;
 use copy_in_place::copy_in_place;
@@ -14,6 +53,24 @@ use std::io::prelude::*;
 #[cfg(feature = "std")]
 use std::io::SeekFrom::{End, Start};
 
+/// Encode the input bytes in the combined mode. `output.len()` must be exactly
+/// `encoded_size(input.len())`. If the `std` feature is enabled, as it is by default, this will
+/// use multiple threads via Rayon.
+///
+/// # Panics
+///
+/// Panics if the output slice is the wrong length.
+///
+/// # Example
+///
+/// ```
+/// let input = b"some bytes";
+/// let encoded_size = bao::encode::encoded_size(input.len() as u64);
+/// assert!(encoded_size <= usize::max_value() as u128);
+/// // Note that if you're allocating a new Vec like this, encode_to_vec is more convenient.
+/// let mut encoded = vec![0; encoded_size as usize];
+/// bao::encode::encode(input, &mut encoded);
+/// ```
 pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
     let content_len = input.len() as u64;
     assert_eq!(
@@ -36,8 +93,26 @@ pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
     }
 }
 
-/// `buf` must be exactly `encoded_size(content_len)`. This is slower than `encode`, because only
-/// the hashing can be done in parallel. All the memmoves have to be done in series.
+/// Encode the first `content_len` bytes from the input buffer in the combined mode, overwriting
+/// the input buffer. `buf.len()` must be exactly `encoded_size(content_len as u64)`. If the `std`
+/// feature is enabled, as it is by default, this will use multiple threads via Rayon. This
+/// function is slower than `encode`, however, because only the hashing can be parallelized;
+/// copying the input bytes around has to be done on a single thread.
+///
+/// # Panics
+///
+/// Panics if the buffer is the wrong length.
+///
+/// # Example
+///
+/// ```
+/// let input = b"some bytes";
+/// let encoded_size = bao::encode::encoded_size(input.len() as u64);
+/// assert!(encoded_size <= usize::max_value() as u128);
+/// let mut buffer = input.to_vec();
+/// buffer.resize(encoded_size as usize, 0);
+/// bao::encode::encode_in_place(&mut buffer, input.len());
+/// ```
 pub fn encode_in_place(buf: &mut [u8], content_len: usize) -> Hash {
     // Note that if you change anything in this function, you should probably
     // also update benchmarks::encode_in_place_fake.
@@ -257,14 +332,17 @@ fn write_parents_in_place_rayon(
     }
 }
 
+/// Compute the size of a combined encoding, given the size of the input. Note that for input sizes
+/// close to `u64::MAX`, the result can overflow a `u64`.
 pub fn encoded_size(content_len: u64) -> u128 {
     content_len as u128 + outboard_size(content_len)
 }
 
-// Should the return type here really by u128? Two reasons: 1) It's convenient to use the same type
-// as encoded_size(), and 2) if we're ever experimenting with very small chunk sizes, we could
-// indeed overflow u64.
+/// Compute the size of an outboard encoding, given the size of the input.
 pub fn outboard_size(content_len: u64) -> u128 {
+    // Should the return type here really by u128? Two reasons: 1) It's convenient to use the same
+    // type as encoded_size(), and 2) if we're ever experimenting with very small chunk sizes, we
+    // could indeed overflow u64.
     outboard_subtree_size(content_len) + HEADER_SIZE as u128
 }
 
@@ -424,9 +502,29 @@ enum FlipperNext {
     Done,
 }
 
-/// Most callers should use this writer for incremental encoding. The writer makes no attempt to
-/// recover from IO errors, so callers that want to retry should start from the beginning with a new
-/// writer.
+/// An incremental encoder. Note that you must call `finish` after you're done writing. This
+/// implementation is single-threaded.
+///
+/// `Writer` supports both combined and outboard encoding, depending on which constructor you use.
+///
+/// `Writer` is currently only available when `std` is enabled, because `std::io::Write` is a
+/// required part of its interface. However, it could be extended to support `no_std`-compatible
+/// traits outside of the standard library too. Please reach out to me if you need that.
+///
+/// # Example
+///
+/// ```
+/// # fn main() -> Result<(), Box<std::error::Error>> {
+/// use std::io::prelude::*;
+///
+/// let mut encoded_incrementally = Vec::new();
+/// let encoded_cursor = std::io::Cursor::new(&mut encoded_incrementally);
+/// let mut encoder = bao::encode::Writer::new(encoded_cursor);
+/// encoder.write_all(b"some input")?;
+/// encoder.finish()?;
+/// # Ok(())
+/// # }
+/// ```
 #[cfg(feature = "std")]
 #[derive(Clone, Debug)]
 pub struct Writer<T: Read + Write + Seek> {
@@ -439,6 +537,9 @@ pub struct Writer<T: Read + Write + Seek> {
 
 #[cfg(feature = "std")]
 impl<T: Read + Write + Seek> Writer<T> {
+    /// Create a new `Writer` that will produce a combined encoding.The encoding will contain all
+    /// the input bytes, so that it can be decoded without the original input file. This is what
+    /// you get from `bao encode`.
     pub fn new(inner: T) -> Self {
         Self {
             inner,
@@ -449,12 +550,23 @@ impl<T: Read + Write + Seek> Writer<T> {
         }
     }
 
+    /// Create a new `Writer` for making an outboard encoding. That means that the encoding won't
+    /// include any input bytes. Instead, the input will need to be supplied as a separate argument
+    /// when the outboard encoding is later decoded. This is what you get from `bao encode
+    /// --outboard`.
     pub fn new_outboard(inner: T) -> Self {
         let mut writer = Self::new(inner);
         writer.outboard = true;
         writer
     }
 
+    /// Finalize the encoding, after all the input has been written. You can't use this type again
+    /// after calling `finish`.
+    ///
+    /// The underlying strategy of the `Writer` is to first store the tree in a post-order layout,
+    /// and then to go back and flip the entire thing into pre-order. That makes it possible to
+    /// stream input without knowing its length in advance, which is a core requirement of the
+    /// `std::io::Write` interface. The downside is that `finish` is a relatively expensive step.
     pub fn finish(&mut self) -> io::Result<Hash> {
         // First finish the post-order encoding.
         let root_hash;
@@ -837,6 +949,43 @@ pub(crate) mod parse_state {
     }
 }
 
+/// An incremental slice extractor, which reades encoded bytes and produces a slice.
+///
+/// `SliceExtractor` supports reading both the combined and outboard encoding, depending on which
+/// constructor you use. Though to be clear, there's no such thing as an "outboard slice" per se.
+/// Slices always include subtree hashes inline with the content, as a combined encoding does.
+///
+/// Note that slices always split the encoding at chunk boundaries. Bao's chunk size is currently
+/// 4096 bytes, so using `slice_start` and `slice_len` arguments that are a multiple that avoids
+/// wasting space. Also, slicing when there's less than a full chunk of input is pointless.
+///
+/// Extracting a slice doesn't re-hash any of the bytes. As a result, it's fast compared to
+/// decoding. You can quickly convert an outboard encoding to a combined encoding by "extracting" a
+/// slice with a `slice_start` of zero and a `slice_len` equal to the original input length.
+///
+/// See the `decode` module for decoding slices.
+///
+/// # Example
+///
+/// ```
+/// # fn main() -> Result<(), Box<std::error::Error>> {
+/// use std::io::prelude::*;
+///
+/// let input = vec![0; 1_000_000];
+/// let (_, encoded) = bao::encode::encode_to_vec(&input);
+/// // These parameters are multiples of the chunk size, which avoids unnecessary overhead.
+/// let slice_start = 65536;
+/// let slice_len = 8192;
+/// let encoded_cursor = std::io::Cursor::new(&encoded);
+/// let mut extractor = bao::encode::SliceExtractor::new(encoded_cursor, slice_start, slice_len);
+/// let mut slice = Vec::new();
+/// extractor.read_to_end(&mut slice)?;
+///
+/// // The slice includes some overhead to store the necessary subtree hashes, but it's not much.
+/// assert_eq!(8712, slice.len());
+/// # Ok(())
+/// # }
+/// ```
 #[cfg(feature = "std")]
 pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
     input: T,
@@ -854,6 +1003,9 @@ pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
 
 #[cfg(feature = "std")]
 impl<T: Read + Seek> SliceExtractor<T, T> {
+    /// Create a new `SliceExtractor` to read from a combined encoding. Note that `slice_start` and
+    /// `slice_len` are with respect to the *content* of the encoding, that is, the *original*
+    /// input bytes. This corresponds to `bao slice slice_start slice_len`.
     pub fn new(input: T, slice_start: u64, slice_len: u64) -> Self {
         // TODO: normalize zero-length slices?
         Self::new_inner(input, None, slice_start, slice_len)
@@ -862,6 +1014,11 @@ impl<T: Read + Seek> SliceExtractor<T, T> {
 
 #[cfg(feature = "std")]
 impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
+    /// Create a new `SliceExtractor` to read from an unmodified input file and an outboard
+    /// encoding of that same file (see `Writer::new_outboard`). As with `SliceExtractor::new`,
+    /// `slice_start` and `slice_len` are with respect to the *content* of the encoding, that is,
+    /// the *original* input bytes. This corresponds to `bao slice slice_start slice_len
+    /// --outboard`.
     pub fn new_outboard(input: T, outboard: O, slice_start: u64, slice_len: u64) -> Self {
         Self::new_inner(input, Some(outboard), slice_start, slice_len)
     }
