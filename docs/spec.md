@@ -1,7 +1,9 @@
-# The Tree
+# The Bao Spec
 
-Bao divides the input up into 4096* byte chunks. The final chunk may be
-shorter, but it's never empty unless the input itself is empty. When there is
+## Tree Structure
+
+Bao divides the input up into 4096-byte* chunks. The final chunk may be
+shorter, but it's never empty unless the input itself is empty. When there's
 more than one chunk, pairs of chunks are joined with a parent node in the level
 above. The contents of a parent node are the concatenated 256-bit BLAKE2b
 hashes of its left and right children, using all default parameters besides the
@@ -68,6 +70,101 @@ $ head -c 8193 /dev/zero | bao hash
 6254a3e86396e4ce264ab45915a7ba5e0aa116d22c7deab04a4e29d3f81492da
 ```
 
-* The 4096-byte chunk size is an arbitrary design parameter, and it's possible
-  we could choose a different value. See discussion at
-  https://github.com/oconnor663/bao/issues/17.
+\* The 4096-byte chunk size is an arbitrary design parameter, and it's possible
+we could choose a different value. See discussion at
+https://github.com/oconnor663/bao/issues/17.
+
+## Security
+
+[TODO]
+
+## Design Alternatives
+
+### Use more of the associated data features from BLAKE2.
+
+BLAKE2 defines several parameters intended for tree hashing. The Bao design
+above uses only one of them, the last node flag. That flag is the only
+piece of associated data in the BLAKE2 standard that can be set after some
+input has already been hashed, which makes it well suited for hashing chunks
+incrementally. (If the root node had to be flagged before hashing any of its
+bytes, an incremental hasher would need extra space to buffer the first chunk,
+in case it turned out to be the root.) As per the Security section above, we
+believe that the last node flag coupled with the length suffix is
+sufficient to prevent collisions and length extension.
+
+There are two benefits to avoiding the rest of the tree parameters:
+
+1. It's nice not to excessively couple Bao's design to BLAKE2. Bao could
+   potentially be generalized over other hash functions, perhaps if future
+   research weakens BLAKE2 or offers faster alternatives. For functions like
+   SHA-512/256 that don't provide an equivalent of the last node flag (but
+   which do prevent length extension), it could be simulated reasonably cheaply
+   by appending a 1 byte to the root node and a 0 byte to all others. But if
+   Bao depended on several tree parameters, generalizing it to other hash
+   functions would be more involved.
+2. The **node offset** parameter in particular might be an anti-feature. In the
+   Bao design, two subtrees with exactly the same contents will produce the
+   same inner hash, regardless of their location in the larger tree. The node
+   offset parameter would break that symmetry, by tagging each node with its
+   horizontal position within its tree level. Losing that symmetry could
+   prevent us from optimizing certain specialized cases. For example, it's
+   possible to compute the Bao hash of astronomically large inputs, as long as
+   most of the input consists of repeating subtrees. To hash 2^N identical
+   chunks, you can first compute the hash of 2^(N-1) chunks, and then
+   concatenate that hash twice to construct the root node of the 2^N chunk
+   tree. Repeating that shortcut all the way down lets you hash the whole input
+   in a logarithmic number of steps. This approach could be useful for hashing
+   sparse files or disk images.
+
+If we don't want to use the full set of tree parameters available from BLAKE2
+(particularly not the node offset), it seems natural not to use any of them
+apart from the minimum necessary for security (namely the last node flag). That
+said, some of the others might be helpful for generalizing Bao. The **leaf
+maximal byte length** parameter could distinguish a tree that used a customized
+chunk size. The **maximal depth** parameter could distinguish a tree that used
+something other than 8 bytes to represent its length. And the **fanout**
+parameter could could distinguish a tree that allowed more than two child nodes
+per parent (see below). If we decide to bless any of these variations in the
+official definition of Bao, we might consider setting the relevant parameters,
+either in all cases or perhaps, for backwards compatibility, only in the
+non-default cases. Note that a variant using a different digest length is
+distinguishable in any case, because BLAKE2 always includes the digest length
+as associated data.
+
+### Use an arity larger than 2.
+
+Allowing parents to have more than 2 children would complicate things in a few
+ways. Parents would have to figure out how to represent empty children. (Should
+the parent of a partial subtree have a variable length, or should it add extra
+empty chunks onto the end?) Also, the logic in the incremental hasher that
+figures out when to merge subtrees would get more difficult. (Currently we rely
+on a cute trick where we count the binary 1's in the chunk index, but the
+higher-arity version of that trick is more complicated and more expensive.)
+
+That said, there's an efficiency argument for allowing parent nodes to have 4
+children. Note that the BLAKE2b block size is 128 bytes. If we're using hashes
+that are 32 bytes long, hashing a parent with 2 children takes just as much
+time as hashing a parent with 4 children. That would cut the total number of
+parent nodes down by a factor of 3 (because 1/4 + 1/16 + ... = 1/3), with
+potentially no additional cost per parent.
+
+Two counterpoints to that idea:
+
+1. It relies on the exact choice of 32-byte BLAKE2b hashes, which is the sort
+   of design coupling we talked about avoiding in the section above.
+2. The gain here applies only to the overhead of hashing parent nodes, which is
+   already fairly small.
+
+As an aside, it might seem like using a higher arity would allow the
+incremental hasher to keep a shorter stack of subtree hashes. It's true that a
+4-ary tree would be half as tall as a binary tree over the same number of
+chunks. However, that overlooks an important detail: The 4-ary tree's stack
+would need to store up to 3 subtree hashes per level, while the binary tree's
+stack only needs to store 1. The binary tree actually wins in this respect.
+
+## Related Work
+
+- Tiger
+- https://www.cryptolux.org/mediawiki-esc2013/images/c/ca/SL_tree_hashing_esc.pdf
+- Bertoni et al, *Sufficient conditions for sound tree and sequential hashing
+  modes*, https://eprint.iacr.org/2009/210.pdf

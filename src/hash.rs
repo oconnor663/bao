@@ -13,6 +13,9 @@ pub const HASH_SIZE: usize = 32;
 pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
 pub(crate) const HEADER_SIZE: usize = 8;
 pub(crate) const CHUNK_SIZE: usize = 4096;
+// NOTE: MAX_DEPTH should be 52, given the 4096 byte CHUNK_SIZE, using a larger value wastes some
+// space on the stack. It currently needs to match one of the implementations of arrayvec::Array,
+// but dropping that dependency could let us compute MAX_DEPTH from other parameters.
 pub(crate) const MAX_DEPTH: usize = 64;
 pub(crate) const MAX_SINGLE_THREADED: usize = 4 * CHUNK_SIZE;
 
