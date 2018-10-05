@@ -2,18 +2,18 @@
 
 ## Tree Structure
 
-Bao divides the input up into 4096-byte* chunks. The final chunk may be
-shorter, but it's never empty unless the input itself is empty. When there's
-more than one chunk, pairs of chunks are joined with a parent node in the level
-above. The contents of a parent node are the concatenated 256-bit BLAKE2b
-hashes of its left and right children, using all default parameters besides the
-length. Those children can be either chunks or, in higher levels of the tree,
-other parent nodes. When there's an odd number of chunks or parent nodes at any
-level of the tree, the rightmost node is raised to the level above unmodified.
-The process of pairing off nodes at each level repeats until there's one root
-node at the topmost level, which is either a parent node or, in the single
-chunk case, that chunk. To hash the root node, there are two extra steps: first
-the total input length as a 64-bit little-endian integer is appended to its
+Bao divides the input up into 4096-byte chunks. The final chunk may be shorter,
+but it's never empty unless the input itself is empty. When there's more than
+one chunk, pairs of chunks are joined with a parent node in the level above.
+The contents of a parent node are the concatenated 256-bit BLAKE2b hashes of
+its left and right children, using all default parameters besides the length.
+Those children can be either chunks or, in higher levels of the tree, other
+parent nodes. When there's an odd number of chunks or parent nodes at any level
+of the tree, the rightmost node is raised to the level above unmodified. The
+process of pairing off nodes at each level repeats until there's one root node
+at the topmost level, which is either a parent node or, in the single chunk
+case, that chunk. To hash the root node, there are two extra steps: first the
+total input length as a 64-bit little-endian integer is appended to its
 contents, and also the BLAKE2 final node flag is set to true. Those steps
 prevent collisions between inputs of different lengths.
 
@@ -70,15 +70,19 @@ $ head -c 8193 /dev/zero | bao hash
 6254a3e86396e4ce264ab45915a7ba5e0aa116d22c7deab04a4e29d3f81492da
 ```
 
-\* The 4096-byte chunk size is an arbitrary design parameter, and it's possible
-we could choose a different value. See discussion at
-https://github.com/oconnor663/bao/issues/17.
-
 ## Security
 
 [TODO]
 
+Hopefully we can use the framework from [Bertoni et al, *Sufficient conditions
+for sound tree and sequential hashing modes*
+(2009)](https://eprint.iacr.org/2009/210.pdf).
+
 ## Design Alternatives
+
+### Use a chunk size other than 4096 bytes.
+
+See [Issue #17](https://github.com/oconnor663/bao/issues/17).
 
 ### Use more of the associated data features from BLAKE2.
 
