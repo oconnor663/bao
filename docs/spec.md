@@ -78,23 +78,29 @@ Hopefully we can use the framework from [Bertoni et al, *Sufficient conditions
 for sound tree and sequential hashing modes*
 (2009)](https://eprint.iacr.org/2009/210.pdf).
 
+## Encoding format
+
+[TODO]
+
+## Slicing format
+
+[TODO]
 ## Design Alternatives
 
 ### Use a chunk size other than 4096 bytes.
 
-See [Issue #17](https://github.com/oconnor663/bao/issues/17).
+See [issue #17](https://github.com/oconnor663/bao/issues/17).
 
 ### Use more of the associated data features from BLAKE2.
 
 BLAKE2 defines several parameters intended for tree hashing. The Bao design
-above uses only one of them, the last node flag. That flag is the only
-piece of associated data in the BLAKE2 standard that can be set after some
-input has already been hashed, which makes it well suited for hashing chunks
+above uses only one of them, the last node flag. That flag is the only piece of
+associated data in the BLAKE2 standard that can be set after some input has
+already been hashed, which makes it well suited for hashing chunks
 incrementally. (If the root node had to be flagged before hashing any of its
-bytes, an incremental hasher would need extra space to buffer the first chunk,
-in case it turned out to be the root.) As per the Security section above, we
-believe that the last node flag coupled with the length suffix is
-sufficient to prevent collisions and length extension.
+bytes, an incremental hasher would need to buffer the whole first chunk) As per
+the Security section above, we believe that the last node flag coupled with the
+length suffix is sufficient to prevent collisions and length extension.
 
 There are two benefits to avoiding the rest of the tree parameters:
 
@@ -165,6 +171,33 @@ incremental hasher to keep a shorter stack of subtree hashes. It's true that a
 chunks. However, that overlooks an important detail: The 4-ary tree's stack
 would need to store up to 3 subtree hashes per level, while the binary tree's
 stack only needs to store 1. The binary tree actually wins in this respect.
+
+### Use some kind of Rabin fingerprinting scheme.
+
+The idea of Rabin fingerprinting is that you use some window function over the
+input to determine chunk boundaries psuedorandomly. The advantage is that
+insertions in the middle of the file only affect block boundaries in their
+neighborhood. So perhaps insertions in an encoded file could avoid rehashing
+the entire file.
+
+A longer discussion of this idea is at [issue #8](https://github.com/oconnor663/bao/issues/8).
+The high points are:
+
+1. This is much more complicated than it sounds. Chunk boundaries aren't the
+   only thing that matters. Shifting subtree boundaries would also be
+   expensive, so a hierarchy of fingerprints would be needed. And a scheme that
+   supported top-down parallelism would be more complicated still.
+2. Decoders are responsible for rejecting "non-standard" encodings of an input,
+   to maintain the invariant that only the unique Bao hash of an input can
+   successfully decode it. A fingerprinting scheme would make it dramatically
+   more difficult to verify that an encoding was canonical, and Bao is very
+   interested in minimizing the number of rules an implementer could possibly
+   forget to check.
+3. As it says in the intro, Bao is intended "for files". Standard filesystems
+   don't support efficient insertion in the middle of a file anyway.
+   Applications that need to do this sort of thing usually have to implement
+   something like a B-tree on disk, at which point they probably aren't
+   interested in the Bao hash of the file itself.
 
 ## Related Work
 
