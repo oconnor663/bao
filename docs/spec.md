@@ -13,8 +13,8 @@ of the tree, the rightmost node is raised to the level above unmodified. The
 process of pairing off nodes at each level repeats until there's one root node
 at the topmost level, which is either a parent node or, in the single chunk
 case, that chunk. To hash the root node, there are two extra steps: first the
-total input length as a 64-bit little-endian integer is appended to its
-contents, and also the BLAKE2 final node flag is set to true. Those steps
+total input length as a 64-bit little-endian unsigned integer is appended to
+its contents, and also the BLAKE2 final node flag is set to true. Those steps
 prevent collisions between inputs of different lengths.
 
 The definition above is in an iterative style, but we can also define the
@@ -33,38 +33,45 @@ of chunks, all on the bottom level.
 Here's an example tree, with 8193 bytes of input that are all zero:
 
 ```
-                                    [0x49e4b8...0x03170a...](root hash=6254a3...)
-                                                        /   \
-                                                       /     \
-                 [0x686ede...0x686ede...](hash=49e4b8...)   [0x00](hash=03170a...)
-                                   /   \
-                                  /     \
-       [0x00 * 4096](hash=686ede...)   [0x00 * 4096](hash=686ede...)
+                            [49e4b8...03170a...](root hash=6254a3...)
+                                                /   \
+                                               /     \
+             [686ede...686ede...](hash=49e4b8...)   [\x00](hash=03170a...)
+                            /   \
+                           /     \
+[\x00 * 4096](hash=686ede...)   [\x00 * 4096](hash=686ede...)
 ```
 
 We can verify those values on the command line using the `b2sum` utility from
-https://github.com/oconnor663/blake2b_simd, which supports the necessary flags:
+https://github.com/oconnor663/blake2b_simd, which supports the necessary flags
+(the coreutils `b2sum` doesn't support `--last-node`):
 
 ```bash
 # Define a short alias for parsing hex.
 $ alias unhex='python3 -c "import sys, binascii; sys.stdout.buffer.write(binascii.unhexlify(sys.argv[1]))"'
+
 # Compute the hash of the first and second chunks, which are the same.
 $ head -c 4096 /dev/zero | b2sum -l256
 686ede9288c391e7e05026e56f2f91bfd879987a040ea98445dabc76f55b8e5f  -
 $ big_chunk_hash=686ede9288c391e7e05026e56f2f91bfd879987a040ea98445dabc76f55b8e5f
+
 # Compute the hash of the third chunk, which is different.
 $ head -c 1 /dev/zero | b2sum -l256
 03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314  -
 $ small_chunk_hash=03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314
+
 # Compute the hash of the first two chunks' parent node.
 $ unhex $big_chunk_hash$big_chunk_hash | b2sum -l256
 49e4b80d5b7d8d93224825f26c45987e107bbf2f871d4e5636ac550ff125e082  -
-$ parent_hash=49e4b80d5b7d8d93224825f26c45987e107bbf2f871d4e5636ac550ff125e082
+$ left_parent_hash=49e4b80d5b7d8d93224825f26c45987e107bbf2f871d4e5636ac550ff125e082
+
 # Define another alias converting the input length to 8-byte little-endian hex.
 $ alias hexint='python3 -c "import sys; print(int(sys.argv[1]).to_bytes(8, \"little\").hex())"'
+
 # Compute the hash of the root node, with the length suffix and last node flag.
-$ unhex $parent_hash$small_chunk_hash$(hexint 8193) | b2sum -l256 --last-node
+$ unhex $left_parent_hash$small_chunk_hash$(hexint 8193) | b2sum -l256 --last-node
 6254a3e86396e4ce264ab45915a7ba5e0aa116d22c7deab04a4e29d3f81492da  -
+
 # Verify that this matches the bao hash of the same input.
 $ head -c 8193 /dev/zero | bao hash
 6254a3e86396e4ce264ab45915a7ba5e0aa116d22c7deab04a4e29d3f81492da
@@ -80,16 +87,87 @@ for sound tree and sequential hashing modes*
 
 ## Encoding format
 
-[TODO]
+The encoding file format is the contents of the the chunks and parent nodes of
+the tree concatenated together in pre-order (that is a parent, followed by its
+left subtree, followed by its right subtree), with the 64-bit little-endian
+unsigned input length prepended to the very front. This makes the order of
+nodes on disk the same as the order in which a depth-first traversal would
+encounter them, so a reader decoding the tree from beginning to end doesn't
+need to do any seeking. Here's the same example tree above, formatted as an
+encoded file and shown as hex:
+
+```
+input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
+0120000000000000|49e4b8...03170a...|686ede...686ede...|\x00 * 4096|\x00 * 4096 |\x00
+```
+
+Note carefully that this is the mirror of how the root node is hashed. Hashing
+the root node *appends* the length as associated data, which makes it possible
+to digest parts of the first chunk before knowing whether its the root.
+Encoding *prepends* the length, because it's the first thing that the decoder
+needs to know. In both cases it's a 64-bit little-endian unsigned integer.
+
+The decoder first reads the 8-byte length from the front. The length indicates
+whether the first node is a chunk (<=4096) or a parent (>4096), and it verifies
+the hash of root node with the length as associated data. The rest of the tree
+structure is completely determined by the length, and the decoder can stream
+the whole tree or seek around as needed by the caller. But note that all
+decoding operations *must* verify the root. In particular, if the caller asks
+to seek to byte 5000 of a 4096-byte encoding, the decoder *must not* skip
+verifying the first chunk, because its the root. This ensures that a decoder
+will always return an error when the encoded length doesn't match the root hash
+
+Because of the prepended length, the encoding format is self-delimiting. Most
+decoders won't read an encoded file all the way to EOF, and so it's generally
+allowed to append extra garbage bytes to a valid encoding. It's worth
+clarifying what is and isn't guaranteed by the encoded format:
+
+- There is never more than one *hash* that can decode a given encoding. (Though
+  there might not be any, if it's corrupt.) If decoding succeeds, then the
+  decoding hash is always identical to the Bao hash of the decoded content.
+- However, many encoded *files* can successfully decode under the same hash, if
+  they differ only in their trailing garbage. In general, callers should avoid
+  reading or comparing the bytes of encoded files, other than to decode them.
 
 ## Slicing format
 
-[TODO]
+The slicing format is very similar to the enconding format above. The only
+difference is that chunks and parent nodes that wouldn't be encountered in a
+given traversal are omitted. For example, if we slice the tree above starting
+at input byte 4096 (the beginning of the second chunk), and request any count
+of bytes less than or equal to 4096 (up to the end of that chunk), the
+resulting slice will be this:
+
+```
+input length    |root parent node  |left parent node  |second chunk
+0120000000000000|49e4b8...03170a...|686ede...686ede...|\x00 * 4096
+```
+
+Decoding a slice works just like decoding a full encoding. The only difference
+is that in cases where the full decoder would normally seek forward, the slice
+decoder continues reading in series, all the seeking having been taken care of
+by the slice extractor.
+
+Note that requesting a count of 0 bytes is a degenerate case. Only two things
+are specified about this case:
+
+- If decoding is successful, the decoded output must be empty.
+- The slice must include the root node, and the decoder must verify it.
+
+Current implementations use an approach like "seek forward unconditionally,
+extracting all parent nodes encountered in the seek, and then read further as
+long as input is needed." In practice that means that parents below the root
+are sometimes included in the empty slice and sometimes not. These details may
+change, respecting the two guarantees above.
+
 ## Design Alternatives
 
 ### Use a chunk size other than 4096 bytes.
 
-See [issue #17](https://github.com/oconnor663/bao/issues/17).
+There's an efficiency argument for using a larger chunk size, with several
+tradeoffs involved. See [issue #17](https://github.com/oconnor663/bao/issues/17).
+Probably other implementors need to weigh in on this question before it can be
+settled.
 
 ### Use more of the associated data features from BLAKE2.
 
@@ -198,6 +276,20 @@ The high points are:
    Applications that need to do this sort of thing usually have to implement
    something like a B-tree on disk, at which point they probably aren't
    interested in the Bao hash of the file itself.
+
+### Include the content length in the hash itself, rather than in the encoding.
+
+Prepending the encoding with the input length means that the decoder state
+machine needs extra states to parse it, and it might have been nice to simplify
+it by making sure the caller always tells the decoder the length in advance,
+perhaps by concatenating the length to the hash. But that would be problematic
+for a couple reasons:
+
+- Most callers don't care about the input length, and extending the length of
+  the hash to store it would waste space.
+- There are situations where the input length is supposed to be secret,
+  particularly when a cryptographic hash is used as a MAC. Publishing it might
+  not be acceptable.
 
 ## Related Work
 
