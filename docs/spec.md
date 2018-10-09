@@ -129,6 +129,14 @@ clarifying what is and isn't guaranteed by the encoded format:
   they differ only in their trailing garbage. In general, callers should avoid
   reading or comparing the bytes of encoded files, other than to decode them.
 
+### Outboard encoding
+
+The outboard encoding format is the same as above (the "combined" encoding
+format), except that all the chunks are omitted. Whenever the decoder would
+read a chunk, it instead reads the corresponding offset from the original input
+file. This is intended for situations where the benefit of retaining the input
+file is worth managing two separate files.
+
 ## Slicing format
 
 The slicing format is very similar to the enconding format above. The only

@@ -138,6 +138,24 @@ pub fn encode_in_place(buf: &mut [u8], content_len: usize) -> Hash {
     }
 }
 
+/// Encode the input bytes in the outboard mode. `output.len()` must be exactly
+/// `outboard_size(input.len())`. If the `std` feature is enabled, as it is by default, this will
+/// use multiple threads via Rayon.
+///
+/// # Panics
+///
+/// Panics if the output slice is the wrong length.
+///
+/// # Example
+///
+/// ```
+/// let input = b"some bytes";
+/// let outboard_size = bao::encode::outboard_size(input.len() as u64);
+/// assert!(outboard_size <= usize::max_value() as u128);
+/// // Note that if you're allocating a new Vec like this, encode_outboard_to_vec is more convenient.
+/// let mut outboard = vec![0; outboard_size as usize];
+/// bao::encode::encode_outboard(input, &mut outboard);
+/// ```
 pub fn encode_outboard(input: &[u8], output: &mut [u8]) -> Hash {
     let content_len = input.len() as u64;
     assert_eq!(
@@ -161,6 +179,7 @@ pub fn encode_outboard(input: &[u8], output: &mut [u8]) -> Hash {
 }
 
 #[cfg(feature = "std")]
+/// A convenience wrapper around `encode`, which allocates a new `Vec` to hold the encoding.
 pub fn encode_to_vec(input: &[u8]) -> (Hash, Vec<u8>) {
     let size = encoded_size(input.len() as u64) as usize;
     // Unsafe code here could avoid the cost of initialization, but it's not much.
@@ -170,6 +189,8 @@ pub fn encode_to_vec(input: &[u8]) -> (Hash, Vec<u8>) {
 }
 
 #[cfg(feature = "std")]
+/// A convenience wrapper around `encode_outboard`, which allocates a new `Vec` to hold the
+/// encoding.
 pub fn encode_outboard_to_vec(input: &[u8]) -> (Hash, Vec<u8>) {
     let size = outboard_size(input.len() as u64) as usize;
     let mut output = vec![0; size];
