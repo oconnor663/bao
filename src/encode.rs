@@ -54,8 +54,9 @@ use std::io::prelude::*;
 use std::io::SeekFrom::{End, Start};
 
 /// Encode the input bytes in the combined mode. `output.len()` must be exactly
-/// `encoded_size(input.len())`. If the `std` feature is enabled, as it is by default, this will
-/// use multiple threads via Rayon.
+/// `encoded_size(input.len())`.
+///
+/// If the `std` feature is enabled, as it is by default, this will use multiple threads via Rayon.
 ///
 /// # Panics
 ///
@@ -94,9 +95,10 @@ pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
 }
 
 /// Encode the first `content_len` bytes from the input buffer in the combined mode, overwriting
-/// the input buffer. `buf.len()` must be exactly `encoded_size(content_len as u64)`. If the `std`
-/// feature is enabled, as it is by default, this will use multiple threads via Rayon. This
-/// function is slower than `encode`, however, because only the hashing can be parallelized;
+/// the input buffer. `buf.len()` must be exactly `encoded_size(content_len as u64)`.
+///
+/// If the `std` feature is enabled, as it is by default, this will use multiple threads via Rayon.
+/// This function is slower than `encode`, however, because only the hashing can be parallelized;
 /// copying the input bytes around has to be done on a single thread.
 ///
 /// # Panics
@@ -139,8 +141,9 @@ pub fn encode_in_place(buf: &mut [u8], content_len: usize) -> Hash {
 }
 
 /// Encode the input bytes in the outboard mode. `output.len()` must be exactly
-/// `outboard_size(input.len())`. If the `std` feature is enabled, as it is by default, this will
-/// use multiple threads via Rayon.
+/// `outboard_size(input.len())`.
+///
+/// If the `std` feature is enabled, as it is by default, this will use multiple threads via Rayon.
 ///
 /// # Panics
 ///
@@ -523,14 +526,15 @@ enum FlipperNext {
     Done,
 }
 
-/// An incremental encoder. Note that you must call `finish` after you're done writing. This
-/// implementation is single-threaded.
+/// An incremental encoder. Note that you must call `finish` after you're done writing.
 ///
 /// `Writer` supports both combined and outboard encoding, depending on which constructor you use.
 ///
 /// `Writer` is currently only available when `std` is enabled, because `std::io::Write` is a
 /// required part of its interface. However, it could be extended to support `no_std`-compatible
 /// traits outside of the standard library too. Please reach out to me if you need that.
+///
+/// This implementation is single-threaded.
 ///
 /// # Example
 ///
@@ -970,7 +974,7 @@ pub(crate) mod parse_state {
     }
 }
 
-/// An incremental slice extractor, which reades encoded bytes and produces a slice.
+/// An incremental slice extractor, which reads encoded bytes and produces a slice.
 ///
 /// `SliceExtractor` supports reading both the combined and outboard encoding, depending on which
 /// constructor you use. Though to be clear, there's no such thing as an "outboard slice" per se.

@@ -34,7 +34,6 @@ extern crate copy_in_place;
 #[cfg(feature = "std")]
 extern crate rayon;
 
-/// Decode the Bao format, or decode a slice.
 pub mod decode;
 pub mod encode;
 pub mod hash;

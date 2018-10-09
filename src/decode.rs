@@ -1,3 +1,43 @@
+//! Decode the Bao format, or decode a slice.
+//!
+//! Decoding verifies that all the bytes of the encoding match the root hash given from the caller.
+//! If there's a mismatch, decoding will return an error. It's possible for incremental decoding to
+//! return some valid bytes before encountering a error, but it will never return unverified bytes.
+//!
+//! # Example
+//!
+//! ```
+//! # fn main() -> Result<(), Box<std::error::Error>> {
+//! use std::io::prelude::*;
+//!
+//! // Encode some example bytes.
+//! let input = b"some input";
+//! let (hash, encoded) = bao::encode::encode_to_vec(input);
+//!
+//! // Decode them with one of the all-at-once functions.
+//! let decoded_at_once = bao::decode::decode_to_vec(&encoded, &hash)?;
+//!
+//! // Also decode them incrementally.
+//! let mut decoded_incrementally = Vec::new();
+//! {
+//!     let mut decoder = bao::decode::Reader::new(&*encoded, &hash);
+//!     // The inner block here limits the lifetime of this mutable borrow.
+//!     decoder.read_to_end(&mut decoded_incrementally)?;
+//! }
+//!
+//! // Assert that we got the same results both times.
+//! assert_eq!(decoded_at_once, decoded_incrementally);
+//!
+//! // Flipping a bit in encoding will cause a decoding error.
+//! let mut bad_encoded = encoded.clone();
+//! let last_index = bad_encoded.len() - 1;
+//! bad_encoded[last_index] ^= 1;
+//! let err = bao::decode::decode_to_vec(&bad_encoded, &hash);
+//! assert_eq!(Err(bao::decode::Error::HashMismatch), err);
+//! # Ok(())
+//! # }
+//! ```
+
 use arrayvec::ArrayVec;
 use constant_time_eq::constant_time_eq;
 use copy_in_place::copy_in_place;
@@ -159,11 +199,28 @@ fn extract_in_place(
     }
 }
 
-// Casting the content_len down to usize runs the risk that 1 and 2^32+1 might give the same result
-// on 32 bit systems, which would lead to apparent collisions. Check for that case, as well as the
-// more obvious cases where the buffer is too small for the content length, or too small to even
-// contain a header. Note that this doesn't verify any hashes.
+/// Parse the length of an encoded slice and convert it to a `usize`. This is useful if you need to
+/// allocate space for decoding.
+///
+/// If the encoded slice isn't long enough to represent the reported length -- which includes the
+/// case where the length can't fit in a `usize` -- this returns `Error::Truncated`.
+///
+/// # Example
+///
+/// ```
+/// let input = b"foobar";
+/// let (_, encoded) = bao::encode::encode_to_vec(input);
+/// let content_len = bao::decode::parse_and_check_content_len(&encoded).unwrap();
+/// assert_eq!(input.len(), content_len);
+///
+/// let err = bao::decode::parse_and_check_content_len(&encoded[..encoded.len()/2]).unwrap_err();
+/// assert_eq!(bao::decode::Error::Truncated, err);
+/// ```
 pub fn parse_and_check_content_len(encoded: &[u8]) -> Result<usize> {
+    // Casting the content_len down to usize runs the risk that 1 and 2^32+1 might give the same result
+    // on 32 bit systems, which would lead to apparent collisions. Check for that case, as well as the
+    // more obvious cases where the buffer is too small for the content length, or too small to even
+    // contain a header. Note that this doesn't verify any hashes.
     if encoded.len() < HEADER_SIZE {
         return Err(Error::Truncated);
     }
@@ -183,6 +240,23 @@ fn root_subtree(content_len: usize, hash: &Hash) -> Subtree {
     }
 }
 
+/// Decode a combined mode encoding to an output slice. The slice must be at least the length
+/// reported by `parse_and_check_content_len`. This returns the number of decoded bytes if
+/// successful, or an error if the encoding doesn't match the `hash`.
+///
+/// If the `std` feature is enabled, as it is by default, this will use multiple threads via Rayon.
+///
+/// # Example
+///
+/// ```
+/// let input = b"foobar";
+/// let (hash, encoded) = bao::encode::encode_to_vec(input);
+/// // Note that if you're allocating a new Vec like this, decode_to_vec is more convenient.
+/// let mut output = vec![0; input.len()];
+/// let content_len = bao::decode::decode(&encoded, &mut output, &hash).unwrap();
+/// assert_eq!(input.len(), content_len);
+/// assert_eq!(input, &output[..content_len]);
+/// ```
 pub fn decode(encoded: &[u8], output: &mut [u8], hash: &Hash) -> Result<usize> {
     let content_len = parse_and_check_content_len(encoded)?;
     #[cfg(feature = "std")]
@@ -199,8 +273,23 @@ pub fn decode(encoded: &[u8], output: &mut [u8], hash: &Hash) -> Result<usize> {
     }
 }
 
-/// This is slower than `decode`, because only the verification step can be done in parallel. All
-/// the memmoves have to be done in series.
+/// Decode a combined mode encoding in place, overwriting the encoded bytes starting from the
+/// beginning of the slice. This returns the number of decoded bytes if successful, or an error if
+/// the encoding doesn't match the `hash`.
+///
+/// If the `std` feature is enabled, as it is by default, this will use multiple threads via Rayon.
+/// This function is slower than `decode`, however, because only the hashing can be parallelized;
+/// copying the input bytes around has to be done on a single thread.
+///
+/// # Example
+///
+/// ```
+/// let input = b"some bytes";
+/// let (hash, mut buffer) = bao::encode::encode_to_vec(input);
+/// let content_len = bao::decode::decode_in_place(&mut buffer, &hash).unwrap();
+/// assert_eq!(input.len(), content_len);
+/// assert_eq!(input, &buffer[..content_len]);
+/// ```
 pub fn decode_in_place(encoded: &mut [u8], hash: &Hash) -> Result<usize> {
     // Note that if you change anything in this function, you should probably
     // also update benchmarks::decode_in_place_fake.
@@ -221,6 +310,7 @@ pub fn decode_in_place(encoded: &mut [u8], hash: &Hash) -> Result<usize> {
     Ok(content_len)
 }
 
+/// A convenience wrapper around `decode`, which allocates a new `Vec` to hold the content.
 #[cfg(feature = "std")]
 pub fn decode_to_vec(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
     let content_len = parse_and_check_content_len(encoded)?;
@@ -230,6 +320,23 @@ pub fn decode_to_vec(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+/// Given a combined encoding, quickly determine the root hash by reading just the root node.
+///
+/// The `read_exact_fn` callback will be called exactly twice.
+///
+/// # Example
+///
+/// ```
+/// let (hash1, encoded) = bao::encode::encode_to_vec(b"foobar");
+/// let mut reader = &*encoded;
+/// let hash2 = bao::decode::hash_from_encoded_nostd(|buf| {
+///     let take = buf.len();
+///     buf.copy_from_slice(&reader[..take]);
+///     reader = &reader[take..];
+///     Ok::<(), ()>(())
+/// }).unwrap();
+/// assert_eq!(hash1, hash2);
+/// ```
 pub fn hash_from_encoded_nostd<F, E>(mut read_exact_fn: F) -> result::Result<Hash, E>
 where
     F: FnMut(&mut [u8]) -> result::Result<(), E>,
@@ -247,6 +354,34 @@ where
     Ok(hash::hash_node(node, Root(content_len)))
 }
 
+/// Given an outboard encoding, quickly determine the root hash by reading just the root node.
+///
+/// Depending on the content length, the `outboard_read_exact_fn` callback will be called one or
+/// two times, and the `content_read_exact_fn` will be called either one time or not at all.
+///
+/// # Example
+///
+/// ```
+/// let input = b"foobar";
+/// let (hash1, outboard) = bao::encode::encode_outboard_to_vec(input);
+/// let mut content_reader = &input[..];
+/// let mut outboard_reader = &*outboard;
+/// let hash2 = bao::decode::hash_from_outboard_encoded_nostd(
+///     |buf| {
+///         let take = buf.len();
+///         buf.copy_from_slice(&content_reader[..take]);
+///         content_reader = &content_reader[take..];
+///         Ok::<(), ()>(())
+///     },
+///     |buf| {
+///         let take = buf.len();
+///         buf.copy_from_slice(&outboard_reader[..take]);
+///         outboard_reader = &outboard_reader[take..];
+///         Ok::<(), ()>(())
+///     },
+/// ).unwrap();
+/// assert_eq!(hash1, hash2);
+/// ```
 pub fn hash_from_outboard_encoded_nostd<F1, F2, E>(
     content_read_exact_fn: F1,
     mut outboard_read_exact_fn: F2,
@@ -269,11 +404,32 @@ where
     Ok(hash::hash_node(node, Root(content_len)))
 }
 
+/// Given a combined encoding beind a `Read` interface, quickly determine the root hash by reading
+/// just the root node.
+///
+/// # Example
+///
+/// ```
+/// let (hash1, encoded) = bao::encode::encode_to_vec(b"foobar");
+/// let hash2 = bao::decode::hash_from_encoded(&mut &*encoded).unwrap();
+/// assert_eq!(hash1, hash2);
+/// ```
 #[cfg(feature = "std")]
 pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
     hash_from_encoded_nostd(|buf| reader.read_exact(buf))
 }
 
+/// Given an outboard encoding beind two `Read` interfaces, quickly determine the root hash by
+/// reading just the root node.
+///
+/// # Example
+///
+/// ```
+/// let input = b"foobar";
+/// let (hash1, outboard) = bao::encode::encode_outboard_to_vec(input);
+/// let hash2 = bao::decode::hash_from_outboard_encoded(&mut &input[..], &mut &*outboard).unwrap();
+/// assert_eq!(hash1, hash2);
+/// ```
 #[cfg(feature = "std")]
 pub fn hash_from_outboard_encoded<C: Read, O: Read>(
     content_reader: &mut C,
@@ -386,6 +542,12 @@ mod verify_state {
 
 type Result<T> = result::Result<T, Error>;
 
+/// Errors that can happen during decoding.
+///
+/// Two errors are possible when decoding, apart from the usual IO issues: the content bytes might
+/// not have the right hash, or the encoding might not be as long as it's supposed to be. In
+/// `std::io::Read` interfaces where we have to return `std::io::Error`, these variants are
+/// converted to `ErrorKind::InvalidData` and `ErrorKind::UnexpectedEof` respectively.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     HashMismatch,
@@ -524,6 +686,43 @@ impl<T: Read, O: Read> fmt::Debug for ReaderShared<T, O> {
     }
 }
 
+/// An incremental decoder. This can work with both combined and outboard encodings, depending on
+/// which constructor you use.
+///
+/// This reader supports `Seek` if the underlying readers do, but it's not a requirement.
+///
+/// This implementation is single-threaded.
+///
+/// # Example
+///
+/// ```
+/// # fn main() -> Result<(), Box<std::error::Error>> {
+/// use std::io::prelude::*;
+///
+/// // Create both combined and outboard encodings.
+/// let input = b"some input";
+/// let (hash, encoded) = bao::encode::encode_to_vec(input);
+/// let (_, outboard) = bao::encode::encode_outboard_to_vec(input);
+///
+/// // Decode the combined mode.
+/// let mut combined_output = Vec::new();
+/// {
+///     let mut decoder = bao::decode::Reader::new(&*encoded, &hash);
+///     decoder.read_to_end(&mut combined_output)?;
+/// }
+///
+/// // Decode the outboard mode.
+/// let mut outboard_output = Vec::new();
+/// {
+///     let mut decoder = bao::decode::Reader::new_outboard(&input[..], &*outboard, &hash);
+///     decoder.read_to_end(&mut outboard_output)?;
+/// }
+///
+/// assert_eq!(input, &*combined_output);
+/// assert_eq!(input, &*outboard_output);
+/// # Ok(())
+/// # }
+/// ```
 #[cfg(feature = "std")]
 #[derive(Clone, Debug)]
 pub struct Reader<T: Read, O: Read> {
@@ -650,6 +849,58 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
     }
 }
 
+/// An incremental slice decoder. This reads and verifies the output of the
+/// `bao::encode::SliceExtractor`.
+///
+/// Note that there is no such thing as an "outboard slice". All slices include the content chunks
+/// and intermediate hashes intermixed, as in the combined encoding mode.
+///
+/// This reader doesn't implement `Seek`, regardless of the underlying reader. In theory seeking
+/// inside a slice is possible, but in practice if you only want part of a slice, you should
+/// request a different slice with the parameters you actually want.
+///
+/// This implementation is single-threaded.
+///
+/// # Example
+///
+/// ```
+/// # fn main() -> Result<(), Box<std::error::Error>> {
+/// use std::io::prelude::*;
+///
+/// // Start by encoding some input.
+/// let input = vec![0; 1_000_000];
+/// let (hash, encoded) = bao::encode::encode_to_vec(&input);
+///
+/// // Slice the encoding. These parameters are multiples of the chunk size, which avoids
+/// // unnecessary overhead.
+/// let slice_start = 65536;
+/// let slice_len = 8192;
+/// let encoded_cursor = std::io::Cursor::new(&encoded);
+/// let mut extractor = bao::encode::SliceExtractor::new(encoded_cursor, slice_start, slice_len);
+/// let mut slice = Vec::new();
+/// extractor.read_to_end(&mut slice)?;
+///
+/// // Decode the slice. The result should be the same as the part of the input that the slice
+/// // represents. Note that we're using the same hash that encoding produced, which is
+/// // independent of the slice parameters. That's the whole point; if we just wanted to re-encode
+/// // a portion of the input and wind up with a different hash, we wouldn't need slicing.
+/// let mut decoded = Vec::new();
+/// let mut decoder = bao::decode::SliceReader::new(&*slice, &hash, slice_start, slice_len);
+/// {
+///     decoder.read_to_end(&mut decoded)?;
+/// }
+/// assert_eq!(&input[slice_start as usize..][..slice_len as usize], &*decoded);
+///
+/// // Like regular decoding, slice decoding will fail if the hash doesn't match.
+/// let mut bad_slice = slice.clone();
+/// let last_index = bad_slice.len() - 1;
+/// bad_slice[last_index] ^= 1;
+/// let mut decoder = bao::decode::SliceReader::new(&*bad_slice, &hash, slice_start, slice_len);
+/// let err = decoder.read_to_end(&mut Vec::new()).unwrap_err();
+/// assert_eq!(std::io::ErrorKind::InvalidData, err.kind());
+/// # Ok(())
+/// # }
+/// ```
 #[cfg(feature = "std")]
 pub struct SliceReader<T: Read> {
     shared: ReaderShared<T, T>,
