@@ -102,7 +102,7 @@ fn hash(args: &Args) -> Result<(), Error> {
             // that some of the inputs will error on read e.g. because they're directories.
             match hash_one(&Some(input.clone()), args) {
                 Ok(hash) => {
-                    println!("{}  {}", hex::encode(hash), input_str);
+                    println!("{}  {}", hash.to_hex(), input_str);
                 }
                 Err(e) => {
                     did_error = true;
@@ -115,7 +115,7 @@ fn hash(args: &Args) -> Result<(), Error> {
         }
     } else {
         let hash = hash_one(&args.arg_input, &args)?;
-        println!("{}", hex::encode(hash));
+        println!("{}", hash.to_hex());
     }
     Ok(())
 }
@@ -396,12 +396,16 @@ fn maybe_memmap_output(
     })
 }
 
-fn parse_hash(args: &Args) -> Result<[u8; bao::hash::HASH_SIZE], Error> {
+fn parse_hash(args: &Args) -> Result<bao::hash::Hash, Error> {
     let hash_vec = hex::decode(&args.arg_hash).map_err(|_| err_msg("invalid hex"))?;
     if hash_vec.len() != bao::hash::HASH_SIZE {
         return Err(err_msg("wrong length hash"));
     };
-    Ok(*array_ref!(hash_vec, 0, bao::hash::HASH_SIZE))
+    Ok(bao::hash::Hash::new(*array_ref!(
+        hash_vec,
+        0,
+        bao::hash::HASH_SIZE
+    )))
 }
 
 // When streaming out decoded content, it's acceptable for the caller to pipe us

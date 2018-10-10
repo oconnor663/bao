@@ -3,7 +3,6 @@
 extern crate bao;
 extern crate blake2b_simd;
 extern crate byteorder;
-extern crate hex;
 #[macro_use]
 extern crate lazy_static;
 extern crate serde;
