@@ -686,8 +686,8 @@ impl<T: Read, O: Read> fmt::Debug for ReaderShared<T, O> {
     }
 }
 
-/// An incremental decoder. This can work with both combined and outboard encodings, depending on
-/// which constructor you use.
+/// An incremental decoder, which reads and verifies the output of `bao::encocde::Writer`. This can
+/// work with both combined and outboard encodings, depending on which constructor you use.
 ///
 /// This reader supports `Seek` if the underlying readers do, but it's not a requirement.
 ///
