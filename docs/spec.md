@@ -72,7 +72,7 @@ $ alias hexint='python3 -c "import sys; print(int(sys.argv[1]).to_bytes(8, \"lit
 $ unhex $left_parent_hash$small_chunk_hash$(hexint 8193) | b2sum -l256 --last-node
 6254a3e86396e4ce264ab45915a7ba5e0aa116d22c7deab04a4e29d3f81492da  -
 
-# Verify that this matches the bao hash of the same input.
+# Verify that this matches the Bao hash of the same input.
 $ head -c 8193 /dev/zero | bao hash
 6254a3e86396e4ce264ab45915a7ba5e0aa116d22c7deab04a4e29d3f81492da
 ```
