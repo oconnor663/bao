@@ -107,7 +107,7 @@ fn test_hash_vectors() {
     for case in &TEST_VECTORS.hash {
         let input = make_input(case.input_len);
         let hash = bao::hash::hash(&input);
-        assert_eq!(case.bao_hash, hex::encode(&hash));
+        assert_eq!(case.bao_hash, hash.to_hex().to_string());
 
         // Make sure the Writer gives the same answer.
         let mut writer = bao::hash::Writer::new();
@@ -151,6 +151,12 @@ fn all_decode_implementations(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>, ba
     result
 }
 
+fn corrupt_hash(hash: &Hash) -> Hash {
+    let mut bad_bytes = *hash.as_bytes();
+    bad_bytes[0] ^= 1;
+    Hash::new(bad_bytes)
+}
+
 #[test]
 fn test_encode_vectors() {
     for case in &TEST_VECTORS.encode {
@@ -161,7 +167,7 @@ fn test_encode_vectors() {
         let hash = bao::encode::encode(&input, &mut encoded);
 
         // Make sure the encoded hash is correct.
-        assert_eq!(case.bao_hash, hex::encode(&hash));
+        assert_eq!(case.bao_hash, hash.to_hex().to_string());
 
         // Make sure the encoded output is correct.
         assert_eq!(case.encoded_blake2b, blake2b(&encoded));
@@ -197,8 +203,7 @@ fn test_encode_vectors() {
         assert_eq!(input, output);
 
         // Make sure decoding with a bad hash fails.
-        let mut bad_hash = hash;
-        bad_hash[0] ^= 1;
+        let bad_hash = corrupt_hash(&hash);
         let err = all_decode_implementations(&encoded, &bad_hash).unwrap_err();
         assert_eq!(bao::decode::Error::HashMismatch, err);
 
@@ -231,7 +236,7 @@ fn test_outboard_vectors() {
         let hash = bao::encode::encode_outboard(&input, &mut outboard);
 
         // Make sure the encoded hash is correct.
-        assert_eq!(case.bao_hash, hex::encode(&hash));
+        assert_eq!(case.bao_hash, hash.to_hex().to_string());
 
         // Make sure the outboard output is correct.
         assert_eq!(case.encoded_blake2b, blake2b(&outboard));
@@ -262,8 +267,7 @@ fn test_outboard_vectors() {
         assert_eq!(input, output);
 
         // Make sure decoding with a bad hash fails.
-        let mut bad_hash = hash;
-        bad_hash[0] ^= 1;
+        let bad_hash = corrupt_hash(&hash);
         let err = decode_outboard(&input, &outboard, &bad_hash).unwrap_err();
         assert_eq!(io::ErrorKind::InvalidData, err.kind());
 
@@ -422,10 +426,8 @@ fn test_slice_vectors() {
             assert_eq!(expected_content, &*output);
 
             // Make sure that using the wrong hash breaks decoding.
-            let mut wrong_hash = hash;
-            wrong_hash[0] ^= 1;
-            let err =
-                decode_slice(&combined_slice, &wrong_hash, slice.start, slice.len).unwrap_err();
+            let bad_hash = corrupt_hash(&hash);
+            let err = decode_slice(&combined_slice, &bad_hash, slice.start, slice.len).unwrap_err();
             assert_eq!(io::ErrorKind::InvalidData, err.kind());
 
             // Test that each of the corruption points breaks decoding the slice.
@@ -435,7 +437,7 @@ fn test_slice_vectors() {
                 corrupted[point] ^= 1;
                 // The error can be either HashMismatch or Truncated, depending on whether the header
                 // was corrupted.
-                decode_slice(&combined_slice, &wrong_hash, slice.start, slice.len).unwrap_err();
+                decode_slice(&corrupted, &hash, slice.start, slice.len).unwrap_err();
             }
         }
     }

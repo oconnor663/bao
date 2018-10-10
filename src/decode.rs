@@ -39,7 +39,6 @@
 //! ```
 
 use arrayvec::ArrayVec;
-use constant_time_eq::constant_time_eq;
 use copy_in_place::copy_in_place;
 #[cfg(feature = "std")]
 use rayon;
@@ -61,7 +60,8 @@ use std::io::prelude::*;
 
 fn verify_hash(node_bytes: &[u8], hash: &Hash, finalization: Finalization) -> Result<()> {
     let computed = hash::hash_node(node_bytes, finalization);
-    if constant_time_eq(hash, &computed) {
+    // Hash implements constant time equality.
+    if hash == &computed {
         Ok(())
     } else {
         Err(Error::HashMismatch)
@@ -78,6 +78,11 @@ struct Subtree {
 enum Verified {
     Parent { left: Subtree, right: Subtree },
     Chunk { offset: usize, len: usize },
+}
+
+fn split_parent(parent: &hash::ParentNode) -> (Hash, Hash) {
+    let (left, right) = array_refs!(parent, HASH_SIZE, HASH_SIZE);
+    (Hash::new(*left), Hash::new(*right))
 }
 
 // Check that the top level of a subtree (which could be a single chunk) has a valid hash. This is
@@ -102,17 +107,17 @@ fn verify_one_level(buf: &[u8], subtree: &Subtree) -> Result<Verified> {
     } else {
         let parent = array_ref!(buf, offset, PARENT_SIZE);
         verify_hash(parent, hash, finalization)?;
-        let (left_hash, right_hash) = array_refs!(parent, HASH_SIZE, HASH_SIZE);
+        let (left_hash, right_hash) = split_parent(parent);
         let left = Subtree {
             offset: subtree.offset + PARENT_SIZE,
             content_len: hash::left_len(content_len as u64) as usize,
-            hash: *left_hash,
+            hash: left_hash,
             finalization: NotRoot,
         };
         let right = Subtree {
             offset: left.offset + encode::encoded_subtree_size(left.content_len as u64) as usize,
             content_len: content_len - left.content_len,
-            hash: *right_hash,
+            hash: right_hash,
             finalization: NotRoot,
         };
         Ok(Verified::Parent { left, right })
@@ -503,11 +508,11 @@ mod verify_state {
             let finalization = self.parser.finalization();
             let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
             let computed_hash = hash::hash_node(parent, finalization);
-            if !constant_time_eq(&expected_hash, &computed_hash) {
+            // Hash implements constant time equality.
+            if expected_hash != computed_hash {
                 return Err(Error::HashMismatch);
             }
-            let left_child = *array_ref!(parent, 0, HASH_SIZE);
-            let right_child = *array_ref!(parent, HASH_SIZE, HASH_SIZE);
+            let (left_child, right_child) = split_parent(parent);
             self.stack.pop();
             self.stack.push(right_child);
             self.stack.push(left_child);
@@ -517,7 +522,8 @@ mod verify_state {
 
         pub(crate) fn feed_chunk(&mut self, chunk_hash: Hash) -> Result<()> {
             let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
-            if !constant_time_eq(&chunk_hash, &expected_hash) {
+            // Hash implements constant time equality.
+            if chunk_hash != expected_hash {
                 return Err(Error::HashMismatch);
             }
             self.stack.pop();
@@ -1288,8 +1294,9 @@ mod test {
         for &case in hash::TEST_CASES {
             let input = make_test_input(case);
             let (hash, encoded) = encode::encode_to_vec(&input);
-            let mut bad_hash = hash;
-            bad_hash[0] ^= 1;
+            let mut bad_bytes = *hash.as_bytes();
+            bad_bytes[0] ^= 1;
+            let mut bad_hash = Hash::new(bad_bytes);
 
             // Seeking past the end of a tree should succeed with the right hash.
             let mut output = Vec::new();

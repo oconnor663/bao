@@ -216,8 +216,8 @@ fn encode_recurse(input: &[u8], output: &mut [u8], finalization: Finalization) -
     let (left_out, right_out) = rest.split_at_mut(encoded_subtree_size(left_len) as usize);
     let left_hash = encode_recurse(left_in, left_out, NotRoot);
     let right_hash = encode_recurse(right_in, right_out, NotRoot);
-    parent_out[..HASH_SIZE].copy_from_slice(&left_hash);
-    parent_out[HASH_SIZE..].copy_from_slice(&right_hash);
+    parent_out[..HASH_SIZE].copy_from_slice(left_hash.as_bytes());
+    parent_out[HASH_SIZE..].copy_from_slice(right_hash.as_bytes());
     hash::parent_hash(&left_hash, &right_hash, finalization)
 }
 
@@ -239,8 +239,8 @@ fn encode_recurse_rayon(input: &[u8], output: &mut [u8], finalization: Finalizat
         || encode_recurse_rayon(left_in, left_out, NotRoot),
         || encode_recurse_rayon(right_in, right_out, NotRoot),
     );
-    parent_out[..HASH_SIZE].copy_from_slice(&left_hash);
-    parent_out[HASH_SIZE..].copy_from_slice(&right_hash);
+    parent_out[..HASH_SIZE].copy_from_slice(left_hash.as_bytes());
+    parent_out[HASH_SIZE..].copy_from_slice(right_hash.as_bytes());
     hash::parent_hash(&left_hash, &right_hash, finalization)
 }
 
@@ -258,8 +258,8 @@ fn encode_outboard_recurse(input: &[u8], output: &mut [u8], finalization: Finali
     let (left_out, right_out) = rest.split_at_mut(outboard_subtree_size(left_len) as usize);
     let left_hash = encode_outboard_recurse(left_in, left_out, NotRoot);
     let right_hash = encode_outboard_recurse(right_in, right_out, NotRoot);
-    parent_out[..HASH_SIZE].copy_from_slice(&left_hash);
-    parent_out[HASH_SIZE..].copy_from_slice(&right_hash);
+    parent_out[..HASH_SIZE].copy_from_slice(left_hash.as_bytes());
+    parent_out[HASH_SIZE..].copy_from_slice(right_hash.as_bytes());
     hash::parent_hash(&left_hash, &right_hash, finalization)
 }
 
@@ -284,8 +284,8 @@ fn encode_outboard_recurse_rayon(
         || encode_outboard_recurse_rayon(left_in, left_out, NotRoot),
         || encode_outboard_recurse_rayon(right_in, right_out, NotRoot),
     );
-    parent_out[..HASH_SIZE].copy_from_slice(&left_hash);
-    parent_out[HASH_SIZE..].copy_from_slice(&right_hash);
+    parent_out[..HASH_SIZE].copy_from_slice(left_hash.as_bytes());
+    parent_out[HASH_SIZE..].copy_from_slice(right_hash.as_bytes());
     hash::parent_hash(&left_hash, &right_hash, finalization)
 }
 
@@ -324,8 +324,8 @@ fn write_parents_in_place(buf: &mut [u8], content_len: usize, finalization: Fina
         let (left_slice, right_slice) = rest.split_at_mut(split);
         let left_hash = write_parents_in_place(left_slice, left_len, NotRoot);
         let right_hash = write_parents_in_place(right_slice, right_len, NotRoot);
-        *array_mut_ref!(parent, 0, HASH_SIZE) = left_hash;
-        *array_mut_ref!(parent, HASH_SIZE, HASH_SIZE) = right_hash;
+        *array_mut_ref!(parent, 0, HASH_SIZE) = *left_hash.as_bytes();
+        *array_mut_ref!(parent, HASH_SIZE, HASH_SIZE) = *right_hash.as_bytes();
         hash::parent_hash(&left_hash, &right_hash, finalization)
     }
 }
@@ -350,8 +350,8 @@ fn write_parents_in_place_rayon(
             || write_parents_in_place_rayon(left_slice, left_len, NotRoot),
             || write_parents_in_place_rayon(right_slice, right_len, NotRoot),
         );
-        *array_mut_ref!(parent, 0, HASH_SIZE) = left_hash;
-        *array_mut_ref!(parent, HASH_SIZE, HASH_SIZE) = right_hash;
+        *array_mut_ref!(parent, 0, HASH_SIZE) = *left_hash.as_bytes();
+        *array_mut_ref!(parent, HASH_SIZE, HASH_SIZE) = *right_hash.as_bytes();
         hash::parent_hash(&left_hash, &right_hash, finalization)
     }
 }

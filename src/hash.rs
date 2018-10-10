@@ -14,9 +14,10 @@
 //! assert_eq!(hash_at_once, hash_incremental);
 //! ```
 
-use arrayvec::ArrayVec;
+use arrayvec::{ArrayString, ArrayVec};
 use blake2b_simd;
 use byteorder::{ByteOrder, LittleEndian};
+use constant_time_eq::constant_time_eq;
 use core::cmp;
 use core::fmt;
 use core::mem;
@@ -37,8 +38,60 @@ pub(crate) const MAX_DEPTH: usize = 64;
 pub(crate) const MAX_SINGLE_THREADED: usize = 4 * CHUNK_SIZE;
 
 /// An array of `HASH_SIZE` bytes. This will be a wrapper type in a future version.
-pub type Hash = [u8; HASH_SIZE];
 pub(crate) type ParentNode = [u8; 2 * HASH_SIZE];
+
+/// A Bao hash, with constant-time equality.
+#[derive(Clone, Copy)]
+pub struct Hash {
+    bytes: [u8; HASH_SIZE],
+}
+
+impl Hash {
+    /// Create a new `Hash` from an array of bytes.
+    pub fn new(bytes: [u8; HASH_SIZE]) -> Self {
+        Self { bytes }
+    }
+
+    /// Convert the `Hash` to a byte array. Note that the array type doesn't provide constant time
+    /// equality.
+    pub fn as_bytes(&self) -> &[u8; HASH_SIZE] {
+        &self.bytes
+    }
+
+    /// Convert the `Hash` to a lowercase hexadecimal
+    /// [`ArrayString`](https://docs.rs/arrayvec/0.4/arrayvec/struct.ArrayString.html).
+    pub fn to_hex(&self) -> ArrayString<[u8; 2 * HASH_SIZE]> {
+        let mut s = ArrayString::new();
+        let table = b"0123456789abcdef";
+        for &b in self.bytes.iter() {
+            s.push(table[(b >> 4) as usize] as char);
+            s.push(table[(b & 0xf) as usize] as char);
+        }
+        s
+    }
+}
+
+/// This implementation is constant time.
+impl PartialEq for Hash {
+    fn eq(&self, other: &Hash) -> bool {
+        constant_time_eq(&self.bytes[..], &other.bytes[..])
+    }
+}
+
+/// This implementation is constant time, if the slice length is `HASH_SIZE`.
+impl PartialEq<[u8]> for Hash {
+    fn eq(&self, other: &[u8]) -> bool {
+        constant_time_eq(&self.bytes[..], other)
+    }
+}
+
+impl Eq for Hash {}
+
+impl fmt::Debug for Hash {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Hash(0x{})", self.to_hex())
+    }
+}
 
 pub(crate) fn encode_len(len: u64) -> [u8; HEADER_SIZE] {
     debug_assert_eq!(mem::size_of_val(&len), HEADER_SIZE);
@@ -78,7 +131,9 @@ pub(crate) fn finalize_hash(state: &mut blake2b_simd::State, finalization: Final
         state.set_last_node(true);
     }
     let blake_digest = state.finalize();
-    *array_ref!(blake_digest.as_bytes(), 0, HASH_SIZE)
+    Hash {
+        bytes: *array_ref!(blake_digest.as_bytes(), 0, HASH_SIZE),
+    }
 }
 
 pub(crate) fn hash_node(chunk: &[u8], finalization: Finalization) -> Hash {
@@ -90,8 +145,8 @@ pub(crate) fn hash_node(chunk: &[u8], finalization: Finalization) -> Hash {
 
 pub(crate) fn parent_hash(left_hash: &Hash, right_hash: &Hash, finalization: Finalization) -> Hash {
     let mut state = new_blake2b_state();
-    state.update(left_hash);
-    state.update(right_hash);
+    state.update(left_hash.as_bytes());
+    state.update(right_hash.as_bytes());
     finalize_hash(&mut state, finalization)
 }
 
@@ -202,8 +257,8 @@ impl State {
         let right_child = self.subtrees.pop().unwrap();
         let left_child = self.subtrees.pop().unwrap();
         let mut parent_node = [0; PARENT_SIZE];
-        parent_node[..HASH_SIZE].copy_from_slice(&left_child);
-        parent_node[HASH_SIZE..].copy_from_slice(&right_child);
+        parent_node[..HASH_SIZE].copy_from_slice(left_child.as_bytes());
+        parent_node[HASH_SIZE..].copy_from_slice(right_child.as_bytes());
         let parent_hash = parent_hash(&left_child, &right_child, finalization);
         self.subtrees.push(parent_hash);
         parent_node
