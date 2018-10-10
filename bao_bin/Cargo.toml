@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 arrayref = "0.3.4"
-bao = { path = ".." }
+bao = { path = "..", version = "0.4.0" }
 docopt = "1.0.1"
 failure = "0.1.2"
 hex = "0.3.2"
