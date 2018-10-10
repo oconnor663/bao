@@ -121,11 +121,19 @@ f.obao  15624
 > cmp f <(bao decode $hash f --outboard f.obao)
 ```
 
-## Building from source
+## Installing and building from source
 
-You can build the `bao` binary from the `bao_bin` sub-crate, like this:
+The `bao` command line utility is published on crates.io as the
+`bao_bin` crate. To install it, add `~/.cargo/bin` to your `PATH` and
+then run:
 
-```bash
+```sh
+cargo install bao_bin
+```
+
+To build the binary directly from this repo:
+
+```sh
 git clone https://github.com/oconnor663/bao
 cd bao/bao_bin
 cargo build --release
@@ -137,13 +145,14 @@ implementation in Python, designed to be as short and readable as
 possible. It's a good starting point for understanding the algorithms
 involved, before diving into the Rust code.
 
-There is `no_std` support if you set `default-features = false` in your
-`Cargo.toml`. Most of the standalone functions that don't obviously
-depend on `std` are available. For example, `bao::encode::encode` is
-available with a single threaded implementation, but
-`bao::encode::encode_to_vec` isn't avialable. Of the streaming
-implementations, only `hash::Writer` is available, because the encoding
-and decoding implementations rely more on the `std::io` traits. If there
-are any callers that want to do streaming encoding or decoding under
-`no_std`, please let me know, and we can figure out which
-libcore-compatible IO interfaces it makes sense to use.
+The `bao` library crate includes `no_std` support if you set
+`default-features = false` in your `Cargo.toml`. Most of the standalone
+functions that don't obviously depend on `std` are available. For
+example, `bao::encode::encode` is available with a single threaded
+implementation, but `bao::encode::encode_to_vec` isn't avialable. Of the
+streaming implementations, only `hash::Writer` is available, because the
+encoding and decoding implementations rely more on the `std::io::{Read,
+Write, Seek}` interfaces. If there are any callers that want to do
+streaming encoding or decoding under `no_std`, please let me know, and
+we can figure out which libcore-compatible traits it makes sense to
+implement.
