@@ -81,8 +81,17 @@ $ head -c 8193 /dev/zero | bao hash
 
 [TODO]
 
-Hopefully we can use the framework from [Bertoni et al, *Sufficient conditions
-for sound tree and sequential hashing modes*
+Bao is intended to be a cryptographic hash, with the same security properties
+as BLAKE2, including not allowing length extension. It relies on the underlying
+hash to prevent length extension also, so for example SHA-512/256 would be
+suitable but SHA-512 wouldn't. The key security property to prove will be that
+the tree structure doesn't create any new collisions, apart from those caused
+by a collision in the underlying hash. The length suffix on the root node
+prevents collisions between any two inputs of different sizes. Since the tree
+structure is determined entirely by the size of the input, that should be
+sufficient to guarantee no new collisions, but it would be preferable to have a
+real proof. Perhaps we can use the framework from [Bertoni et al, *Sufficient
+conditions for sound tree and sequential hashing modes*
 (2009)](https://eprint.iacr.org/2009/210.pdf).
 
 ## Encoding format
