@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-# This is an example implementation of bao, with the goal of being as readable
+# This is an example implementation of Bao, with the goal of being as readable
 # as possible and generating test vectors. There are a few differences that
 # make this code much simpler than the Rust version:
 #
@@ -9,7 +9,7 @@
 #    avoid using extra storage.
 # 2. This version isn't incremental. The Rust version provides incremental
 #    encoders and decoders, which accept small reads and writes from the
-#    caller, and that require more bookkeeping.
+#    caller, and that requires more bookkeeping.
 # 3. This version doesn't support arbitrary seeking. The most complicated bit
 #    of bookkeeping in the Rust version is seeking in the incremental decoder.
 #

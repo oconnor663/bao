@@ -132,8 +132,10 @@ cargo build --release
 ./target/release/bao --help
 ```
 
-[`tests/bao.py`](tests/bao.py) includes a Python implementation designed
-to be as short and readable as possible.
+[`tests/bao.py`](tests/bao.py) is a fully functional second
+implementation in Python, designed to be as short and readable as
+possible. It's a good starting point for understanding the algorithms
+involved, before diving into the Rust code.
 
 There is `no_std` support if you set `default-features = false` in your
 `Cargo.toml`. Most of the standalone functions that don't obviously
