@@ -1,8 +1,8 @@
 # Bao [![Build Status](https://travis-ci.org/oconnor663/bao.svg?branch=master)](https://travis-ci.org/oconnor663/bao) [![Build status](https://ci.appveyor.com/api/projects/status/yt1vchury2xtqphk/branch/master?svg=true)](https://ci.appveyor.com/project/oconnor663/bao/branch/master) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao)
 
-[Docs](https://docs.rs/bao) —
+[Spec](docs/spec.md) —
 [Rust Crate](https://crates.io/crates/bao) —
-[Spec](docs/spec.md)
+[Rust Docs](https://docs.rs/bao)
 
 **Caution:** Bao is intended to be a cryptographic hash function, but it
 hasn't yet been reviewed. The output may change prior to the 1.0
