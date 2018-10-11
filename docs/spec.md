@@ -310,7 +310,7 @@ for a couple reasons:
 
 ## Related Work
 
-- Tiger
+- the [Tree Hash Exchange (THEX)](https://adc.sourceforge.io/draft-jchapweske-thex-02.html) format
 - https://www.cryptolux.org/mediawiki-esc2013/images/c/ca/SL_tree_hashing_esc.pdf
 - Bertoni et al, *Sufficient conditions for sound tree and sequential hashing
   modes*, https://eprint.iacr.org/2009/210.pdf

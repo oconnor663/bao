@@ -16,20 +16,20 @@ the first thing you might notice is that it's five times faster:
 
 ![snazzy gif](docs/bao_hash.gif)
 
-Why is `bao hash` so fast? The main reason is that tree hashes can use
-multiple threads to process different parts of the tree in parallel.
-Given enough input, the tree hash can occupy any number of processors:
-in-memory benchmarks on one of Amazon's 96-core m5.24xlarge instances
-measure 60 GB/s of throughput. Bao is also based on BLAKE2b, which was
-[designed to outperform SHA1](https://blake2.net/), and it includes the
-[fastest SIMD implementation
-available](https://github.com/oconnor663/blake2b_simd).
+Why is `bao hash` so fast? The main reason is that a tree hash can use
+multiple threads to handle different parts of the tree in parallel. The
+demo above is from the i5-8250U processor in by laptop, but given enough
+input Bao can occupy any number of cores. In-memory benchmarks on one of
+Amazon's 96-core m5.24xlarge instances measure 60 GB/s of throughput.
+Bao is also based on BLAKE2b, which was [designed to outperform
+SHA1](https://blake2.net/), and it includes the [fastest SIMD
+implementation available](https://github.com/oconnor663/blake2b_simd).
 
 ## Encoded files
 
 Apart from parallelism, tree hashes make it possible to verify a file
 piece-by-piece rather than all-at-once. This is done by storing both the
-input and the branches of the hash tree together in an encoded file:
+input and the entire hash tree together in an encoded file:
 
 ```sh
 # Create an input file that's a megabyte of random data.
@@ -63,6 +63,10 @@ Error: Custom { kind: InvalidData, error: StringError("hash mismatch") }
 cmp: EOF on /proc/self/fd/11 which is empty
 ```
 
+Note that decoding doesn't require you to have the entire encoded file
+on disk locally. The format is designed for streaming, so a pipe or a network socket will work
+just as well.
+
 Use case: A cryptographic messaging app might want to add support for
 attachments, like large video files. If the message metadata includes
 the Bao hash of its attachment, the client would have the option of
@@ -71,11 +75,9 @@ problem was in fact the original inspiration for the Bao project.)
 
 ## Encoded slices
 
-That decoding above doesn't require you to have the entire encoded file
-on disk locally. Streaming it over a pipe or a network socket will work
-just as well. For situations where you only want to consume some bytes
-from the middle of the file, and you don't want to transfer the whole
-encoding, you can extract an encoded slice:
+For situations where you need to consume some bytes from the middle of
+the file, without streaming through whole encoding from the front, you
+can extract an encoded slice:
 
 ```sh
 # Using the encoded file from above, extract a 100 KB from somewhere in
@@ -112,8 +114,8 @@ providers, to prove that they're honestly storing the file.
 By default, all of the operations above work with a "combined" encoded
 file, that is, one that contains both the content bytes and the tree
 hash bytes interleaved. However, sometimes you want to keep them
-separate, for example to avoid copying the bytes of a very large input
-file. In these cases, you can use the "outboard" encoded format, via the
+separate, perhaps to avoid copying the bytes of a very large input file.
+In these cases, you can use the "outboard" encoded format, via the
 `--outboard` flag:
 
 ```sh
@@ -121,7 +123,7 @@ file. In these cases, you can use the "outboard" encoded format, via the
 > bao encode f --outboard f.obao
 
 # Compare the size of all these files. The size of the outboard file is
-# equal to the overhead in the original combined file.
+# equal to the overhead of the original combined file.
 > stat -c "%n %s" f f.bao f.obao | column -t
 f       1000000
 f.bao   1015624
@@ -134,9 +136,10 @@ f.obao  15624
 
 ## Installing and building from source
 
-The `bao` command line utility is published on crates.io as the
-`bao_bin` crate. To install it, add `~/.cargo/bin` to your `PATH` and
-then run:
+The `bao` command line utility is published on
+[crates.io](https://crates.io) as the
+[`bao_bin`](https://crates.io/crates/bao_bin) crate. To install it, add
+`~/.cargo/bin` to your `PATH` and then run:
 
 ```sh
 cargo install bao_bin
