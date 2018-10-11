@@ -1,6 +1,9 @@
 # The Bao Spec
 
-## Tree Structure
+**Caution:** Bao is intended to be a cryptographic hash function, but it hasn't
+yet been reviewed. The output may change prior to the 1.0 release.
+
+## The Tree Structure
 
 Bao divides the input up into 4096-byte chunks. The final chunk may be shorter,
 but it's never empty unless the input itself is empty. When there's more than
@@ -79,22 +82,39 @@ $ head -c 8193 /dev/zero | bao hash
 
 ## Security
 
-[TODO]
+TODO: I need help fleshing this part out. Perhaps we can use the framework from
+[Bertoni et al, *Sufficient conditions for sound tree and sequential hashing
+modes* (2009)](https://eprint.iacr.org/2009/210.pdf) to construct a proper
+proof. Bao doesn't currently domain-separate the inner parent nodes from the
+input chunks though (only the root is domain-separated), and that might be a
+precondition of the framework. See Design Alternatives below.
 
-Bao is intended to be a cryptographic hash, with the same security properties
-as BLAKE2, including not allowing length extension. It relies on the underlying
-hash to prevent length extension also, so for example SHA-512/256 would be
-suitable but SHA-512 wouldn't. The key security property to prove will be that
-the tree structure doesn't create any new collisions, apart from those caused
-by a collision in the underlying hash. The length suffix on the root node
-prevents collisions between any two inputs of different sizes. Since the tree
-structure is determined entirely by the size of the input, that should be
-sufficient to guarantee no new collisions, but it would be preferable to have a
-real proof. Perhaps we can use the framework from [Bertoni et al, *Sufficient
-conditions for sound tree and sequential hashing modes*
-(2009)](https://eprint.iacr.org/2009/210.pdf).
+The most important security requirement for a tree mode is that it doesn't
+create any "new" collisions, that is, collisions in the tree hash that don't
+follow from a collision in the underlying hash function. Here's the sketch of a
+proof that Bao doesn't create any new collisions:
 
-## Encoding format
+1. No two inputs can produce a new collision in Bao if they are a different
+   length. The last 8 bytes of input to the final hashing step are the input
+   length. If the resulting root hashes are the same, that must be a collision
+   in the underlying hash. (Note that this assumes the length doesn't overflow.
+   See Design Alternatives for more discussion.)
+2. If two inputs are the same length, their Bao trees have an identical
+   structure. This follows from the defintion of Bao, which determines the tree
+   structure entirely from the input length.
+3. If two different inputs are mapped to identical tree structures, and they
+   have a colliding root hash, then some pair of corresponding nodes between
+   the two trees must form a collision in the underlying hash.
+
+Another security requirement is that length extension shouldn't be possible. An
+attacker has two options for attempting an extension: they can try to append
+bytes onto the root node itself, or they can build a larger tree that
+incorporates the root hash as a subtree. The first attack is prevented by
+assuming that the underlying hash doesn't allow length extension. The second
+attack is prevented by using the last node flag to finalize root nodes, which
+means they cannot collide with any subtree hash in a valid Bao tree.
+
+## The Encoding format
 
 The encoding file format is the contents of the the chunks and parent nodes of
 the tree concatenated together in pre-order (that is a parent, followed by its
@@ -138,7 +158,7 @@ clarifying what is and isn't guaranteed by the encoded format:
   they differ only in their trailing garbage. In general, callers should avoid
   reading or comparing the bytes of encoded files, other than to decode them.
 
-### Outboard encoding
+### The Outboard Encoding Format
 
 The outboard encoding format is the same as above (the "combined" encoding
 format), except that all the chunks are omitted. Whenever the decoder would
@@ -146,7 +166,7 @@ read a chunk, it instead reads the corresponding offset from the original input
 file. This is intended for situations where the benefit of retaining the input
 file is worth managing two separate files.
 
-## Slicing format
+## The Slicing Format
 
 The slicing format is very similar to the enconding format above. The only
 difference is that chunks and parent nodes that wouldn't be encountered in a
@@ -185,6 +205,49 @@ There's an efficiency argument for using a larger chunk size, with several
 tradeoffs involved. See [issue #17](https://github.com/oconnor663/bao/issues/17).
 Probably other implementors need to weigh in on this question before it can be
 settled.
+
+### Domain-separate the chunks from non-root parent nodes.
+
+As discussed in Security above, adding chunk-parent domain separation might
+make it possible to prove the soundness of the tree using Bertoni et al's
+framework. It would also make it harder to generate collisions by overflowing
+the input length counter, discussed immediately below. Thoses are theoretical
+benefits, though, and it's not clear whether complicating the definition of Bao
+would be worth it. See [issue #19](https://github.com/oconnor663/bao/issues/19).
+
+### Use something larger than 64 bits for the length counter.
+
+2<sup>64</sup> bytes, or about 16 exbibytes, is large enough that it would be
+completely impractical to hash that much input. Given that my laptop can hash
+roughly 1 GB/sec per core, hashing 16 EiB would take 585 core-years. 16 EiB is
+also the maximum supported file size for most modern filesystems. It's possible
+that some trickery with sparse files might let you effectively hash more than
+16 EiB (see the discussion below about the node offset parameter and
+efficiently hashing sparse files), but at that point there's no practical limit
+to your input size and no particular reason to assume that 2<sup>128</sup> or
+2<sup>256</sup> bytes would be enough.
+
+If the length counter was allowed to overflow, that could be used by an
+attacker to generate collisions. For example, if X is the contents of the root
+node (that is, two subtree hashes concatenated) of a file that's
+2<sup>64</sup>+64 bytes long, then the hash of that giant file would collide
+with the hash of the 64-byte file whose contents are exactly X. Some thoughts
+about this scenario:
+
+- SHA-256 use a similar mechanism, with a 64-bit counter appended to the end of
+  the input. (Though SHA-256 counts input bits rather than input bytes.) An
+  overflow in the SHA-256 counter probably wouldn't immediately lead to a
+  collision, but it's nevertheless undefined in the standard.
+- The above collision relies on conflating an input chunk with a parent node.
+  That could be prevented by domain-separating the two, as noted above.
+- A correct implementation of Bao should arguably refuse to hash this much
+  input, instead failing with a panic or an abort. However, in practice, most
+  hash function implementations don't actually check for length overflow. And
+  it's not clear that panicking is acceptable in a hash implementation, if it's
+  used in a critical system and expected to be infallible.
+- Exploiting this kind of collision would be very difficult in practice. The
+  attacker would need the victim to repeat the enormous computation. Though
+  perhaps some sort of sparse file protocol could manage it.
 
 ### Use more of the associated data features from BLAKE2.
 
@@ -311,6 +374,5 @@ for a couple reasons:
 ## Related Work
 
 - the [Tree Hash Exchange (THEX)](https://adc.sourceforge.io/draft-jchapweske-thex-02.html) format
-- https://www.cryptolux.org/mediawiki-esc2013/images/c/ca/SL_tree_hashing_esc.pdf
-- Bertoni et al, *Sufficient conditions for sound tree and sequential hashing
-  modes*, https://eprint.iacr.org/2009/210.pdf
+- [Tree Hashing](https://www.cryptolux.org/mediawiki-esc2013/images/c/ca/SL_tree_hashing_esc.pdf),
+  2013, a presentation by Stefan Lucks
