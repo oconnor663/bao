@@ -215,6 +215,20 @@ the input length counter, discussed immediately below. Thoses are theoretical
 benefits, though, and it's not clear whether complicating the definition of Bao
 would be worth it. See [issue #19](https://github.com/oconnor663/bao/issues/19).
 
+It might be tempting to drop the length bytes from the root hash entirely, if
+we domain-separate the parent nodes instead. It's possible that that could be
+proven to also prevent collisions, with (very slightly) less overhead. However,
+verifying the length as part of the root hash is important for the decoder. Say
+an encoding has a real length of 7 chunks, but an attacker tweaks it to say
+it's only 5 chunks. If the victim then starts decoding and tries to seek to the
+6th chunk, what happens? The decoder would probably report a successful EOF
+from the following read, even though the real file is supposed to have bytes at
+that point. That's an unacceptable mutation of the encoding. The current
+approach verifies the reported length as associated data for the root, and
+always verifies the root regardless of the seek target. If want to drop our
+ability to verify the length, we would need some other way to detect truncation
+when seeking.
+
 ### Use something larger than 64 bits for the length counter.
 
 2<sup>64</sup> bytes, or about 16 exbibytes, is large enough that it would be
