@@ -1,5 +1,14 @@
 #! /usr/bin/python3
 
+# Note that when I run this script from my regular desktop, the numbers I get
+# are 10% to 15% worse than when I run it under ideal conditions. To record
+# bao_hash.cast, I disabled my Gnome desktop and rebooted my laptop with
+# absolutely nothing else running. Asciinema is especially helpful here,
+# because the desktop video capture that becomes bao_hash.gif takes a lot of
+# CPU work, so the recording is of a replay rather than of the live event. Such
+# is life with benchmarks. Though note that all the hash functions in the demo
+# seem to benefit roughly equally from that pristine CPU environment.
+
 import time
 import subprocess
 import sys
