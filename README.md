@@ -63,6 +63,12 @@ Error: Custom { kind: InvalidData, error: StringError("hash mismatch") }
 cmp: EOF on /proc/self/fd/11 which is empty
 ```
 
+Use case: A cryptographic messaging app might want to add support for
+attachments, like large video files. If the message metadata includes
+the Bao hash of its attachment, the client would have the option of
+streaming an attached video without compromising its immutability. (This
+problem was in fact the original inspiration for the Bao project.)
+
 ## Encoded slices
 
 That decoding above doesn't require you to have the entire encoded file
@@ -95,6 +101,11 @@ f.slice 104584
 > bao decode-slice $bad_hash 500000 100000 f.slice
 Error: Custom { kind: InvalidData, error: StringError("hash mismatch") }
 ```
+
+Use case: A BitTorrent-like application could fetch different slices of
+a file from different peers. Or, a distributed file storage application
+could request random slices of an archived file from its storage
+providers, to prove that they're honestly storing the file.
 
 ## Outboard mode
 
