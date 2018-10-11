@@ -288,6 +288,10 @@ impl State {
     /// bytes at all, callers are expected to finalize that chunk themselves before pushing. (Or
     /// just ignore the State object entirely.) It's of course impossible to back out the input
     /// bytes and re-finalize them.
+    ///
+    /// # Panic
+    ///
+    /// This will panic if the total input length overflows a `u64`.
     pub fn push_subtree(&mut self, hash: &Hash, len: usize) {
         // Merge any subtrees that need to be merged before pushing. In the encoding case, the
         // caller will already have done this via merge_parent(), but in the hashing case the
@@ -296,7 +300,14 @@ impl State {
             self.merge_inner(NotRoot);
         }
         self.subtrees.push(*hash);
-        self.total_len += len as u64;
+        // Overflow in the length is practically impossible if we're actually hashing the input,
+        // since it would take several hundred CPU years of work. But it could happen if we're
+        // doing something fancy with a sparse tree. In general, the Bao hash of more than u64::MAX
+        // bytes is not defined, and a correct implementation should refuse to compute it.
+        self.total_len = self
+            .total_len
+            .checked_add(len as u64)
+            .expect("addition overflowed");
     }
 
     /// Returns a `ParentNode` corresponding to a just-completed subtree, if any.
