@@ -143,20 +143,30 @@ structure is completely determined by the length, and the decoder can stream
 the whole tree or seek around as needed by the caller. But note that all
 decoding operations *must* verify the root. In particular, if the caller asks
 to seek to byte 5000 of a 4096-byte encoding, the decoder *must not* skip
-verifying the first chunk, because its the root. This ensures that a decoder
-will always return an error when the encoded length doesn't match the root hash
+verifying the first (only) chunk, because its the root. This ensures that a
+decoder will always return an error when the encoded length doesn't match the
+root hash
 
 Because of the prepended length, the encoding format is self-delimiting. Most
 decoders won't read an encoded file all the way to EOF, and so it's generally
-allowed to append extra garbage bytes to a valid encoding. It's worth
-clarifying what is and isn't guaranteed by the encoded format:
+allowed to append extra garbage bytes to a valid encoding. Trailing garbage has
+no effect on the content, but it's worth clarifying what is and isn't
+guaranteed by the encoding format:
 
-- There is never more than one *hash* that can decode a given encoding. (Though
-  there might not be any, if it's corrupt.) If decoding succeeds, then the
-  decoding hash is always identical to the Bao hash of the decoded content.
-- However, many encoded *files* can successfully decode under the same hash, if
-  they differ only in their trailing garbage. In general, callers should avoid
-  reading or comparing the bytes of encoded files, other than to decode them.
+- If the Bao hash of a given input is used in decoding, it will never
+  successfully decode anything other than exactly that input. Corruptions in
+  the encoding might lead to a partial decoding followed by an error, but any
+  partially decoded bytes will always be a prefix of the original input.
+- Further, there are no "alternative" hashes for a given input or a given
+  encoding. There is at most one hash that can decode any content, even partial
+  content followed by an error, from a given encoding. If the decoding is
+  complete, that hash is always the Bao hash of the decoded content. If two
+  decoding hashes are different, then any content they successfully and
+  completely decode is always different.
+- However, multiple "different" encoded files can decode using the same hash,
+  if they differ only in their trailing garbage. So while there's a unique hash
+  for any given input, there's not a unique valid encoded file, and comparing
+  encoded files with each other is probably a mistake.
 
 ### The Outboard Encoding Format
 
