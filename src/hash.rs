@@ -104,10 +104,14 @@ pub(crate) fn decode_len(bytes: &[u8; HEADER_SIZE]) -> u64 {
     LittleEndian::read_u64(bytes)
 }
 
+fn new_blake2b_params() -> blake2b_simd::Params {
+    let mut params = blake2b_simd::Params::new();
+    params.hash_length(HASH_SIZE);
+    params
+}
+
 pub(crate) fn new_blake2b_state() -> blake2b_simd::State {
-    blake2b_simd::Params::new()
-        .hash_length(HASH_SIZE)
-        .to_state()
+    new_blake2b_params().to_state()
 }
 
 // The root node is hashed differently from interior nodes. It gets suffixed
@@ -143,6 +147,41 @@ pub(crate) fn hash_node(chunk: &[u8], finalization: Finalization) -> Hash {
     finalize_hash(&mut state, finalization)
 }
 
+fn hash_four_chunk_subtree(
+    chunk0: &[u8; CHUNK_SIZE],
+    chunk1: &[u8; CHUNK_SIZE],
+    chunk2: &[u8; CHUNK_SIZE],
+    chunk3: &[u8; CHUNK_SIZE],
+    finalization: Finalization,
+) -> Hash {
+    // This relies on the fact that finalize_hash does nothing for non-root nodes.
+    let mut state0 = new_blake2b_state();
+    let mut state1 = new_blake2b_state();
+    let mut state2 = new_blake2b_state();
+    let mut state3 = new_blake2b_state();
+    blake2b_simd::update4(
+        &mut state0,
+        &mut state1,
+        &mut state2,
+        &mut state3,
+        chunk0,
+        chunk1,
+        chunk2,
+        chunk3,
+    );
+    let chunk_hashes = blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3);
+    let mut left_subtree_state = new_blake2b_state();
+    left_subtree_state.update(chunk_hashes[0].as_bytes());
+    left_subtree_state.update(chunk_hashes[1].as_bytes());
+    let mut right_subtree_state = new_blake2b_state();
+    right_subtree_state.update(chunk_hashes[2].as_bytes());
+    right_subtree_state.update(chunk_hashes[3].as_bytes());
+    let mut parent_state = new_blake2b_state();
+    parent_state.update(left_subtree_state.finalize().as_bytes());
+    parent_state.update(right_subtree_state.finalize().as_bytes());
+    finalize_hash(&mut parent_state, finalization)
+}
+
 pub(crate) fn parent_hash(left_hash: &Hash, right_hash: &Hash, finalization: Finalization) -> Hash {
     let mut state = new_blake2b_state();
     state.update(left_hash.as_bytes());
@@ -169,8 +208,19 @@ fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_node(input, finalization);
     }
-    // If we have more than one chunk of input, recursively hash the left and
-    // right sides. The left_len() function determines the shape of the tree.
+    // Special case: If the input is exactly four chunks, hashing those four chunks in parallel
+    // with SIMD is more efficient than going one by one.
+    if input.len() == 4 * CHUNK_SIZE {
+        return hash_four_chunk_subtree(
+            array_ref!(input, 0 * CHUNK_SIZE, CHUNK_SIZE),
+            array_ref!(input, 1 * CHUNK_SIZE, CHUNK_SIZE),
+            array_ref!(input, 2 * CHUNK_SIZE, CHUNK_SIZE),
+            array_ref!(input, 3 * CHUNK_SIZE, CHUNK_SIZE),
+            finalization,
+        );
+    }
+    // We have more than one chunk of input, so recursively hash the left and right sides. The
+    // left_len() function determines the shape of the tree.
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
     // Child nodes are never the root.
     let left_hash = hash_recurse(left, NotRoot);
@@ -182,6 +232,17 @@ fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
 fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_node(input, finalization);
+    }
+    // Special case: If the input is exactly four chunks, hashing those four chunks in parallel
+    // with SIMD is more efficient than going one by one.
+    if input.len() == 4 * CHUNK_SIZE {
+        return hash_four_chunk_subtree(
+            array_ref!(input, 0 * CHUNK_SIZE, CHUNK_SIZE),
+            array_ref!(input, 1 * CHUNK_SIZE, CHUNK_SIZE),
+            array_ref!(input, 2 * CHUNK_SIZE, CHUNK_SIZE),
+            array_ref!(input, 3 * CHUNK_SIZE, CHUNK_SIZE),
+            finalization,
+        );
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
     let (left_hash, right_hash) = rayon::join(
