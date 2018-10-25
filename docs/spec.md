@@ -3,6 +3,16 @@
 **Caution:** Bao is intended to be a cryptographic hash function, but it hasn't
 yet been reviewed. The output may change prior to the 1.0 release.
 
+## Contents
+
+- [Tree Structure](#tree-structure)
+- [Security](#security)
+- [Encoding Format](#encoding-format)
+- [Outboard Encoding Format](#outboard-encoding-format)
+- [Slicing Format](#slicing-format)
+- [Design Alternatives](#design-alternatives)
+- [Other Related Work](#other-related-work)
+
 ## The Tree Structure
 
 Bao divides the input up into 4096-byte chunks. The final chunk may be shorter,
@@ -114,7 +124,7 @@ assuming that the underlying hash doesn't allow length extension. The second
 attack is prevented by using the last node flag to finalize root nodes, which
 means they cannot collide with any subtree hash in a valid Bao tree.
 
-## The Encoding format
+## Encoding Format
 
 The encoding file format is the contents of the the chunks and parent nodes of
 the tree concatenated together in pre-order (that is a parent, followed by its
@@ -168,15 +178,15 @@ guaranteed by the encoding format:
   for any given input, there's not a unique valid encoded file, and comparing
   encoded files with each other is probably a mistake.
 
-### The Outboard Encoding Format
+## Outboard Encoding Format
 
 The outboard encoding format is the same as above (the "combined" encoding
 format), except that all the chunks are omitted. Whenever the decoder would
 read a chunk, it instead reads the corresponding offset from the original input
-file. This is intended for situations where the benefit of retaining the input
-file is worth managing two separate files.
+file. This is intended for situations where the benefit of retaining the
+unmodified input file is worth the complexity of reading two separate files.
 
-## The Slicing Format
+## Slicing Format
 
 The slicing format is very similar to the enconding format above. The only
 difference is that chunks and parent nodes that wouldn't be encountered in a
@@ -454,7 +464,7 @@ for a couple reasons:
   particularly when a cryptographic hash is used as a MAC. Publishing it might
   not be acceptable.
 
-## Related Work
+## Other Related Work
 
 - the [Tree Hash Exchange (THEX)](https://adc.sourceforge.io/draft-jchapweske-thex-02.html) format
 - [Tree Hashing](https://www.cryptolux.org/mediawiki-esc2013/images/c/ca/SL_tree_hashing_esc.pdf),
