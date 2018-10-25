@@ -209,6 +209,65 @@ change, respecting the two guarantees above.
 
 ## Design Alternatives
 
+### Use a simplified tree mode, like KangarooTwelve does.
+
+[KangarooTwelve](https://keccak.team/kangarootwelve.html) is a modern hash
+function based on Keccak/SHA3, and it includes a ["leaves stapled to a
+pole"](https://www.cryptologie.net/article/393/kangarootwelve) tree internally
+to allow for parallelism in the implementation. This is much simpler to
+implement than a full binary tree, and it adds very little to the minimum
+memory requirements for a serial implementation. This sort of design could make
+Bao more suitable for extremely memory-constrained environments.
+
+However, Bao's current memory requirements aren't outlandish. Building or
+traversing the binary tree requires us to store a hash (32 bytes) for each
+level of the tree. With a maximum input size of 2^64 bytes, and a chunk size of
+2^12 bytes, that's 52 levels or 1664 bytes of additional storage on top of the
+underlying hash function. BLAKE2b itself needs [336
+bytes](https://blake2.net/blake2.pdf), so Bao is certainly bigger, but it's not
+an order of magnitude bigger. Also, if the implementation is willing to specify
+a tighter limit for the input, it can reduce its storage overhead. For example,
+the largest possible IPv6 "jumbogram" is 4GiB, and limited to that maximum
+input size Bao's overhead is 640 bytes.
+
+Doing without a real tree would limit the usefulness of Bao's fancy encoding
+and slicing features. The root node of a two-level tree is linear in the size
+of the input. For an encoded file that's a few terabytes in size, the root node
+would be around a gigabyte, and the recipient would need to fetch and
+presumably buffer all of it before verifying any content bytes. The usefulness
+of the encoding would be limited to the space of files big enough that
+streaming is valuable, but small enough that the root node is manageable.
+
+It would also limit the parallelism we can take advantage of for hashing. As
+noted in the [KangarooTwelve paper](https://eprint.iacr.org/2016/770.pdf),
+given enough worker threads hashing input chunks and adding their hashes to the
+root, the one thread responsible for hashing the root is eventually going to
+max out its throughput. This happens at a parallelism degree equal to the ratio
+of the chunk size and the hash length, 256 in the case of KangarooTwelve. That
+sounds like an extraordinary number of threads, but consider that one of Bao's
+benchmarks is running on a 96-core AWS machine, and that Bao uses an AVX2
+implementation of BLAKE2b that hashes 4 chunks in parallel per thread. That
+benchmark is hitting parallelism degree 384 today. Also consider that Intel's
+upcoming Cannon Lake generation of processors will probably support the AVX-512
+instruction set (8-way SIMD) on 16 logical cores, for a parallelism degree of
+128 on a single desktop processor.
+
+### Fall back to serial hashing for messages larger than the maximum size.
+
+Many tree modes, including the ones described in the [BLAKE2
+spec](https://blake2.net/blake2.pdf), fall back to a serial mode after the
+input reaches some threshold size. The main benefit is that this allows them to
+specify a small maximum tree height for reduced memory requirements, without
+giving up entirely on handling larger files. Bao isn't following this approach.
+The 2^64 maximum file size is large enough that no realistic application should
+ever manage to hash that many bytes (see below), and its storage requirements
+are small enough that all but the most extremely memory-constrained
+implementations should be able to support the whole tree (see above).
+Implementations that do constrain the tree to reduce the storage requirements
+will either need to guarantee that they'll never exceed their constraints, or
+they'll need to report failure. A fallback serial mode for files larger than
+2^64 bytes would add complexity for questionable practical value.
+
 ### Use a chunk size other than 4096 bytes.
 
 There's an efficiency argument for using a larger chunk size, with several
