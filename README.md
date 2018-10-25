@@ -20,7 +20,7 @@ Why is `bao hash` so fast? The main reason is that a tree hash can use
 multiple threads to handle different parts of the tree in parallel. The
 demo above is from the i5-8250U processor in by laptop, but given enough
 input Bao can occupy any number of cores. In-memory benchmarks on one of
-Amazon's 96-core m5.24xlarge instances measure 60 GB/s of throughput.
+Amazon's 96-core m5.24xlarge instances measure 91 GB/s of throughput.
 Bao is also based on BLAKE2b, which was [designed to outperform
 SHA1](https://blake2.net/), and it includes the [fastest SIMD
 implementation available](https://github.com/oconnor663/blake2b_simd).
