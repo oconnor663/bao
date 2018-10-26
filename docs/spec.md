@@ -124,16 +124,16 @@ assuming that the underlying hash doesn't allow length extension. The second
 attack is prevented by using the last node flag to finalize root nodes, which
 means they cannot collide with any subtree hash in a valid Bao tree.
 
-## Encoding Format
+## Combined Encoding Format
 
-The encoding file format is the contents of the the chunks and parent nodes of
-the tree concatenated together in pre-order (that is a parent, followed by its
-left subtree, followed by its right subtree), with the 64-bit little-endian
-unsigned input length prepended to the very front. This makes the order of
-nodes on disk the same as the order in which a depth-first traversal would
-encounter them, so a reader decoding the tree from beginning to end doesn't
-need to do any seeking. Here's the same example tree above, formatted as an
-encoded file and shown as hex:
+The combined encoding file format is the contents of the the chunks and parent
+nodes of the tree concatenated together in pre-order (that is a parent,
+followed by its left subtree, followed by its right subtree), with the 64-bit
+little-endian unsigned input length prepended to the very front. This makes the
+order of nodes on disk the same as the order in which a depth-first traversal
+would encounter them, so a reader decoding the tree from beginning to end
+doesn't need to do any seeking. Here's the same example tree above, formatted
+as an encoded file and shown as hex:
 
 ```
 input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
@@ -180,17 +180,17 @@ guaranteed by the encoding format:
 
 ## Outboard Encoding Format
 
-The outboard encoding format is the same as above (the "combined" encoding
-format), except that all the chunks are omitted. Whenever the decoder would
-read a chunk, it instead reads the corresponding offset from the original input
-file. This is intended for situations where the benefit of retaining the
-unmodified input file is worth the complexity of reading two separate files.
+The outboard encoding format is the same as the combined encoding format,
+except that all the chunks are omitted. Whenever the decoder would read a
+chunk, it instead reads the corresponding offset from the original input file.
+This is intended for situations where the benefit of retaining the unmodified
+input file is worth the complexity of reading two separate files.
 
 ## Slicing Format
 
-The slicing format is very similar to the enconding format above. The only
-difference is that chunks and parent nodes that wouldn't be encountered in a
-given traversal are omitted. For example, if we slice the tree above starting
+The slicing format is very similar to the combined enconding format above. The
+only difference is that chunks and parent nodes that wouldn't be encountered in
+a given traversal are omitted. For example, if we slice the tree above starting
 at input byte 4096 (the beginning of the second chunk), and request any count
 of bytes less than or equal to 4096 (up to the end of that chunk), the
 resulting slice will be this:
@@ -199,6 +199,10 @@ resulting slice will be this:
 input length    |root parent node  |left parent node  |second chunk
 0120000000000000|49e4b8...03170a...|686ede...686ede...|\x00 * 4096
 ```
+
+Although slices can be extracted from either a combined encoding or an outboard
+encoding, there is no such thing as an "outboard slice". Slices always include
+chunks inline, as the combined encoding does.
 
 Decoding a slice works just like decoding a full encoding. The only difference
 is that in cases where the full decoder would normally seek forward, the slice
