@@ -59,7 +59,7 @@ In addition, the root node -- whether it's a chunk or a parent -- gets the
 following tweaks:
 
 - The input byte length, encoded as a 16-byte little endian integer, is
-  appended to the contents of the root node.
+  appended to it.
 - The **last node** flag is set to true. Note that BLAKE2 supports setting the
   last node flag at any time, even after some input has been hashed.
 
@@ -114,9 +114,9 @@ Implementations may also expose BLAKE2's **secret key**, **salt**, and
 **personalization** parameters through the Bao API. If set, those parameters
 should apply to all nodes in the tree. (See [discussion
 below](#apply-secret-keys-and-other-general-hashing-parameters-to-the-root-node-only).)
-But note that BLAKE2 specifies that key bytes should only be included in leaf
-nodes (chunks), even though the key length applies as associated data to all
-nodes.
+Note carefully that BLAKE2 specifies that key bytes should only be included in
+leaf nodes, even though the key length applies as associated data to every
+node.
 
 ## Security
 
