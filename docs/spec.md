@@ -16,32 +16,49 @@ yet been reviewed. The output may change prior to the 1.0 release.
 ## The Tree Structure
 
 Bao divides the input up into 4096-byte chunks. The final chunk may be shorter,
-but it's never empty unless the input itself is empty. When there's more than
-one chunk, pairs of chunks are joined with a parent node in the level above.
-The contents of a parent node are the concatenated 256-bit BLAKE2b hashes of
-its left and right children, using all default parameters besides the length.
-Those children can be either chunks or, in higher levels of the tree, other
-parent nodes. When there's an odd number of chunks or parent nodes at any level
-of the tree, the rightmost node is raised to the level above unmodified. The
-process of pairing off nodes at each level repeats until there's one root node
-at the topmost level, which is either a parent node or, in the single chunk
-case, that chunk. To hash the root node, there are two extra steps: first the
-total input length as a 64-bit little-endian unsigned integer is appended to
-its contents, and also the BLAKE2 final node flag is set to true. Those steps
-prevent collisions between inputs of different lengths.
+but it's never empty unless the input itself is empty. The chunks are arranged
+as the leaves of a binary tree. All parent nodes have exactly two children, and
+the content of each parent node is the hash of its left child concatenated with
+the hash of its right child. When there's an odd number of nodes in a given
+level of the tree, the rightmost node is raised to the level above. Here's what
+the tree looks like as it grows from 1 to 4 chunks.
 
-The definition above is in an iterative style, but we can also define the
-structure recursively:
+```
+                                     <parent>                   <parent>
+                                      /    \                   /       \
+              <parent>          <parent>  [CHUNK]      <parent>         <parent>
+               /   \             /   \                  /   \            /   \
+[CHUNK]   [CHUNK] [CHUNK]   [CHUNK] [CHUNK]        [CHUNK] [CHUNK]  [CHUNK] [CHUNK]
+```
 
-- If a subtree contains 4096 input bytes or less, the subtree is just a chunk.
-- Otherwise, the subtree is rooted at a parent node, with the input bytes
-  divided between its left and right child subtrees. The number of bytes on the
-  left is largest power of 2 times 4096 that's strictly less than the total.
-  The remainder, always at least 1 byte, goes in the right subtree.
+We can also define the tree recursively:
 
-The recursive rule relies on an important invariant, that every left subtree is
-a perfect binary tree. That is, every left subtree contains a power of 2 number
-of chunks, all on the bottom level.
+- If a tree/subtree contains 4096 input bytes or less, the tree/subtree is just
+  a chunk.
+- Otherwise, the tree/subtree is rooted at a parent node, with the input bytes
+  divided between its left and right child subtrees. The number of input bytes
+  on the left is largest power of 2 times 4096 that's strictly less than the
+  total. The remainder, always at least 1 byte, goes on the right.
+
+Hashing nodes is done with BLAKE2b, using the following parameters:
+
+- **Hash length** is 32.
+- **Fanout** is 2.
+- **Max depth** is 128.
+- **Max leaf length** is 4096.
+- **Node offset** is 0, unchanged from the default. See the [discussion in
+  Design Alternatives](#set-the-node-offset-and-node-depth-parameters-literally).
+- **Node depth** is 0 for chunks and 1 for parent nodes. See the [Security section](#security)
+  and also the [same discussion](#set-the-node-offset-and-node-depth-parameters-literally) as above.
+- **Inner hash length** is 32.
+
+In addition, the root node -- whether it's a chunk or a parent -- gets the
+following tweaks:
+
+- The input byte length, encoded as a 16-byte little endian integer, is
+  appended to the contents of the root node.
+- The **last node** flag is set to true. Note that BLAKE2 supports setting the
+  last node flag at any time, even after some input has been hashed.
 
 Here's an example tree, with 8193 bytes of input that are all zero:
 
@@ -221,7 +238,55 @@ long as input is needed." In practice that means that parents below the root
 are sometimes included in the empty slice and sometimes not. These details may
 change, respecting the two guarantees above.
 
+## Variants
+
+Bao is intended to be a "one size fits most" hash function, and callers aren't
+encouraged to tweak the parameters. However, one of the reasons tree hashes
+haven't been nearly as broadly standardized as regular hashes, is that it's
+hard for all applications to agree on a perfect parameter set. In that light,
+it's somewhat inevitable that someone's going to want to make changes. This
+section is a set of suggestions for how to adjust the underlying BLAKE2
+parameters, to avoid collisions between different versions of the tree.
+
+The **hash length** and **inner hash length** should always be set together.
+For example, if you require a variant with 64 bytes of output instead of 32,
+set both of those parameters to 64.
+
+The **max leaf length** can be adjusted if you require shorter or longer
+leaves. Smaller leaf sizes could potentially allow shorter messages to benefit
+from parallelism. Longer leaf sizes could potentially reduce the parent noded
+overhead. The potential benefits are fairly small in both cases, though, and
+the vast majority of applications shouldn't need to make these adjustments.
+
+If you require a different size for the input byte count, set **max depth**
+appropriately. For example, if you use a 64-bit integer, set max depth to 64.
+If you use a 256-bit integer, set max depth to 255 (the largest value supported
+by BLAKE2). Note that this is independent of the max leaf length. Technically
+increasing the max leaf length lowers the max depth as well, but it's cleaner
+to keep the two separate in the parameter set.
+
 ## Design Alternatives
+
+### Set the node offset and node depth parameters literally.
+
+In the [BLAKE2 spec](https://blake2.net/blake2.pdf), it was originally intended
+that each node would use its unique depth/offset pair as parameters to the hash
+function. The Security section above made the case that that approach isn't
+necessary to prevent collisions, but perhaps there could've been some value in
+sticking to the letter of the spec. There are two main reasons Bao doesn't.
+
+The first reason is that, by allowing identical subtrees to produce the same
+hash, Bao makes it possible to do interesting things with sparse files. For
+example, imagine you need to compute the hash of an entire disk, but you know
+that most of the disk contains all zeros. You can skip most of the work of
+hashing it, by memoizing the hashes of all-zero subtrees with power-of-two
+sizes. That trick generalizes to any pattern of bytes that repeats on a subtree
+boundary. But if we set the node offset parameter differently in every subtree,
+that trick no longer works.
+
+The second reason is simply that tracking these values requires extra
+bookkeeping on the part of the implementation, especially on recursive example
+implementations that are otherwise quite simple.
 
 ### Use a simplified tree mode, like KangarooTwelve does.
 
@@ -467,6 +532,34 @@ for a couple reasons:
 - There are situations where the input length is supposed to be secret,
   particularly when a cryptographic hash is used as a MAC. Publishing it might
   not be acceptable.
+
+
+### Apply secret keys and other general hashing parameters to the root node only.
+
+It's possible that applying general parameters only to the root could make
+certain specialized scenarios more efficient. For example, if you want to
+produce 3 different hashes using 3 different personalization strings, you could
+avoid repeatedly hashing a large input by only re-hashing the root node. Though
+on the other hand, there are also protocols that might rely on parameter tweaks
+to force the caller to really repeat the work, like proof-of-work or
+proof-of-storage schemes.
+
+Regardless of which niche scenario we prefer, the design of BLAKE2 forces our
+choice here. All the hashing parameters other than the last node flag have to
+be applied at the start of hashing. That means they have to be applied to the
+first chunk, before it's clear whether the first chunk is going to be the root
+or not. A design that applied general parameters only at the root would require
+incremental implementations either to hash the first chunk two ways in
+parallel, or to buffer the first chunk and hash it after reading more input.
+Both of those are unacceptable performance costs in time or space. A possible
+compromise could be to apply general parameters to both the root node and the
+first chunk, but that would confuse everyone and satisfy no one.
+
+Note that specialized scenarios like above have plenty of options for
+implementing their own protocols on top of Bao. For example, they could hash a
+large input once with default parameters, and then re-hash the output with
+their own tweaks. Or they could apply a random mask over the input to force
+re-hashing the whole thing. Bao doesn't need to support these cases directly.
 
 ## Other Related Work
 
