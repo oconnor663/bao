@@ -248,30 +248,25 @@ change, respecting the two guarantees above.
 
 ## Variants
 
-Bao is intended to be a "one size fits most" hash function, and callers aren't
-encouraged to tweak the parameters. However, one of the reasons tree hashes
-haven't been nearly as broadly standardized as regular hashes, is that it's
-hard for all applications to agree on a perfect parameter set. In that light,
-it's somewhat inevitable that someone's going to want to make changes. This
-section is a set of suggestions for how to adjust the underlying BLAKE2
-parameters, to avoid collisions between different versions of the tree.
+Bao is intended to be a "one size fits most" hash function, and callers
+shouldn't usually need to tweak the parameters. However, one of the reasons
+tree hashes aren't as broadly standardized as regular hashes, is that it's hard
+for all applications to agree on a perfect parameter set. In that light, it's
+inevitable that some applications will try to make changes. With the goal of at
+least keeping those changes consistent, here are a couple of quasi-official,
+discouraged-but-not-entirely-forbidden changes that some callers might make.
 
 The **hash length** and **inner hash length** should always be set together.
 For example, if you require a variant with 64 bytes of output instead of 32,
 set both of those parameters to 64.
 
 The **max leaf length** can be adjusted if you require shorter or longer
-leaves. Smaller leaf sizes could potentially allow shorter messages to benefit
-from parallelism. Longer leaf sizes could potentially reduce the parent noded
-overhead. The potential benefits are fairly small in both cases, though, and
-the vast majority of applications shouldn't need to make these adjustments.
-
-If you require a different size for the input byte count, set **max depth**
-appropriately. For example, if you use a 64-bit integer, set max depth to 64.
-If you use a 256-bit integer, set max depth to 255 (the largest value supported
-by BLAKE2). Note that this is independent of the max leaf length. Technically
-increasing the max leaf length lowers the max depth as well, but it's cleaner
-to keep the two separate in the parameter set.
+chunks. A smaller chunk size could allow shorter messages to benefit from
+parallelism. A longer chunk size could reduce the parent noded overhead. The
+potential benefits are small in both cases, though, and again the majority of
+applications shouldn't need to make any adjustments. Note that changing the
+leaf length should not affect the max depth parameter; that parameter is based
+on the counter size without including any assumptions about chunk size.
 
 ## Design Alternatives
 
