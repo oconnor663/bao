@@ -107,6 +107,14 @@ $ head -c 8193 /dev/zero | bao hash
 6254a3e86396e4ce264ab45915a7ba5e0aa116d22c7deab04a4e29d3f81492da
 ```
 
+Implementations may also expose BLAKE2's **secret key**, **salt**, and
+**personalization** parameters through the Bao API. If set, those parameters
+should apply to all nodes in the tree. (See [discussion
+below](#apply-secret-keys-and-other-general-hashing-parameters-to-the-root-node-only).)
+But note that BLAKE2 specifies that key bytes should only be included in leaf
+nodes (chunks), even though the key length applies as associated data to all
+nodes.
+
 ## Security
 
 TODO: I need help fleshing this part out. Perhaps we can use the framework from
