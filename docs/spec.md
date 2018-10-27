@@ -5,13 +5,16 @@ yet been reviewed. The output may change prior to the 1.0 release.
 
 ## Contents
 
-- [Tree Structure](#tree-structure)
-- [Security](#security)
-- [Encoding Format](#encoding-format)
-- [Outboard Encoding Format](#outboard-encoding-format)
-- [Slicing Format](#slicing-format)
-- [Design Alternatives](#design-alternatives)
-- [Other Related Work](#other-related-work)
+* [The Tree Structure](#the-tree-structure)
+* [Security](#security)
+* [Combined Encoding Format](#combined-encoding-format)
+* [Outboard Encoding Format](#outboard-encoding-format)
+* [Slicing Format](#slicing-format)
+* [Storage Requirements](#storage-requirements)
+* [Variants](#variants)
+* [Design Alternatives](#design-alternatives)
+* [Other Related Work](#other-related-work)
+
 
 ## The Tree Structure
 
@@ -245,6 +248,29 @@ extracting all parent nodes encountered in the seek, and then read further as
 long as input is needed." In practice that means that parents below the root
 are sometimes included in the empty slice and sometimes not. These details may
 change, respecting the two guarantees above.
+
+## Storage Requirements
+
+Computing the tree hash requires storing at minimum one hash (32 bytes) for
+every level of the tree, in addition to the 336 bytes [required by
+BLAKE2b](https://blake2.net/blake2.pdf). Given the 128-bit length counter at
+the root and the 4096-byte chunk size (2^12), the largest possible well-defined
+Bao tree requires 116 hashes or 3712 bytes of storage overhead.
+
+However, Bao uses a 128-bit counter precisely because filling it is impossible;
+that's security assumption is baked into all 256-bit hash functions.
+Implementations that are concerned about storage space can make much more
+practical assumptions about their largets possible input. For example, the
+largest supported input for SHA-256 is 2^61 bytes, and a Bao input of that size
+requires 49 hashes or 1568 bytes of storage overhead. Implementations can
+safely assume that even if they encounter an input that large, they'll never be
+able to finish hashing it.
+
+Extremely space-constrained implementations that want to use Bao will need to
+define a more aggressive limit for the maximum input size. In some cases, such
+a limit is already provided by the protocol they're implementing. For example,
+the largest possible IPv6 "jumbogram" is 4GiB, and limited to that maximum
+input size Bao's storage overhead would be 20 hashes or 640 bytes.
 
 ## Variants
 
