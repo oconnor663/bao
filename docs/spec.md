@@ -203,17 +203,13 @@ is that in cases where the full decoder would normally seek forward, the slice
 decoder continues reading in series, all the seeking having been taken care of
 by the slice extractor.
 
-Note that requesting a count of 0 bytes is a degenerate case. Only two things
-are specified about this case:
+There are some unspecified edge cases in the slice parameters:
 
-- If decoding is successful, the decoded output must be empty.
-- The slice must include the root node, and the decoder must verify it.
+- A starting point past the end of the input.
+- A byte count larger than the available input after the starting point.
+- A byte count of zero.
 
-Current implementations use an approach like "seek forward unconditionally,
-extracting all parent nodes encountered in the seek, and then read further as
-long as input is needed." In practice that means that parents below the root
-are sometimes included in the empty slice and sometimes not. These details may
-change, respecting the two guarantees above.
+A future version of the spec will settle on the behavior in these cases.
 
 ## Security
 
