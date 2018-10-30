@@ -163,7 +163,7 @@ The `bao` library crate includes `no_std` support if you set
 `default-features = false` in your `Cargo.toml`. Most of the standalone
 functions that don't obviously depend on `std` are available. For
 example, `bao::encode::encode` is available with a single threaded
-implementation, but `bao::encode::encode_to_vec` isn't avialable. Of the
+implementation, but `bao::encode::encode_to_vec` isn't available. Of the
 streaming implementations, only `hash::Writer` is available, because the
 encoding and decoding implementations rely more on the `std::io::{Read,
 Write, Seek}` interfaces. If there are any callers that want to do

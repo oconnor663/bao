@@ -55,7 +55,7 @@ Hashing nodes is done with BLAKE2b, using the following parameters:
 In addition, the root node -- whether it's a chunk or a parent -- is hashed
 with two tweaks:
 
-- The input byte length, encoded as a 16-byte little endian integer, is
+- The input byte length, encoded as a 16-byte little-endian integer, is
   appended to the bytes of the node.
 - The **last node** BLAKE2 finalization flag is set to true. Note that BLAKE2
   supports setting the last node flag at any time, so hashing the first chunk
@@ -111,7 +111,7 @@ $ head -c 8193 /dev/zero | bao hash
 
 ## Combined Encoding Format
 
-The combined encoding file format is the contents of the the chunks and parent
+The combined encoding file format is the contents of the chunks and parent
 nodes of the tree concatenated together in pre-order (that is a parent,
 followed by its left subtree, followed by its right subtree), with the 64-bit
 little-endian unsigned input length prepended to the very front. This makes the
@@ -173,7 +173,7 @@ input file is worth the complexity of reading two separate files.
 
 ## Slice Format
 
-The slice format is very similar to the combined enconding format above. The
+The slice format is very similar to the combined encoding format above. The
 only difference is that chunks and parent nodes that wouldn't be encountered in
 a given traversal are omitted. For example, if we slice the tree above starting
 at input byte 4096 (the beginning of the second chunk), and request any count
@@ -254,7 +254,7 @@ aborting, and that could lead to collisions in practice. Although we chose the
 counter size to be impossible to overflow with serial input, a clever sparse
 file application could exploit symmetry in the interior of the tree to hash an
 astronomically large file of mostly zeros (more discussion of sparse files in
-the Design Rationales below). Also, future tree hashes modelled on Bao might
+the Design Rationales below). Also, future tree hashes modeled on Bao might
 choose to use a smaller counter, without realizing that the size of the counter
 is a security requirement. Relying on domain separation as we do above is more
 robust in all of these ways, and it has no performance cost.
@@ -287,7 +287,7 @@ Bao tree requires 116 hashes or 3712 bytes of storage overhead.
 However, Bao uses a 128-bit counter precisely because filling it is impossible;
 that security assumption is baked into all 256-bit hash functions.
 Implementations that are concerned about storage space can make much more
-practical assumptions about their largets possible input. For example, the
+practical assumptions about their largest possible input. For example, the
 largest supported input for SHA-256 is 2^61 bytes, and a Bao input of that size
 requires 49 hashes or 1568 bytes of storage overhead. Implementations can
 safely assume that even if they encounter an input that large, they'll never be
@@ -297,7 +297,7 @@ Extremely space-constrained implementations that want to use Bao will need to
 define a more aggressive limit for the maximum input size and report failure if
 they exceed that size. In some cases, such a limit is already provided by the
 protocol they're implementing. For example, the largest possible IPv6
-"jumbogram" is 4GiB, and limited to that maximum input size Bao's storage
+"jumbogram" is 4 GiB, and limited to that maximum input size Bao's storage
 overhead would be 20 hashes or 640 bytes.
 
 ## Design Rationales and Open Questions
