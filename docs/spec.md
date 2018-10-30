@@ -251,7 +251,7 @@ the root and the 4096-byte chunk size (2^12), the largest possible well-defined
 Bao tree requires 116 hashes or 3712 bytes of storage overhead.
 
 However, Bao uses a 128-bit counter precisely because filling it is impossible;
-that's security assumption is baked into all 256-bit hash functions.
+that security assumption is baked into all 256-bit hash functions.
 Implementations that are concerned about storage space can make much more
 practical assumptions about their largets possible input. For example, the
 largest supported input for SHA-256 is 2^61 bytes, and a Bao input of that size
@@ -368,7 +368,10 @@ BLAKE2b that hashes 4 chunks in parallel per thread. That benchmark is hitting
 parallelism degree 384 today. Also consider that Intel's upcoming Cannon Lake
 generation of processors will probably support the AVX-512 instruction set
 (8-way SIMD) on 16 logical cores, for a parallelism degree of 128 on a
-mainstream desktop processor.
+mainstream desktop processor. Now to be fair, this arithmetic is cheating
+badly, because logical cores aren't physical cores, and because hashing 4
+inputs with SIMD isn't 4x as fast as hashing 1 input. But it's flirting in the
+general direction of the truth.
 
 ### Should we fall back to serial hashing for messages above some maximum size?
 
