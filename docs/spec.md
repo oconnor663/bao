@@ -65,51 +65,57 @@ That root node hash is the output of Bao. Here's an example tree, with 8193
 bytes of input that are all zero:
 
 ```
-                        root parent hash=6254a3...
-                        <49e4b8...03170a...>
+                        root parent hash=5dde07...
+                        <b88c24...f9ec85...>
                                 /   \
                                /     \
-            parent hash=49e4b8...   chunk hash=03170a...
-            <686ede...686ede...>    [\x00]
+            parent hash=b88c24...   chunk hash=f9ec85...
+            <a25e9d...a25e9d...>    [\x00]
                     /   \
                    /     \
-chunk hash: 686ede...   chunk hash: 686ede...
+chunk hash: a25e9d...   chunk hash: a25e9d...
 [\x00 * 4096]           [\x00 * 4096]
 ```
 
 We can verify those values on the command line using the `b2sum` utility from
 https://github.com/oconnor663/blake2b_simd, which supports the necessary flags
-(the coreutils `b2sum` doesn't support `--last-node`):
+(the coreutils `b2sum` doesn't expose the parameters we need):
 
 ```bash
-# Define a short alias for parsing hex.
+# Define some aliases for hashing nodes. Note that --length and
+# --inner-hash-length are in bits, not bytes, for compatibility with coreutils.
+$ alias hash_node='b2sum --length=256 --fanout=2 --max-depth=128 --max-leaf-length=4096 --inner-hash-length=256'
+$ alias hash_chunk='hash_node --node-depth=0'
+$ alias hash_parent='hash_node --node-depth=1'
+
+# Define an alias for parsing hex.
 $ alias unhex='python3 -c "import sys, binascii; sys.stdout.buffer.write(binascii.unhexlify(sys.argv[1]))"'
 
 # Compute the hash of the first and second chunks, which are the same.
-$ head -c 4096 /dev/zero | b2sum -l256
-686ede9288c391e7e05026e56f2f91bfd879987a040ea98445dabc76f55b8e5f  -
-$ big_chunk_hash=686ede9288c391e7e05026e56f2f91bfd879987a040ea98445dabc76f55b8e5f
+$ head -c 4096 /dev/zero | hash_chunk
+a25e9d5e1234d18300035f6536bfaa8f9f212a4ff7df5d2dedcdb3ada6401d9c  -
+$ big_chunk_hash=a25e9d5e1234d18300035f6536bfaa8f9f212a4ff7df5d2dedcdb3ada6401d9c
 
 # Compute the hash of the third chunk, which is different.
-$ head -c 1 /dev/zero | b2sum -l256
-03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314  -
-$ small_chunk_hash=03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314
+$ head -c 1 /dev/zero | hash_chunk
+f9ec85fd293fd5d0ea0698a4d86758d5ee11dc3c02be26378d94930496e191e5  -
+$ small_chunk_hash=f9ec85fd293fd5d0ea0698a4d86758d5ee11dc3c02be26378d94930496e191e5
 
 # Compute the hash of the first two chunks' parent node.
-$ unhex $big_chunk_hash$big_chunk_hash | b2sum -l256
-49e4b80d5b7d8d93224825f26c45987e107bbf2f871d4e5636ac550ff125e082  -
-$ left_parent_hash=49e4b80d5b7d8d93224825f26c45987e107bbf2f871d4e5636ac550ff125e082
+$ unhex $big_chunk_hash$big_chunk_hash | hash_parent
+b88c24a32c8e780ae9e350fc815fb698cacb6da2ae38c52f020914fb6a79cdbc  -
+$ left_parent_hash=b88c24a32c8e780ae9e350fc815fb698cacb6da2ae38c52f020914fb6a79cdbc
 
-# Define another alias converting the input length to 8-byte little-endian hex.
-$ alias hexint='python3 -c "import sys; print(int(sys.argv[1]).to_bytes(8, \"little\").hex())"'
+# Define another alias converting the input length to 16-byte little-endian hex.
+$ alias hexint='python3 -c "import sys; print(int(sys.argv[1]).to_bytes(16, \"little\").hex())"'
 
 # Compute the hash of the root node, with the length suffix and last node flag.
-$ unhex $left_parent_hash$small_chunk_hash$(hexint 8193) | b2sum -l256 --last-node
-6254a3e86396e4ce264ab45915a7ba5e0aa116d22c7deab04a4e29d3f81492da  -
+$ unhex $left_parent_hash$small_chunk_hash$(hexint 8193) | hash_parent --last-node
+5dde07a94c1294dac9816a2e7d7aff2cd23ebe83fe686435e33bbdc6270322c9  -
 
 # Verify that this matches the Bao hash of the same input.
 $ head -c 8193 /dev/zero | bao hash
-6254a3e86396e4ce264ab45915a7ba5e0aa116d22c7deab04a4e29d3f81492da
+5dde07a94c1294dac9816a2e7d7aff2cd23ebe83fe686435e33bbdc6270322c9
 ```
 
 ## Combined Encoding Format
@@ -124,8 +130,8 @@ doesn't need to do any seeking. Here's the same example tree above, formatted
 as an encoded file and shown as hex:
 
 ```
-input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
-0120000000000000|49e4b8...03170a...|686ede...686ede...|\x00 * 4096|\x00 * 4096 |\x00
+input length                    |root parent node  |left parent node  |first chunk|second chunk|last chunk
+01200000000000000000000000000000|b88c24...f9ec85...|a25e9d...a25e9d...|\x00 * 4096|\x00 * 4096 |\x00
 ```
 
 Note carefully that this is the mirror of how the root node is hashed. Hashing
@@ -184,8 +190,8 @@ of bytes less than or equal to 4096 (up to the end of that chunk), the
 resulting slice will be this:
 
 ```
-input length    |root parent node  |left parent node  |second chunk
-0120000000000000|49e4b8...03170a...|686ede...686ede...|\x00 * 4096
+input length                    |root parent node  |left parent node  |second chunk
+01200000000000000000000000000000|b88c24...f9ec85...|a25e9d...a25e9d...|\x00 * 4096
 ```
 
 Although slices can be extracted from either a combined encoding or an outboard
