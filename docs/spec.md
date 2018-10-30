@@ -6,10 +6,10 @@ yet been reviewed. The output may change prior to the 1.0 release.
 ## Contents
 
 * [The Tree Structure](#the-tree-structure)
-* [Security](#security)
 * [Combined Encoding Format](#combined-encoding-format)
 * [Outboard Encoding Format](#outboard-encoding-format)
-* [Slicing Format](#slicing-format)
+* [Slice Format](#slice-format)
+* [Security](#security)
 * [Storage Requirements](#storage-requirements)
 * [Design Rationales and Open Questions](#design-rationales-and-open-questions)
 * [Other Related Work](#other-related-work)
@@ -48,10 +48,8 @@ Hashing nodes is done with BLAKE2b, using the following parameters:
 - **Fanout** is 2.
 - **Max depth** is 128.
 - **Max leaf length** is 4096.
-- **Node offset** is 0, unchanged from the default. See the discussion in
-  Design Rationales.
-- **Node depth** is 0 for chunks and 1 for parent nodes. See the [Security
-  section](#security) and also the same discussion as above.
+- **Node offset** is always 0, unchanged from the default.
+- **Node depth** is 0 for all chunks and 1 for all parent nodes.
 - **Inner hash length** is equal to hash length.
 
 In addition, the root node -- whether it's a chunk or a parent -- is hashed
@@ -110,40 +108,6 @@ $ unhex $left_parent_hash$small_chunk_hash$(hexint 8193) | b2sum -l256 --last-no
 $ head -c 8193 /dev/zero | bao hash
 6254a3e86396e4ce264ab45915a7ba5e0aa116d22c7deab04a4e29d3f81492da
 ```
-
-## Security
-
-TODO: I need help fleshing this part out. Perhaps we can use the framework from
-[Bertoni et al, *Sufficient conditions for sound tree and sequential hashing
-modes* (2009)](https://eprint.iacr.org/2009/210.pdf) to construct a proper
-proof. Bao doesn't currently domain-separate the inner parent nodes from the
-input chunks though (only the root is domain-separated), and that might be a
-precondition of the framework. See Design Rationales below.
-
-The most important security requirement for a tree mode is that it doesn't
-create any "new" collisions, that is, collisions in the tree hash that don't
-follow from a collision in the underlying hash function. Here's the sketch of a
-proof that Bao doesn't create any new collisions:
-
-1. No two inputs can produce a new collision in Bao if they are a different
-   length. The last 8 bytes of input to the final hashing step are the input
-   length. If the resulting root hashes are the same, that must be a collision
-   in the underlying hash. (Note that this assumes the length doesn't overflow.
-   See Design Rationales for more discussion.)
-2. If two inputs are the same length, their Bao trees have an identical
-   structure. This follows from the defintion of Bao, which determines the tree
-   structure entirely from the input length.
-3. If two different inputs are mapped to identical tree structures, and they
-   have a colliding root hash, then some pair of corresponding nodes between
-   the two trees must form a collision in the underlying hash.
-
-Another security requirement is that length extension shouldn't be possible. An
-attacker has two options for attempting an extension: they can try to append
-bytes onto the root node itself, or they can build a larger tree that
-incorporates the root hash as a subtree. The first attack is prevented by
-assuming that the underlying hash doesn't allow length extension. The second
-attack is prevented by using the last node flag to finalize root nodes, which
-means they cannot collide with any subtree hash in a valid Bao tree.
 
 ## Combined Encoding Format
 
@@ -207,9 +171,9 @@ chunk, it instead reads the corresponding offset from the original input file.
 This is intended for situations where the benefit of retaining the unmodified
 input file is worth the complexity of reading two separate files.
 
-## Slicing Format
+## Slice Format
 
-The slicing format is very similar to the combined enconding format above. The
+The slice format is very similar to the combined enconding format above. The
 only difference is that chunks and parent nodes that wouldn't be encountered in
 a given traversal are omitted. For example, if we slice the tree above starting
 at input byte 4096 (the beginning of the second chunk), and request any count
@@ -241,6 +205,76 @@ extracting all parent nodes encountered in the seek, and then read further as
 long as input is needed." In practice that means that parents below the root
 are sometimes included in the empty slice and sometimes not. These details may
 change, respecting the two guarantees above.
+
+## Security
+
+When designing a tree mode, there are pitfalls that can compromise the security
+of the underlying hash. For example, if one input produces a tree with bytes X
+at the root node, and we choose another input to be those same bytes X, do
+those two inputs result in the same root hash? If so, that's a hash collision,
+regardless of the security of the underlying hash function. Or if one input
+results in a root hash Y, could Y be incorporated as a subtree hash in another
+tree without knowing the input that produced it? If so, that's a length
+extension, again regardless of the properties of the underlying hash. There are
+many possible variants of these problems.
+
+In [*Sufficient conditions for sound tree and sequential hashing
+modes*](https://eprint.iacr.org/2009/210.pdf) (2009), Bertoni et al. develop a
+minimal set of requirements for a tree mode, to prevent attacks like the above.
+This section describes how Bao satisfies those requirements. They are:
+
+1. **Tree decodability.** The exact definition of this property is fairly
+   technical, but the gist of it is that it needs to be impossible to take a
+   valid tree, add more child nodes to it somewhere, and wind up with another
+   valid tree.
+2. **Message completeness.** It needs to be possible to reconstruct the
+   original message from the tree.
+3. **Final-node separability.** Again the exact definition is fairly technical,
+   but the gist is that it needs to be impossible for any root node and any
+   non-root node to have the same hash.
+
+We ensure **tree decodability** by by domain-separating parent nodes from leaf
+nodes (chunks) with the **node depth** parameter. BLAKE2's parameters are
+functionally similar to the frame bits used in the paper, in that two inputs
+with different parameters always produce a different hash, though the
+parameters are implemented as tweaks to the IV rather than concatenating them
+with the input. Because chunks are domain-separated from parent nodes, adding
+children to a chunk is always invalid. That, coupled with the fact that parent
+nodes are always full and never have room for more children, means that adding
+nodes to a valid tree is always invalid.
+
+Note that we could have established tree decodability without relying on domain
+separation, by referring to the length counter appended to the root node. Since
+the layout of the tree is entirely determined by the input length, adding
+children without changing the length can never be valid. However, this approach
+raises troubling questions about what happens when the length counter
+overflows. It's easy to say in theory that such trees would be invalid, but
+implementations in the real world might tend to produce them rather than
+aborting, and that could lead to collisions in practice. Although we chose the
+counter size to be impossible to overflow with serial input, a clever sparse
+file application could exploit symmetry in the interior of the tree to hash an
+astronomically large file of mostly zeros (more discussion of sparse files in
+the Design Rationales below). Also, future tree hashes modelled on Bao might
+choose to use a smaller counter, without realizing that the size of the counter
+is a security requirement. Relying on domain separation as we do above is more
+robust in all of these ways, and it has no performance cost.
+
+**Message completeness** is of course a basic design requirement of the
+encoding format, and all the bits of the format are included in the tree. (The
+format swaps the position of the length counter to the front, which makes it
+possible to reconstruct the tree from a flat file, but it doesn't include any
+extra bits.) Message completeness would hold even without appending the input
+length to the root node, because the input would be the concatenation of all
+the leaves.
+
+We ensure **final-node separability** by domain-separating the root node from
+the rest of the tree with the **final node flag**. BLAKE2's final node flag is
+similar to its other parameters, except that it's an input to the last call to
+the compression function rather than a tweak to the IVs. In practice, that
+allows an implementation to start hashing the first chunk immediately rather
+than buffering it, and to set the final node flag at the end if the first chunk
+turns out to be the only chunk and therefore the root. This is also why hashing
+appends the length counter to the root rather than prepending it.
 
 ## Storage Requirements
 
@@ -331,9 +365,9 @@ of bytes that repeats on a subtree boundary. But if we set the node offset
 parameter differently in every subtree, memoizing no longer helps.
 
 We're also considering departing from the BLAKE2 spec to implement keying
-(above), so there might not be much value in sticking closely to it here.
-Computing these values would also require yet another tricky bit twiddling
-algorithm over the chunk index.
+(above), so there might not be much value in sticking closely to it here. And
+computing these values would require even more "cute tricks" in a
+space-efficient incremental implementation.
 
 ### Could we use a simpler tree mode, like KangarooTwelve does?
 
