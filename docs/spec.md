@@ -5,7 +5,7 @@ yet been reviewed. The output may change prior to the 1.0 release.
 
 ## Contents
 
-* [The Tree Structure](#the-tree-structure)
+* [Tree Structure](#tree-structure)
 * [Combined Encoding Format](#combined-encoding-format)
 * [Outboard Encoding Format](#outboard-encoding-format)
 * [Slice Format](#slice-format)
@@ -15,7 +15,7 @@ yet been reviewed. The output may change prior to the 1.0 release.
 * [Other Related Work](#other-related-work)
 
 
-## The Tree Structure
+## Tree Structure
 
 Bao divides the input up into 4096-byte chunks. The final chunk may be shorter,
 but it's never empty unless the input itself is empty. The chunks are arranged
@@ -65,13 +65,16 @@ That root node hash is the output of Bao. Here's an example tree, with 8193
 bytes of input that are all zero:
 
 ```
-                            [49e4b8...03170a...](root hash=6254a3...)
-                                                /   \
-                                               /     \
-             [686ede...686ede...](hash=49e4b8...)   [\x00](hash=03170a...)
-                            /   \
-                           /     \
-[\x00 * 4096](hash=686ede...)   [\x00 * 4096](hash=686ede...)
+                        root parent hash=6254a3...
+                        <49e4b8...03170a...>
+                                /   \
+                               /     \
+            parent hash=49e4b8...   chunk hash=03170a...
+            <686ede...686ede...>    [\x00]
+                    /   \
+                   /     \
+chunk hash: 686ede...   chunk hash: 686ede...
+[\x00 * 4096]           [\x00 * 4096]
 ```
 
 We can verify those values on the command line using the `b2sum` utility from
