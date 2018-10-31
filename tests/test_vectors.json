@@ -3,262 +3,262 @@
     "hash": [
         {
             "input_len": 0,
-            "bao_hash": "7fbc7935377cde65bfa79ea5cacfa5033b9917d51686d69d0789bb2c85461181"
+            "bao_hash": "beea85195d6c4dfbbdce06c14787ba0ff8bb14bb84f7eda945c11ca49feeda2a"
         },
         {
             "input_len": 1,
-            "bao_hash": "f3adec60916a92ab260edcd4bdd800feed2ef1e8abca124759f66137debd3399"
+            "bao_hash": "780b12fa0f57bf0e8e205a18bcce2544d924ee5e5fdd8d013a01cb96769d2d8c"
         },
         {
             "input_len": 4095,
-            "bao_hash": "11a23e48bb75f792f09a5d2f36904e9c123431d49b9ddd60561731de21aaa7ec"
+            "bao_hash": "def1fb97598102578d6e434e216a354bc3bc5440942fd8b6ad09d5cf1adcfd8a"
         },
         {
             "input_len": 4096,
-            "bao_hash": "d6c016179fd3671231d1ee3663ed62dc44f2991dc659688cee922a9703ef83a5"
+            "bao_hash": "987329a7ba78b2180ea998c6f0380a22bea49a8cf66c6011e618a7b2c1918a2b"
         },
         {
             "input_len": 4097,
-            "bao_hash": "3bb3401f48034d5d3271b4c801a405dfdd9074227b405b28d00e02135cd000d0"
+            "bao_hash": "e8a4411cf243540b6eb7081c49db1013710e54f85afd65a8e2908923d9d5d087"
         },
         {
             "input_len": 8191,
-            "bao_hash": "ef80e8214b069c9617bd85a04ca1bd16b52e6beda481ee4f7e22b74a23b5ecd8"
+            "bao_hash": "5f8f3009660ca81e4aa1320c91921ccd002aba014ea0288a9f383501debb41ae"
         },
         {
             "input_len": 8192,
-            "bao_hash": "a4303d46263fd0573e0aae357ba7e00b218e14497e9eaf39b3ebf837498e6132"
+            "bao_hash": "35116f46a317a9364c8f111f4ea88fa2fa2226921d7879e876dfb63db5df18a0"
         },
         {
             "input_len": 8193,
-            "bao_hash": "f2c6f4dc4f9db960dbf1001598fac570a58e238cec486376d66d014cef31c2fb"
+            "bao_hash": "c92d63db15f0567c8adae35d444ea21cf0a81fc4ec9fb8d981d40ab390b3dba6"
         },
         {
             "input_len": 12287,
-            "bao_hash": "967fe3124a131a38a1bcf0c4355930a4f58b11e087650ea85366f999599cee5a"
+            "bao_hash": "f5c9789891883c19831d4c3904d37d41345a9788f33d27e6a5accb891c559dcd"
         },
         {
             "input_len": 12288,
-            "bao_hash": "2c55be6aafc4a4c5a16151504a1b8cd95fc48b086a92734ac71f03ffd0b3cca7"
+            "bao_hash": "d83023c83abe84480316469d529fa2aec0759e1715bb9ff0097e6ca534a3e710"
         },
         {
             "input_len": 12289,
-            "bao_hash": "95bbc4200b6f3ddfe2b8014235eaa44a1b0996d13fb2cc6aa44ccc3b66a1a6d1"
+            "bao_hash": "d64528c298ca0067605e078bbaa64dd8996d06c433b7d367b941c30c26b3ec84"
         },
         {
             "input_len": 45056,
-            "bao_hash": "3a257e80f38aa936ab55b4d7a1e0b3ee51f7419d7fa39b0cd542b6297672731b"
+            "bao_hash": "f1388f34eaa17eb7e54d758883a5bf5434a51078d9c1002613f72470b4b8f21d"
         },
         {
             "input_len": 53248,
-            "bao_hash": "524a41999754bc3106117231f19f8fd00ad67fb7300dee20995668612c323eae"
+            "bao_hash": "6c213425c51cd2343f8d92c3d8c6147ca92720a8305cbb469ac8d115bcceb76c"
         }
     ],
     "encode": [
         {
             "input_len": 0,
-            "output_len": 16,
-            "bao_hash": "7fbc7935377cde65bfa79ea5cacfa5033b9917d51686d69d0789bb2c85461181",
-            "encoded_blake2b": "463be1d58a72e9618ea59884367c4358",
+            "output_len": 8,
+            "bao_hash": "beea85195d6c4dfbbdce06c14787ba0ff8bb14bb84f7eda945c11ca49feeda2a",
+            "encoded_blake2b": "c804ce198ec337e3dc762bdd1a09aece",
             "corruptions": [
                 0
             ]
         },
         {
             "input_len": 1,
-            "output_len": 17,
-            "bao_hash": "f3adec60916a92ab260edcd4bdd800feed2ef1e8abca124759f66137debd3399",
-            "encoded_blake2b": "f71f1094e02f19b68072c953e1a0aed8",
+            "output_len": 9,
+            "bao_hash": "780b12fa0f57bf0e8e205a18bcce2544d924ee5e5fdd8d013a01cb96769d2d8c",
+            "encoded_blake2b": "66fee2554b39a75dd893612ae0e7c070",
             "corruptions": [
                 0,
-                16
+                8
             ]
         },
         {
             "input_len": 4095,
-            "output_len": 4111,
-            "bao_hash": "11a23e48bb75f792f09a5d2f36904e9c123431d49b9ddd60561731de21aaa7ec",
-            "encoded_blake2b": "36e3c71da6e3b16644bff2042c194467",
+            "output_len": 4103,
+            "bao_hash": "def1fb97598102578d6e434e216a354bc3bc5440942fd8b6ad09d5cf1adcfd8a",
+            "encoded_blake2b": "537c37402ee3b327363a07876763726f",
             "corruptions": [
                 0,
-                16
+                8
             ]
         },
         {
             "input_len": 4096,
-            "output_len": 4112,
-            "bao_hash": "d6c016179fd3671231d1ee3663ed62dc44f2991dc659688cee922a9703ef83a5",
-            "encoded_blake2b": "4d81b01262552702dedf7f2b765f0aaa",
+            "output_len": 4104,
+            "bao_hash": "987329a7ba78b2180ea998c6f0380a22bea49a8cf66c6011e618a7b2c1918a2b",
+            "encoded_blake2b": "2fd251b18c4f92a28f4f1b2eead9bff3",
             "corruptions": [
                 0,
-                16
+                8
             ]
         },
         {
             "input_len": 4097,
-            "output_len": 4177,
-            "bao_hash": "3bb3401f48034d5d3271b4c801a405dfdd9074227b405b28d00e02135cd000d0",
-            "encoded_blake2b": "4478686615f09759cc94b6b896daa34e",
+            "output_len": 4169,
+            "bao_hash": "e8a4411cf243540b6eb7081c49db1013710e54f85afd65a8e2908923d9d5d087",
+            "encoded_blake2b": "ca56890f8cb3c98dff4ef089df193a09",
             "corruptions": [
                 0,
-                16,
-                80,
-                4176
+                8,
+                72,
+                4168
             ]
         },
         {
             "input_len": 8191,
-            "output_len": 8271,
-            "bao_hash": "ef80e8214b069c9617bd85a04ca1bd16b52e6beda481ee4f7e22b74a23b5ecd8",
-            "encoded_blake2b": "01ef9a88eb50cf49425f940fa0238295",
+            "output_len": 8263,
+            "bao_hash": "5f8f3009660ca81e4aa1320c91921ccd002aba014ea0288a9f383501debb41ae",
+            "encoded_blake2b": "593307db8740c35e0c09e37a45984077",
             "corruptions": [
                 0,
-                16,
-                80,
-                4176
+                8,
+                72,
+                4168
             ]
         },
         {
             "input_len": 8192,
-            "output_len": 8272,
-            "bao_hash": "a4303d46263fd0573e0aae357ba7e00b218e14497e9eaf39b3ebf837498e6132",
-            "encoded_blake2b": "0a1cf7147110a81aae1e9406fe859343",
+            "output_len": 8264,
+            "bao_hash": "35116f46a317a9364c8f111f4ea88fa2fa2226921d7879e876dfb63db5df18a0",
+            "encoded_blake2b": "7e35d269264b56ccc84f513b1239c0eb",
             "corruptions": [
                 0,
-                16,
-                80,
-                4176
+                8,
+                72,
+                4168
             ]
         },
         {
             "input_len": 8193,
-            "output_len": 8337,
-            "bao_hash": "f2c6f4dc4f9db960dbf1001598fac570a58e238cec486376d66d014cef31c2fb",
-            "encoded_blake2b": "623e01ed8ac9d665362db09a797a59fb",
+            "output_len": 8329,
+            "bao_hash": "c92d63db15f0567c8adae35d444ea21cf0a81fc4ec9fb8d981d40ab390b3dba6",
+            "encoded_blake2b": "61758dd9d06e54b67e7695a3d9ece154",
             "corruptions": [
                 0,
-                16,
-                80,
-                144,
-                4240,
-                8336
+                8,
+                72,
+                136,
+                4232,
+                8328
             ]
         },
         {
             "input_len": 12287,
-            "output_len": 12431,
-            "bao_hash": "967fe3124a131a38a1bcf0c4355930a4f58b11e087650ea85366f999599cee5a",
-            "encoded_blake2b": "58be023357343bbfb88aa95a15a8a848",
+            "output_len": 12423,
+            "bao_hash": "f5c9789891883c19831d4c3904d37d41345a9788f33d27e6a5accb891c559dcd",
+            "encoded_blake2b": "0c2f9064bd586d46087b7035f0c5d084",
             "corruptions": [
                 0,
-                16,
-                80,
-                144,
-                4240,
-                8336
+                8,
+                72,
+                136,
+                4232,
+                8328
             ]
         },
         {
             "input_len": 12288,
-            "output_len": 12432,
-            "bao_hash": "2c55be6aafc4a4c5a16151504a1b8cd95fc48b086a92734ac71f03ffd0b3cca7",
-            "encoded_blake2b": "afa7f4aff9737cb1ac15cf8e804e0757",
+            "output_len": 12424,
+            "bao_hash": "d83023c83abe84480316469d529fa2aec0759e1715bb9ff0097e6ca534a3e710",
+            "encoded_blake2b": "56da276fd19c2f1608ba5fd94dbeffaf",
             "corruptions": [
                 0,
-                16,
-                80,
-                144,
-                4240,
-                8336
+                8,
+                72,
+                136,
+                4232,
+                8328
             ]
         },
         {
             "input_len": 12289,
-            "output_len": 12497,
-            "bao_hash": "95bbc4200b6f3ddfe2b8014235eaa44a1b0996d13fb2cc6aa44ccc3b66a1a6d1",
-            "encoded_blake2b": "b3ad7e72927eb1450eec645836bd450a",
+            "output_len": 12489,
+            "bao_hash": "d64528c298ca0067605e078bbaa64dd8996d06c433b7d367b941c30c26b3ec84",
+            "encoded_blake2b": "efcfe680ada85a9c4a9c425ba4d90293",
             "corruptions": [
                 0,
-                16,
-                80,
-                144,
-                4240,
-                8336,
-                8400,
-                12496
+                8,
+                72,
+                136,
+                4232,
+                8328,
+                8392,
+                12488
             ]
         },
         {
             "input_len": 45056,
-            "output_len": 45712,
-            "bao_hash": "3a257e80f38aa936ab55b4d7a1e0b3ee51f7419d7fa39b0cd542b6297672731b",
-            "encoded_blake2b": "11930985a9f0802e7f2fac3ef83ce05d",
+            "output_len": 45704,
+            "bao_hash": "f1388f34eaa17eb7e54d758883a5bf5434a51078d9c1002613f72470b4b8f21d",
+            "encoded_blake2b": "dc3b39ee890a44b6d499f9a2b8d8ad2f",
             "corruptions": [
                 0,
-                16,
-                80,
-                144,
-                208,
-                272,
-                4368,
-                8464,
-                8528,
-                12624,
-                16720,
-                16784,
-                16848,
-                20944,
-                25040,
-                25104,
-                29200,
-                33296,
-                33360,
-                33424,
-                37520,
-                41616
+                8,
+                72,
+                136,
+                200,
+                264,
+                4360,
+                8456,
+                8520,
+                12616,
+                16712,
+                16776,
+                16840,
+                20936,
+                25032,
+                25096,
+                29192,
+                33288,
+                33352,
+                33416,
+                37512,
+                41608
             ]
         },
         {
             "input_len": 53248,
-            "output_len": 54032,
-            "bao_hash": "524a41999754bc3106117231f19f8fd00ad67fb7300dee20995668612c323eae",
-            "encoded_blake2b": "a8497cac4e9271968ed4c89623ac1294",
+            "output_len": 54024,
+            "bao_hash": "6c213425c51cd2343f8d92c3d8c6147ca92720a8305cbb469ac8d115bcceb76c",
+            "encoded_blake2b": "bbaef760f48a8b328ed49d3c30cfb971",
             "corruptions": [
                 0,
-                16,
-                80,
-                144,
-                208,
-                272,
-                4368,
-                8464,
-                8528,
-                12624,
-                16720,
-                16784,
-                16848,
-                20944,
-                25040,
-                25104,
-                29200,
-                33296,
-                33360,
-                33424,
-                33488,
-                37584,
-                41680,
-                41744,
-                45840,
-                49936
+                8,
+                72,
+                136,
+                200,
+                264,
+                4360,
+                8456,
+                8520,
+                12616,
+                16712,
+                16776,
+                16840,
+                20936,
+                25032,
+                25096,
+                29192,
+                33288,
+                33352,
+                33416,
+                33480,
+                37576,
+                41672,
+                41736,
+                45832,
+                49928
             ]
         }
     ],
     "outboard": [
         {
             "input_len": 0,
-            "output_len": 16,
-            "bao_hash": "7fbc7935377cde65bfa79ea5cacfa5033b9917d51686d69d0789bb2c85461181",
-            "encoded_blake2b": "463be1d58a72e9618ea59884367c4358",
+            "output_len": 8,
+            "bao_hash": "beea85195d6c4dfbbdce06c14787ba0ff8bb14bb84f7eda945c11ca49feeda2a",
+            "encoded_blake2b": "c804ce198ec337e3dc762bdd1a09aece",
             "outboard_corruptions": [
                 0
             ],
@@ -266,9 +266,9 @@
         },
         {
             "input_len": 1,
-            "output_len": 16,
-            "bao_hash": "f3adec60916a92ab260edcd4bdd800feed2ef1e8abca124759f66137debd3399",
-            "encoded_blake2b": "3ba80a3778f04ebf45e806d19a052025",
+            "output_len": 8,
+            "bao_hash": "780b12fa0f57bf0e8e205a18bcce2544d924ee5e5fdd8d013a01cb96769d2d8c",
+            "encoded_blake2b": "9ea2d098b5f70192f96c06f38d3fbc97",
             "outboard_corruptions": [
                 0
             ],
@@ -278,9 +278,9 @@
         },
         {
             "input_len": 4095,
-            "output_len": 16,
-            "bao_hash": "11a23e48bb75f792f09a5d2f36904e9c123431d49b9ddd60561731de21aaa7ec",
-            "encoded_blake2b": "b906bd646b6f9eb456edd77afd2a754e",
+            "output_len": 8,
+            "bao_hash": "def1fb97598102578d6e434e216a354bc3bc5440942fd8b6ad09d5cf1adcfd8a",
+            "encoded_blake2b": "70bfd7a0c7e5055567253658340d4783",
             "outboard_corruptions": [
                 0
             ],
@@ -290,9 +290,9 @@
         },
         {
             "input_len": 4096,
-            "output_len": 16,
-            "bao_hash": "d6c016179fd3671231d1ee3663ed62dc44f2991dc659688cee922a9703ef83a5",
-            "encoded_blake2b": "3b9a2022bc536b3e77b4023784162136",
+            "output_len": 8,
+            "bao_hash": "987329a7ba78b2180ea998c6f0380a22bea49a8cf66c6011e618a7b2c1918a2b",
+            "encoded_blake2b": "5e1aa186aad6c0fd92697505642e0af3",
             "outboard_corruptions": [
                 0
             ],
@@ -302,12 +302,12 @@
         },
         {
             "input_len": 4097,
-            "output_len": 80,
-            "bao_hash": "3bb3401f48034d5d3271b4c801a405dfdd9074227b405b28d00e02135cd000d0",
-            "encoded_blake2b": "daa9572e018dae66fa71e7c0de630488",
+            "output_len": 72,
+            "bao_hash": "e8a4411cf243540b6eb7081c49db1013710e54f85afd65a8e2908923d9d5d087",
+            "encoded_blake2b": "d99ee9f2a4833ee8d4165c308620a70a",
             "outboard_corruptions": [
                 0,
-                16
+                8
             ],
             "input_corruptions": [
                 0,
@@ -316,12 +316,12 @@
         },
         {
             "input_len": 8191,
-            "output_len": 80,
-            "bao_hash": "ef80e8214b069c9617bd85a04ca1bd16b52e6beda481ee4f7e22b74a23b5ecd8",
-            "encoded_blake2b": "a593529b9e2ff40e985f870f9fd2565c",
+            "output_len": 72,
+            "bao_hash": "5f8f3009660ca81e4aa1320c91921ccd002aba014ea0288a9f383501debb41ae",
+            "encoded_blake2b": "4c3786effa82df7934030d0548bbd40e",
             "outboard_corruptions": [
                 0,
-                16
+                8
             ],
             "input_corruptions": [
                 0,
@@ -330,12 +330,12 @@
         },
         {
             "input_len": 8192,
-            "output_len": 80,
-            "bao_hash": "a4303d46263fd0573e0aae357ba7e00b218e14497e9eaf39b3ebf837498e6132",
-            "encoded_blake2b": "66b916a443ec5197f964e43f26afeed5",
+            "output_len": 72,
+            "bao_hash": "35116f46a317a9364c8f111f4ea88fa2fa2226921d7879e876dfb63db5df18a0",
+            "encoded_blake2b": "ae0ba921f140ad0d5c43e9ea4af49526",
             "outboard_corruptions": [
                 0,
-                16
+                8
             ],
             "input_corruptions": [
                 0,
@@ -344,13 +344,13 @@
         },
         {
             "input_len": 8193,
-            "output_len": 144,
-            "bao_hash": "f2c6f4dc4f9db960dbf1001598fac570a58e238cec486376d66d014cef31c2fb",
-            "encoded_blake2b": "f4578f2e147ec1a7c5feb0c8eead9128",
+            "output_len": 136,
+            "bao_hash": "c92d63db15f0567c8adae35d444ea21cf0a81fc4ec9fb8d981d40ab390b3dba6",
+            "encoded_blake2b": "354bd70c1e2d7e2b62c6d2b0496fe87f",
             "outboard_corruptions": [
                 0,
-                16,
-                80
+                8,
+                72
             ],
             "input_corruptions": [
                 0,
@@ -360,13 +360,13 @@
         },
         {
             "input_len": 12287,
-            "output_len": 144,
-            "bao_hash": "967fe3124a131a38a1bcf0c4355930a4f58b11e087650ea85366f999599cee5a",
-            "encoded_blake2b": "2c6ce92d15c3e825cbd916dd252bc073",
+            "output_len": 136,
+            "bao_hash": "f5c9789891883c19831d4c3904d37d41345a9788f33d27e6a5accb891c559dcd",
+            "encoded_blake2b": "adea0df07d0cbcf49fde7235392096a3",
             "outboard_corruptions": [
                 0,
-                16,
-                80
+                8,
+                72
             ],
             "input_corruptions": [
                 0,
@@ -376,13 +376,13 @@
         },
         {
             "input_len": 12288,
-            "output_len": 144,
-            "bao_hash": "2c55be6aafc4a4c5a16151504a1b8cd95fc48b086a92734ac71f03ffd0b3cca7",
-            "encoded_blake2b": "ef6d94a888bfdbdfae704e13d9855b3c",
+            "output_len": 136,
+            "bao_hash": "d83023c83abe84480316469d529fa2aec0759e1715bb9ff0097e6ca534a3e710",
+            "encoded_blake2b": "cd2ad4f95a1b68076c1889c1fa85ff32",
             "outboard_corruptions": [
                 0,
-                16,
-                80
+                8,
+                72
             ],
             "input_corruptions": [
                 0,
@@ -392,14 +392,14 @@
         },
         {
             "input_len": 12289,
-            "output_len": 208,
-            "bao_hash": "95bbc4200b6f3ddfe2b8014235eaa44a1b0996d13fb2cc6aa44ccc3b66a1a6d1",
-            "encoded_blake2b": "9b32d169504ebb10ad8324a87261de4a",
+            "output_len": 200,
+            "bao_hash": "d64528c298ca0067605e078bbaa64dd8996d06c433b7d367b941c30c26b3ec84",
+            "encoded_blake2b": "28ec979a0a0890c1ad4622f37c44179a",
             "outboard_corruptions": [
                 0,
-                16,
-                80,
-                144
+                8,
+                72,
+                136
             ],
             "input_corruptions": [
                 0,
@@ -410,21 +410,21 @@
         },
         {
             "input_len": 45056,
-            "output_len": 656,
-            "bao_hash": "3a257e80f38aa936ab55b4d7a1e0b3ee51f7419d7fa39b0cd542b6297672731b",
-            "encoded_blake2b": "35e8aab3ea763c431373a384524700bd",
+            "output_len": 648,
+            "bao_hash": "f1388f34eaa17eb7e54d758883a5bf5434a51078d9c1002613f72470b4b8f21d",
+            "encoded_blake2b": "24144a3c8d0cf894941688b9ac7be274",
             "outboard_corruptions": [
                 0,
-                16,
-                80,
-                144,
-                208,
-                272,
-                336,
-                400,
-                464,
-                528,
-                592
+                8,
+                72,
+                136,
+                200,
+                264,
+                328,
+                392,
+                456,
+                520,
+                584
             ],
             "input_corruptions": [
                 0,
@@ -442,23 +442,23 @@
         },
         {
             "input_len": 53248,
-            "output_len": 784,
-            "bao_hash": "524a41999754bc3106117231f19f8fd00ad67fb7300dee20995668612c323eae",
-            "encoded_blake2b": "639365b1d8d552c779532870c73414c2",
+            "output_len": 776,
+            "bao_hash": "6c213425c51cd2343f8d92c3d8c6147ca92720a8305cbb469ac8d115bcceb76c",
+            "encoded_blake2b": "bbf8351eac4f870829f76d4988d3ec99",
             "outboard_corruptions": [
                 0,
-                16,
-                80,
-                144,
-                208,
-                272,
-                336,
-                400,
-                464,
-                528,
-                592,
-                656,
-                720
+                8,
+                72,
+                136,
+                200,
+                264,
+                328,
+                392,
+                456,
+                520,
+                584,
+                648,
+                712
             ],
             "input_corruptions": [
                 0,
@@ -658,13 +658,13 @@
     "slice": [
         {
             "input_len": 0,
-            "bao_hash": "7fbc7935377cde65bfa79ea5cacfa5033b9917d51686d69d0789bb2c85461181",
+            "bao_hash": "beea85195d6c4dfbbdce06c14787ba0ff8bb14bb84f7eda945c11ca49feeda2a",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 16,
-                    "output_blake2b": "463be1d58a72e9618ea59884367c4358",
+                    "output_len": 8,
+                    "output_blake2b": "c804ce198ec337e3dc762bdd1a09aece",
                     "corruptions": [
                         0
                     ]
@@ -672,8 +672,8 @@
                 {
                     "start": 1,
                     "len": 8192,
-                    "output_len": 16,
-                    "output_blake2b": "463be1d58a72e9618ea59884367c4358",
+                    "output_len": 8,
+                    "output_blake2b": "c804ce198ec337e3dc762bdd1a09aece",
                     "corruptions": [
                         0
                     ]
@@ -682,1526 +682,1526 @@
         },
         {
             "input_len": 1,
-            "bao_hash": "f3adec60916a92ab260edcd4bdd800feed2ef1e8abca124759f66137debd3399",
+            "bao_hash": "780b12fa0f57bf0e8e205a18bcce2544d924ee5e5fdd8d013a01cb96769d2d8c",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 17,
-                    "output_blake2b": "f71f1094e02f19b68072c953e1a0aed8",
+                    "output_len": 9,
+                    "output_blake2b": "66fee2554b39a75dd893612ae0e7c070",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 1,
                     "len": 8192,
-                    "output_len": 17,
-                    "output_blake2b": "f71f1094e02f19b68072c953e1a0aed8",
+                    "output_len": 9,
+                    "output_blake2b": "66fee2554b39a75dd893612ae0e7c070",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 2,
                     "len": 8192,
-                    "output_len": 17,
-                    "output_blake2b": "f71f1094e02f19b68072c953e1a0aed8",
+                    "output_len": 9,
+                    "output_blake2b": "66fee2554b39a75dd893612ae0e7c070",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
         },
         {
             "input_len": 4095,
-            "bao_hash": "11a23e48bb75f792f09a5d2f36904e9c123431d49b9ddd60561731de21aaa7ec",
+            "bao_hash": "def1fb97598102578d6e434e216a354bc3bc5440942fd8b6ad09d5cf1adcfd8a",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 4111,
-                    "output_blake2b": "36e3c71da6e3b16644bff2042c194467",
+                    "output_len": 4103,
+                    "output_blake2b": "537c37402ee3b327363a07876763726f",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 4094,
                     "len": 8192,
-                    "output_len": 4111,
-                    "output_blake2b": "36e3c71da6e3b16644bff2042c194467",
+                    "output_len": 4103,
+                    "output_blake2b": "537c37402ee3b327363a07876763726f",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 4095,
                     "len": 8192,
-                    "output_len": 4111,
-                    "output_blake2b": "36e3c71da6e3b16644bff2042c194467",
+                    "output_len": 4103,
+                    "output_blake2b": "537c37402ee3b327363a07876763726f",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 4096,
                     "len": 8192,
-                    "output_len": 4111,
-                    "output_blake2b": "36e3c71da6e3b16644bff2042c194467",
+                    "output_len": 4103,
+                    "output_blake2b": "537c37402ee3b327363a07876763726f",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
         },
         {
             "input_len": 4096,
-            "bao_hash": "d6c016179fd3671231d1ee3663ed62dc44f2991dc659688cee922a9703ef83a5",
+            "bao_hash": "987329a7ba78b2180ea998c6f0380a22bea49a8cf66c6011e618a7b2c1918a2b",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 4112,
-                    "output_blake2b": "4d81b01262552702dedf7f2b765f0aaa",
+                    "output_len": 4104,
+                    "output_blake2b": "2fd251b18c4f92a28f4f1b2eead9bff3",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 4095,
                     "len": 8192,
-                    "output_len": 4112,
-                    "output_blake2b": "4d81b01262552702dedf7f2b765f0aaa",
+                    "output_len": 4104,
+                    "output_blake2b": "2fd251b18c4f92a28f4f1b2eead9bff3",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 4096,
                     "len": 8192,
-                    "output_len": 4112,
-                    "output_blake2b": "4d81b01262552702dedf7f2b765f0aaa",
+                    "output_len": 4104,
+                    "output_blake2b": "2fd251b18c4f92a28f4f1b2eead9bff3",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 4097,
                     "len": 8192,
-                    "output_len": 4112,
-                    "output_blake2b": "4d81b01262552702dedf7f2b765f0aaa",
+                    "output_len": 4104,
+                    "output_blake2b": "2fd251b18c4f92a28f4f1b2eead9bff3",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
         },
         {
             "input_len": 4097,
-            "bao_hash": "3bb3401f48034d5d3271b4c801a405dfdd9074227b405b28d00e02135cd000d0",
+            "bao_hash": "e8a4411cf243540b6eb7081c49db1013710e54f85afd65a8e2908923d9d5d087",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 4177,
-                    "output_blake2b": "4478686615f09759cc94b6b896daa34e",
+                    "output_len": 4169,
+                    "output_blake2b": "ca56890f8cb3c98dff4ef089df193a09",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        4176
+                        8,
+                        72,
+                        4168
                     ]
                 },
                 {
                     "start": 4096,
                     "len": 8192,
-                    "output_len": 81,
-                    "output_blake2b": "035c2edb7142834a3f0d638fae069607",
+                    "output_len": 73,
+                    "output_blake2b": "59009217b2bbdfe0891c67d7003a2e7d",
                     "corruptions": [
                         0,
-                        16,
-                        80
+                        8,
+                        72
                     ]
                 },
                 {
                     "start": 4097,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "daa9572e018dae66fa71e7c0de630488",
+                    "output_len": 72,
+                    "output_blake2b": "d99ee9f2a4833ee8d4165c308620a70a",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 4098,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "daa9572e018dae66fa71e7c0de630488",
+                    "output_len": 72,
+                    "output_blake2b": "d99ee9f2a4833ee8d4165c308620a70a",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
         },
         {
             "input_len": 8191,
-            "bao_hash": "ef80e8214b069c9617bd85a04ca1bd16b52e6beda481ee4f7e22b74a23b5ecd8",
+            "bao_hash": "5f8f3009660ca81e4aa1320c91921ccd002aba014ea0288a9f383501debb41ae",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 8271,
-                    "output_blake2b": "01ef9a88eb50cf49425f940fa0238295",
+                    "output_len": 8263,
+                    "output_blake2b": "593307db8740c35e0c09e37a45984077",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        4176
+                        8,
+                        72,
+                        4168
                     ]
                 },
                 {
                     "start": 4095,
                     "len": 8192,
-                    "output_len": 8271,
-                    "output_blake2b": "01ef9a88eb50cf49425f940fa0238295",
+                    "output_len": 8263,
+                    "output_blake2b": "593307db8740c35e0c09e37a45984077",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        4176
+                        8,
+                        72,
+                        4168
                     ]
                 },
                 {
                     "start": 4096,
                     "len": 8192,
-                    "output_len": 4175,
-                    "output_blake2b": "1d724c4c50b712e2f0de4fd5ec104a08",
+                    "output_len": 4167,
+                    "output_blake2b": "d28920e32aea6eba301e9ebe680d5ff5",
                     "corruptions": [
                         0,
-                        16,
-                        80
+                        8,
+                        72
                     ]
                 },
                 {
                     "start": 8190,
                     "len": 8192,
-                    "output_len": 4175,
-                    "output_blake2b": "1d724c4c50b712e2f0de4fd5ec104a08",
+                    "output_len": 4167,
+                    "output_blake2b": "d28920e32aea6eba301e9ebe680d5ff5",
                     "corruptions": [
                         0,
-                        16,
-                        80
+                        8,
+                        72
                     ]
                 },
                 {
                     "start": 8191,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "a593529b9e2ff40e985f870f9fd2565c",
+                    "output_len": 72,
+                    "output_blake2b": "4c3786effa82df7934030d0548bbd40e",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 8192,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "a593529b9e2ff40e985f870f9fd2565c",
+                    "output_len": 72,
+                    "output_blake2b": "4c3786effa82df7934030d0548bbd40e",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
         },
         {
             "input_len": 8192,
-            "bao_hash": "a4303d46263fd0573e0aae357ba7e00b218e14497e9eaf39b3ebf837498e6132",
+            "bao_hash": "35116f46a317a9364c8f111f4ea88fa2fa2226921d7879e876dfb63db5df18a0",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 8272,
-                    "output_blake2b": "0a1cf7147110a81aae1e9406fe859343",
+                    "output_len": 8264,
+                    "output_blake2b": "7e35d269264b56ccc84f513b1239c0eb",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        4176
+                        8,
+                        72,
+                        4168
                     ]
                 },
                 {
                     "start": 4095,
                     "len": 8192,
-                    "output_len": 8272,
-                    "output_blake2b": "0a1cf7147110a81aae1e9406fe859343",
+                    "output_len": 8264,
+                    "output_blake2b": "7e35d269264b56ccc84f513b1239c0eb",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        4176
+                        8,
+                        72,
+                        4168
                     ]
                 },
                 {
                     "start": 4096,
                     "len": 8192,
-                    "output_len": 4176,
-                    "output_blake2b": "1fc39052cc8010133bc8a016e9167543",
+                    "output_len": 4168,
+                    "output_blake2b": "4842e0d9b8f69362bac80b944a78e186",
                     "corruptions": [
                         0,
-                        16,
-                        80
+                        8,
+                        72
                     ]
                 },
                 {
                     "start": 8191,
                     "len": 8192,
-                    "output_len": 4176,
-                    "output_blake2b": "1fc39052cc8010133bc8a016e9167543",
+                    "output_len": 4168,
+                    "output_blake2b": "4842e0d9b8f69362bac80b944a78e186",
                     "corruptions": [
                         0,
-                        16,
-                        80
+                        8,
+                        72
                     ]
                 },
                 {
                     "start": 8192,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "66b916a443ec5197f964e43f26afeed5",
+                    "output_len": 72,
+                    "output_blake2b": "ae0ba921f140ad0d5c43e9ea4af49526",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 8193,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "66b916a443ec5197f964e43f26afeed5",
+                    "output_len": 72,
+                    "output_blake2b": "ae0ba921f140ad0d5c43e9ea4af49526",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
         },
         {
             "input_len": 8193,
-            "bao_hash": "f2c6f4dc4f9db960dbf1001598fac570a58e238cec486376d66d014cef31c2fb",
+            "bao_hash": "c92d63db15f0567c8adae35d444ea21cf0a81fc4ec9fb8d981d40ab390b3dba6",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 8336,
-                    "output_blake2b": "530765b99d05f88b42b874abcf6a9635",
+                    "output_len": 8328,
+                    "output_blake2b": "25a2d7c47ae99999037ab7b165332ff2",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240
+                        8,
+                        72,
+                        136,
+                        4232
                     ]
                 },
                 {
                     "start": 4095,
                     "len": 8192,
-                    "output_len": 8337,
-                    "output_blake2b": "623e01ed8ac9d665362db09a797a59fb",
+                    "output_len": 8329,
+                    "output_blake2b": "61758dd9d06e54b67e7695a3d9ece154",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240,
-                        8336
+                        8,
+                        72,
+                        136,
+                        4232,
+                        8328
                     ]
                 },
                 {
                     "start": 4096,
                     "len": 8192,
-                    "output_len": 4241,
-                    "output_blake2b": "ef68735b98598d3781bce4f85abe8bde",
+                    "output_len": 4233,
+                    "output_blake2b": "2bcb6362716c05fd3923b261053ce7c7",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240
+                        8,
+                        72,
+                        136,
+                        4232
                     ]
                 },
                 {
                     "start": 8192,
                     "len": 8192,
-                    "output_len": 81,
-                    "output_blake2b": "2d232b13439e729459ff5cae151fad3b",
+                    "output_len": 73,
+                    "output_blake2b": "2a1b0ee5341531a9a04fed3639dc695d",
                     "corruptions": [
                         0,
-                        16,
-                        80
+                        8,
+                        72
                     ]
                 },
                 {
                     "start": 8193,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "4f532b10d7c0291f5c2a7bde8059a241",
+                    "output_len": 72,
+                    "output_blake2b": "e4785ac7f3d3162da9c856ca9431b0b6",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 8194,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "4f532b10d7c0291f5c2a7bde8059a241",
+                    "output_len": 72,
+                    "output_blake2b": "e4785ac7f3d3162da9c856ca9431b0b6",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
         },
         {
             "input_len": 12287,
-            "bao_hash": "967fe3124a131a38a1bcf0c4355930a4f58b11e087650ea85366f999599cee5a",
+            "bao_hash": "f5c9789891883c19831d4c3904d37d41345a9788f33d27e6a5accb891c559dcd",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 8336,
-                    "output_blake2b": "5b1218f017ff734914a84224f75a38d7",
+                    "output_len": 8328,
+                    "output_blake2b": "a2c783b027d47e66b92888df10feb610",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240
+                        8,
+                        72,
+                        136,
+                        4232
                     ]
                 },
                 {
                     "start": 4095,
                     "len": 8192,
-                    "output_len": 12431,
-                    "output_blake2b": "58be023357343bbfb88aa95a15a8a848",
+                    "output_len": 12423,
+                    "output_blake2b": "0c2f9064bd586d46087b7035f0c5d084",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240,
-                        8336
+                        8,
+                        72,
+                        136,
+                        4232,
+                        8328
                     ]
                 },
                 {
                     "start": 4096,
                     "len": 8192,
-                    "output_len": 8335,
-                    "output_blake2b": "6f4e20e35d84e17886eed4924715376b",
+                    "output_len": 8327,
+                    "output_blake2b": "b3e6355d2e0418df50c0ae5de49bf6fb",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240
+                        8,
+                        72,
+                        136,
+                        4232
                     ]
                 },
                 {
                     "start": 8191,
                     "len": 8192,
-                    "output_len": 8335,
-                    "output_blake2b": "6f4e20e35d84e17886eed4924715376b",
+                    "output_len": 8327,
+                    "output_blake2b": "b3e6355d2e0418df50c0ae5de49bf6fb",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240
+                        8,
+                        72,
+                        136,
+                        4232
                     ]
                 },
                 {
                     "start": 8192,
                     "len": 8192,
-                    "output_len": 4175,
-                    "output_blake2b": "2be87462cee741f31d10702be0a3ed14",
+                    "output_len": 4167,
+                    "output_blake2b": "03adefa65e867fb7ead83d8ee7d2bfd8",
                     "corruptions": [
                         0,
-                        16,
-                        80
+                        8,
+                        72
                     ]
                 },
                 {
                     "start": 12286,
                     "len": 8192,
-                    "output_len": 4175,
-                    "output_blake2b": "2be87462cee741f31d10702be0a3ed14",
+                    "output_len": 4167,
+                    "output_blake2b": "03adefa65e867fb7ead83d8ee7d2bfd8",
                     "corruptions": [
                         0,
-                        16,
-                        80
+                        8,
+                        72
                     ]
                 },
                 {
                     "start": 12287,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "e209255b159545a760e2d3a99e423ba7",
+                    "output_len": 72,
+                    "output_blake2b": "ead5ee4d88361c3ac9fc533cfc1b7608",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 12288,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "e209255b159545a760e2d3a99e423ba7",
+                    "output_len": 72,
+                    "output_blake2b": "ead5ee4d88361c3ac9fc533cfc1b7608",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
         },
         {
             "input_len": 12288,
-            "bao_hash": "2c55be6aafc4a4c5a16151504a1b8cd95fc48b086a92734ac71f03ffd0b3cca7",
+            "bao_hash": "d83023c83abe84480316469d529fa2aec0759e1715bb9ff0097e6ca534a3e710",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 8336,
-                    "output_blake2b": "0824c1906cebea33a3232b1891773d9e",
+                    "output_len": 8328,
+                    "output_blake2b": "c0af4684f5c308227c7194fb086a8061",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240
+                        8,
+                        72,
+                        136,
+                        4232
                     ]
                 },
                 {
                     "start": 4095,
                     "len": 8192,
-                    "output_len": 12432,
-                    "output_blake2b": "afa7f4aff9737cb1ac15cf8e804e0757",
+                    "output_len": 12424,
+                    "output_blake2b": "56da276fd19c2f1608ba5fd94dbeffaf",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240,
-                        8336
+                        8,
+                        72,
+                        136,
+                        4232,
+                        8328
                     ]
                 },
                 {
                     "start": 4096,
                     "len": 8192,
-                    "output_len": 8336,
-                    "output_blake2b": "ee38e91c85b9525da720d9957234adb3",
+                    "output_len": 8328,
+                    "output_blake2b": "aa3698bef61132c3da237d875bc29e69",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240
+                        8,
+                        72,
+                        136,
+                        4232
                     ]
                 },
                 {
                     "start": 8191,
                     "len": 8192,
-                    "output_len": 8336,
-                    "output_blake2b": "ee38e91c85b9525da720d9957234adb3",
+                    "output_len": 8328,
+                    "output_blake2b": "aa3698bef61132c3da237d875bc29e69",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240
+                        8,
+                        72,
+                        136,
+                        4232
                     ]
                 },
                 {
                     "start": 8192,
                     "len": 8192,
-                    "output_len": 4176,
-                    "output_blake2b": "18ce2a344529e4a2702007352bf88864",
+                    "output_len": 4168,
+                    "output_blake2b": "67d54f02b213b2cbfdde104a98ae03d9",
                     "corruptions": [
                         0,
-                        16,
-                        80
+                        8,
+                        72
                     ]
                 },
                 {
                     "start": 12287,
                     "len": 8192,
-                    "output_len": 4176,
-                    "output_blake2b": "18ce2a344529e4a2702007352bf88864",
+                    "output_len": 4168,
+                    "output_blake2b": "67d54f02b213b2cbfdde104a98ae03d9",
                     "corruptions": [
                         0,
-                        16,
-                        80
+                        8,
+                        72
                     ]
                 },
                 {
                     "start": 12288,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "3efef25d3aab45359c9c81095b960ed2",
+                    "output_len": 72,
+                    "output_blake2b": "ff67f1b2f0518747b7372b61fa85b289",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 12289,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "3efef25d3aab45359c9c81095b960ed2",
+                    "output_len": 72,
+                    "output_blake2b": "ff67f1b2f0518747b7372b61fa85b289",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
         },
         {
             "input_len": 12289,
-            "bao_hash": "95bbc4200b6f3ddfe2b8014235eaa44a1b0996d13fb2cc6aa44ccc3b66a1a6d1",
+            "bao_hash": "d64528c298ca0067605e078bbaa64dd8996d06c433b7d367b941c30c26b3ec84",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 8336,
-                    "output_blake2b": "c6a252aff9860111cf05f70ef1475c39",
+                    "output_len": 8328,
+                    "output_blake2b": "43f41e231dedd1ff09fdca84dfc72d7c",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240
+                        8,
+                        72,
+                        136,
+                        4232
                     ]
                 },
                 {
                     "start": 4095,
                     "len": 8192,
-                    "output_len": 12496,
-                    "output_blake2b": "3d76ec3b45852ae810dab73ae9ee8769",
+                    "output_len": 12488,
+                    "output_blake2b": "c691de3c79d4e6af8eb3af570b046762",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240,
-                        8336,
-                        8400
+                        8,
+                        72,
+                        136,
+                        4232,
+                        8328,
+                        8392
                     ]
                 },
                 {
                     "start": 4096,
                     "len": 8192,
-                    "output_len": 8400,
-                    "output_blake2b": "bb77621a299202a39ef64ca9ddcef158",
+                    "output_len": 8392,
+                    "output_blake2b": "0725acbfaf6ad30e9e6928a908bf8d63",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240,
-                        4304
+                        8,
+                        72,
+                        136,
+                        4232,
+                        4296
                     ]
                 },
                 {
                     "start": 8191,
                     "len": 8192,
-                    "output_len": 8401,
-                    "output_blake2b": "21ff1d7cc6f8f378bf8d6ffdbd78b23a",
+                    "output_len": 8393,
+                    "output_blake2b": "72affc3fc7cdce4e28e4658f6be977f4",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240,
-                        4304,
-                        8400
+                        8,
+                        72,
+                        136,
+                        4232,
+                        4296,
+                        8392
                     ]
                 },
                 {
                     "start": 8192,
                     "len": 8192,
-                    "output_len": 4241,
-                    "output_blake2b": "2f5b0402fb920f0997940f809bbcd4c2",
+                    "output_len": 4233,
+                    "output_blake2b": "9b7d391c9ecda89ded53fdc801890d89",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        4240
+                        8,
+                        72,
+                        136,
+                        4232
                     ]
                 },
                 {
                     "start": 12288,
                     "len": 8192,
-                    "output_len": 145,
-                    "output_blake2b": "533df10e786bf60905fc524271d13448",
+                    "output_len": 137,
+                    "output_blake2b": "7cfedacf1f9c518776b85b82d1392e07",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144
+                        8,
+                        72,
+                        136
                     ]
                 },
                 {
                     "start": 12289,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "c9d9f66fe158332973b5c70439ac25b4",
+                    "output_len": 72,
+                    "output_blake2b": "14d2fa77e653a032b3d0520dfb0987c6",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 12290,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "c9d9f66fe158332973b5c70439ac25b4",
+                    "output_len": 72,
+                    "output_blake2b": "14d2fa77e653a032b3d0520dfb0987c6",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
         },
         {
             "input_len": 45056,
-            "bao_hash": "3a257e80f38aa936ab55b4d7a1e0b3ee51f7419d7fa39b0cd542b6297672731b",
+            "bao_hash": "f1388f34eaa17eb7e54d758883a5bf5434a51078d9c1002613f72470b4b8f21d",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "29c186314bfa7eff16fbb53525330d24",
+                    "output_len": 8456,
+                    "output_blake2b": "1701955e122d44dba21ef603652d6316",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 4095,
                     "len": 8192,
-                    "output_len": 12624,
-                    "output_blake2b": "149b7a294835f5b954d46b866aececa2",
+                    "output_len": 12616,
+                    "output_blake2b": "a07ba0f98665a4eacb93dd093560bb02",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        8464,
-                        8528
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        8456,
+                        8520
                     ]
                 },
                 {
                     "start": 4096,
                     "len": 8192,
-                    "output_len": 8528,
-                    "output_blake2b": "036b3b410ca18ff3fe0be0f3c9237ec2",
+                    "output_len": 8520,
+                    "output_blake2b": "11e2b5e16674d6d52a59896e4727d2e7",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424
                     ]
                 },
                 {
                     "start": 8191,
                     "len": 8192,
-                    "output_len": 12624,
-                    "output_blake2b": "aac36559ec0031abe52e1b56b80b3d11",
+                    "output_len": 12616,
+                    "output_blake2b": "5a2f246ec44e74c4f30cc3b0e407a4f7",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        8528
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        8520
                     ]
                 },
                 {
                     "start": 8192,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "a922f80329981bf1777fffe32ab70f59",
+                    "output_len": 8456,
+                    "output_blake2b": "680974b9706ce8e4ddec717ef0ba98f0",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 12287,
                     "len": 8192,
-                    "output_len": 12688,
-                    "output_blake2b": "a5a0cc397ab9c11890b963241efa6e7b",
+                    "output_len": 12680,
+                    "output_blake2b": "1669dddbc8bfb2de46c98ea167c4b4af",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        8464,
-                        8528,
-                        8592
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        8456,
+                        8520,
+                        8584
                     ]
                 },
                 {
                     "start": 12288,
                     "len": 8192,
-                    "output_len": 8592,
-                    "output_blake2b": "118fa344553763733e49c96a3c679fed",
+                    "output_len": 8584,
+                    "output_blake2b": "735c2ef0714232f1241fa0b33c786524",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        4496
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        4488
                     ]
                 },
                 {
                     "start": 16383,
                     "len": 8192,
-                    "output_len": 12688,
-                    "output_blake2b": "c0c54cd6dc7162235c6abcaca75b2c13",
+                    "output_len": 12680,
+                    "output_blake2b": "112e33280016f9fecd57ba19142e6634",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        4496,
-                        8592
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        4488,
+                        8584
                     ]
                 },
                 {
                     "start": 16384,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "22cc0c10e0a7ffbf531b9b0b6d276de2",
+                    "output_len": 8456,
+                    "output_blake2b": "a902349f21e12c1022f413f8057ae05f",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 20479,
                     "len": 8192,
-                    "output_len": 12624,
-                    "output_blake2b": "5abba98326d1f442cef750b501cd1f93",
+                    "output_len": 12616,
+                    "output_blake2b": "9f6f55861c1584c6c10ed769eef97144",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        8464,
-                        8528
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        8456,
+                        8520
                     ]
                 },
                 {
                     "start": 20480,
                     "len": 8192,
-                    "output_len": 8528,
-                    "output_blake2b": "954365da610143a956c4ce84c434d879",
+                    "output_len": 8520,
+                    "output_blake2b": "9e48e843edc49eee631afeee83ee01e3",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424
                     ]
                 },
                 {
                     "start": 24575,
                     "len": 8192,
-                    "output_len": 12624,
-                    "output_blake2b": "6451df6707a37e8f2f124ec6a016e886",
+                    "output_len": 12616,
+                    "output_blake2b": "2bfb549700e070072f21849f25828cb2",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        8528
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        8520
                     ]
                 },
                 {
                     "start": 24576,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "aa25fb9e5c6754d56f60154f5cacbd07",
+                    "output_len": 8456,
+                    "output_blake2b": "c95e1b01acf33fd2a380d3eb8c55935d",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 28671,
                     "len": 8192,
-                    "output_len": 12688,
-                    "output_blake2b": "d7b8f137a305ac8e8aa2393356d5f2ea",
+                    "output_len": 12680,
+                    "output_blake2b": "f790249af0c4af6399c9efc434c73c4d",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        8464,
-                        8528,
-                        8592
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        8456,
+                        8520,
+                        8584
                     ]
                 },
                 {
                     "start": 28672,
                     "len": 8192,
-                    "output_len": 8592,
-                    "output_blake2b": "d1dac78f08888d5561627cda2b20009b",
+                    "output_len": 8584,
+                    "output_blake2b": "8e5a70a355945234ab35468c14e7a7e5",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        4496
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        4488
                     ]
                 },
                 {
                     "start": 32767,
                     "len": 8192,
-                    "output_len": 12688,
-                    "output_blake2b": "9cadd90fd436e70a13a38f85a918e3fc",
+                    "output_len": 12680,
+                    "output_blake2b": "fc8b408ef8610f98e82ca15af37ba59b",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        4496,
-                        8592
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        4488,
+                        8584
                     ]
                 },
                 {
                     "start": 32768,
                     "len": 8192,
-                    "output_len": 8400,
-                    "output_blake2b": "d14df2bbb99b77194d1ef0812abbb923",
+                    "output_len": 8392,
+                    "output_blake2b": "6189ab5ce86b2aeb016f5cdab4741f03",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        4304
+                        8,
+                        72,
+                        136,
+                        200,
+                        4296
                     ]
                 },
                 {
                     "start": 36863,
                     "len": 8192,
-                    "output_len": 12496,
-                    "output_blake2b": "2d8a692f385d84754538d87db18de766",
+                    "output_len": 12488,
+                    "output_blake2b": "a6184c30cda412a0b82ba991f8634de0",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        4304,
-                        8400
+                        8,
+                        72,
+                        136,
+                        200,
+                        4296,
+                        8392
                     ]
                 },
                 {
                     "start": 36864,
                     "len": 8192,
-                    "output_len": 8400,
-                    "output_blake2b": "33d811221ac8225556e232c7e29be50a",
+                    "output_len": 8392,
+                    "output_blake2b": "8ca235747713fb92374d389e2879c108",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        4304
+                        8,
+                        72,
+                        136,
+                        200,
+                        4296
                     ]
                 },
                 {
                     "start": 40959,
                     "len": 8192,
-                    "output_len": 8400,
-                    "output_blake2b": "33d811221ac8225556e232c7e29be50a",
+                    "output_len": 8392,
+                    "output_blake2b": "8ca235747713fb92374d389e2879c108",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        4304
+                        8,
+                        72,
+                        136,
+                        200,
+                        4296
                     ]
                 },
                 {
                     "start": 40960,
                     "len": 8192,
-                    "output_len": 4240,
-                    "output_blake2b": "abdc34f7eb4bdd55aedc807f186ac97a",
+                    "output_len": 4232,
+                    "output_blake2b": "ed233959ae46e1cffbd4cb60ce4576bf",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144
+                        8,
+                        72,
+                        136
                     ]
                 },
                 {
                     "start": 45055,
                     "len": 8192,
-                    "output_len": 4240,
-                    "output_blake2b": "abdc34f7eb4bdd55aedc807f186ac97a",
+                    "output_len": 4232,
+                    "output_blake2b": "ed233959ae46e1cffbd4cb60ce4576bf",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144
+                        8,
+                        72,
+                        136
                     ]
                 },
                 {
                     "start": 45056,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "65293ee9720073982cae2ca10fe55036",
+                    "output_len": 72,
+                    "output_blake2b": "ec84dc67fea44a9d918f9907c0a7bda7",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 45057,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "65293ee9720073982cae2ca10fe55036",
+                    "output_len": 72,
+                    "output_blake2b": "ec84dc67fea44a9d918f9907c0a7bda7",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
         },
         {
             "input_len": 53248,
-            "bao_hash": "524a41999754bc3106117231f19f8fd00ad67fb7300dee20995668612c323eae",
+            "bao_hash": "6c213425c51cd2343f8d92c3d8c6147ca92720a8305cbb469ac8d115bcceb76c",
             "slices": [
                 {
                     "start": 0,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "3da2dc7262b779cfe9fbd9e26a561497",
+                    "output_len": 8456,
+                    "output_blake2b": "788d5545652371bad1f7f679b806829d",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 4095,
                     "len": 8192,
-                    "output_len": 12624,
-                    "output_blake2b": "73bc19803bf98c7dbfbaa30dd3b8d0e4",
+                    "output_len": 12616,
+                    "output_blake2b": "ad12294fe1d7b431b1cc86accbe9c9b1",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        8464,
-                        8528
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        8456,
+                        8520
                     ]
                 },
                 {
                     "start": 4096,
                     "len": 8192,
-                    "output_len": 8528,
-                    "output_blake2b": "4a0ac8c1a48be8e1cbfcc779bd4e998f",
+                    "output_len": 8520,
+                    "output_blake2b": "84deba1c49324852ba084f28b9f9a743",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424
                     ]
                 },
                 {
                     "start": 8191,
                     "len": 8192,
-                    "output_len": 12624,
-                    "output_blake2b": "97c873d1520c51ce0c6c81b447ff04be",
+                    "output_len": 12616,
+                    "output_blake2b": "6fe0540c6fbe7103c2425d9051bbe99a",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        8528
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        8520
                     ]
                 },
                 {
                     "start": 8192,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "bc3475099e0abca8f8312166a76aac7f",
+                    "output_len": 8456,
+                    "output_blake2b": "1e33d57b1fdf97a4a758dda0a243d141",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 12287,
                     "len": 8192,
-                    "output_len": 12688,
-                    "output_blake2b": "91b29b06f998feae0c56f52f454e121c",
+                    "output_len": 12680,
+                    "output_blake2b": "845d145c87667e17318203db084b0b5d",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        8464,
-                        8528,
-                        8592
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        8456,
+                        8520,
+                        8584
                     ]
                 },
                 {
                     "start": 12288,
                     "len": 8192,
-                    "output_len": 8592,
-                    "output_blake2b": "51d11cbed4f487bafd7589dcaea5ee04",
+                    "output_len": 8584,
+                    "output_blake2b": "2fc78db2c31e7e2635681c81f4cc6511",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        4496
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        4488
                     ]
                 },
                 {
                     "start": 16383,
                     "len": 8192,
-                    "output_len": 12688,
-                    "output_blake2b": "9cb79c0f990e7d7897da1afb642265fb",
+                    "output_len": 12680,
+                    "output_blake2b": "688370ea51864a78e9bab73814952b0e",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        4496,
-                        8592
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        4488,
+                        8584
                     ]
                 },
                 {
                     "start": 16384,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "2c3d1ef81f4af87144acdbbec2d95933",
+                    "output_len": 8456,
+                    "output_blake2b": "0d4840330b04a7fdec32f984c7316d36",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 20479,
                     "len": 8192,
-                    "output_len": 12624,
-                    "output_blake2b": "1cb3df9869015098f63a9dbd3afe0bed",
+                    "output_len": 12616,
+                    "output_blake2b": "df636a53aeb37d853ccf5fb03e6c7c93",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        8464,
-                        8528
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        8456,
+                        8520
                     ]
                 },
                 {
                     "start": 20480,
                     "len": 8192,
-                    "output_len": 8528,
-                    "output_blake2b": "fd9a37bb7d260b7b34f5bf401fc15cd4",
+                    "output_len": 8520,
+                    "output_blake2b": "4ca7d92f24395423686c861c894bb8e2",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424
                     ]
                 },
                 {
                     "start": 24575,
                     "len": 8192,
-                    "output_len": 12624,
-                    "output_blake2b": "9204bb206be68377cb63a34716c842d1",
+                    "output_len": 12616,
+                    "output_blake2b": "af6ad78bef52e03613d6d591153661c6",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        8528
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        8520
                     ]
                 },
                 {
                     "start": 24576,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "af6de7e2e8574d57bafde6129e804c32",
+                    "output_len": 8456,
+                    "output_blake2b": "09b66908ba9fe75dc03b3f03846418b8",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 28671,
                     "len": 8192,
-                    "output_len": 12752,
-                    "output_blake2b": "eaafa7080b6c51389bf748d220b0d062",
+                    "output_len": 12744,
+                    "output_blake2b": "377f7034b01466c70280497f312628d1",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        8464,
-                        8528,
-                        8592,
-                        8656
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        8456,
+                        8520,
+                        8584,
+                        8648
                     ]
                 },
                 {
                     "start": 28672,
                     "len": 8192,
-                    "output_len": 8656,
-                    "output_blake2b": "c3d18c91b8679f8c71d99a46dbd7997a",
+                    "output_len": 8648,
+                    "output_blake2b": "506f38e94de91c0509334214da820063",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        4496,
-                        4560
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        4488,
+                        4552
                     ]
                 },
                 {
                     "start": 32767,
                     "len": 8192,
-                    "output_len": 12752,
-                    "output_blake2b": "df49d8791962fc256246d10cc2d172af",
+                    "output_len": 12744,
+                    "output_blake2b": "0bbaa5fe379721c18fa20fe154134b8d",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        4496,
-                        4560,
-                        8656
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        4488,
+                        4552,
+                        8648
                     ]
                 },
                 {
                     "start": 32768,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "a6ef817fd189a18f044e99a00a0ddbbc",
+                    "output_len": 8456,
+                    "output_blake2b": "3ecaec097bce4570275938dcab358654",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 36863,
                     "len": 8192,
-                    "output_len": 12624,
-                    "output_blake2b": "ac279243be992e70437aeb54b09e9fcb",
+                    "output_len": 12616,
+                    "output_blake2b": "5e683a9b91d0aa615f4fbc4ffb8bad6e",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        8464,
-                        8528
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        8456,
+                        8520
                     ]
                 },
                 {
                     "start": 36864,
                     "len": 8192,
-                    "output_len": 8528,
-                    "output_blake2b": "76b7448b14b8357c8ec7b6ca109f7f28",
+                    "output_len": 8520,
+                    "output_blake2b": "a841149a0e47577afbb42151eb1fdb74",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424
                     ]
                 },
                 {
                     "start": 40959,
                     "len": 8192,
-                    "output_len": 12624,
-                    "output_blake2b": "89d51bb2b9efe18abe26e7a57e33efca",
+                    "output_len": 12616,
+                    "output_blake2b": "18c9b66e60d79f834d5436a0f03ab0fd",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        4432,
-                        8528
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        4424,
+                        8520
                     ]
                 },
                 {
                     "start": 40960,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "a99e2351aee9688674920261811d51ee",
+                    "output_len": 8456,
+                    "output_blake2b": "f0f523a01cad85d9d9754741f3bb43d0",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 45055,
                     "len": 8192,
-                    "output_len": 12560,
-                    "output_blake2b": "42113b758d8111ce8de3ef37b9cdf785",
+                    "output_len": 12552,
+                    "output_blake2b": "f56c1f5c80c9bbb300fa8ba658e69122",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368,
-                        8464
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360,
+                        8456
                     ]
                 },
                 {
                     "start": 45056,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "1c62f678a5eaf5ed7098ddadb483e8cb",
+                    "output_len": 8456,
+                    "output_blake2b": "4356f502f6ae9e179067fd89093a2bde",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 49151,
                     "len": 8192,
-                    "output_len": 8464,
-                    "output_blake2b": "1c62f678a5eaf5ed7098ddadb483e8cb",
+                    "output_len": 8456,
+                    "output_blake2b": "4356f502f6ae9e179067fd89093a2bde",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144,
-                        208,
-                        272,
-                        4368
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        4360
                     ]
                 },
                 {
                     "start": 49152,
                     "len": 8192,
-                    "output_len": 4240,
-                    "output_blake2b": "fbef1d491f1bc2ae9b4b1602dc811029",
+                    "output_len": 4232,
+                    "output_blake2b": "624b22070729e0ec2cceeafbd4364b0b",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144
+                        8,
+                        72,
+                        136
                     ]
                 },
                 {
                     "start": 53247,
                     "len": 8192,
-                    "output_len": 4240,
-                    "output_blake2b": "fbef1d491f1bc2ae9b4b1602dc811029",
+                    "output_len": 4232,
+                    "output_blake2b": "624b22070729e0ec2cceeafbd4364b0b",
                     "corruptions": [
                         0,
-                        16,
-                        80,
-                        144
+                        8,
+                        72,
+                        136
                     ]
                 },
                 {
                     "start": 53248,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "7b4ed0edafe22a2907a9f1953b8a20fa",
+                    "output_len": 72,
+                    "output_blake2b": "d1d816d0fe9d929f1f7e7513f9e78459",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 },
                 {
                     "start": 53249,
                     "len": 8192,
-                    "output_len": 80,
-                    "output_blake2b": "7b4ed0edafe22a2907a9f1953b8a20fa",
+                    "output_len": 72,
+                    "output_blake2b": "d1d816d0fe9d929f1f7e7513f9e78459",
                     "corruptions": [
                         0,
-                        16
+                        8
                     ]
                 }
             ]
