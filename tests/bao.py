@@ -60,7 +60,7 @@ import sys
 CHUNK_SIZE = 4096
 HASH_SIZE = 32
 PARENT_SIZE = 2 * HASH_SIZE
-HEADER_SIZE = 16
+HEADER_SIZE = 8
 
 
 def encode_len(content_len):
@@ -85,7 +85,7 @@ def hash_node(node_bytes, is_chunk, finalization):
     state = hashlib.blake2b(
         digest_size=HASH_SIZE,
         fanout=2,
-        depth=128,
+        depth=64,
         leaf_size=4096,
         node_offset=0,
         node_depth=0 if is_chunk else 1,

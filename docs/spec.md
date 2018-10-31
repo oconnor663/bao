@@ -46,16 +46,16 @@ Hashing nodes is done with BLAKE2b, using the following parameters:
 
 - **Hash length** is 32.
 - **Fanout** is 2.
-- **Max depth** is 128.
+- **Max depth** is 64.
 - **Max leaf length** is 4096.
-- **Node offset** is always 0, unchanged from the default.
+- **Node offset** is always 0 (the default).
 - **Node depth** is 0 for all chunks and 1 for all parent nodes.
-- **Inner hash length** is equal to hash length.
+- **Inner hash length** is 32.
 
 In addition, the root node -- whether it's a chunk or a parent -- is hashed
 with two tweaks:
 
-- The input byte length, encoded as a 16-byte little-endian integer, is
+- The input byte length, encoded as an 8-byte little-endian integer, is
   appended to the bytes of the node.
 - The **last node** BLAKE2 finalization flag is set to true. Note that BLAKE2
   supports setting the last node flag at any time, so hashing the first chunk
@@ -65,15 +65,15 @@ That root node hash is the output of Bao. Here's an example tree, with 8193
 bytes of input that are all zero:
 
 ```
-                        root parent hash=5dde07...
-                        <b88c24...f9ec85...>
+                        root parent hash=bed2e4...
+                        <1926c3...f330e9...>
                                 /   \
                                /     \
-            parent hash=b88c24...   chunk hash=f9ec85...
-            <a25e9d...a25e9d...>    [\x00]
+            parent hash=1926c3...   chunk hash=f330e9...
+            <7fbd4a...7fbd4a...>    [\x00]
                     /   \
                    /     \
-chunk hash: a25e9d...   chunk hash: a25e9d...
+chunk hash: 7fbd4a...   chunk hash: 7fbd4a...
 [\x00 * 4096]           [\x00 * 4096]
 ```
 
@@ -84,45 +84,45 @@ https://github.com/oconnor663/blake2b_simd, which supports the necessary flags
 ```bash
 # Define some aliases for hashing nodes. Note that --length and
 # --inner-hash-length are in bits, not bytes, for compatibility with coreutils.
-$ alias hash_node='b2sum --length=256 --fanout=2 --max-depth=128 --max-leaf-length=4096 --inner-hash-length=256'
+$ alias hash_node='b2sum --length=256 --fanout=2 --max-depth=64 --max-leaf-length=4096 --inner-hash-length=256'
 $ alias hash_chunk='hash_node --node-depth=0'
 $ alias hash_parent='hash_node --node-depth=1'
+
+# Compute the hash of the first and second chunks, which are the same.
+$ head -c 4096 /dev/zero | hash_chunk
+7fbd4a4dce97d0ed509a76448227aac527cb31e20d03096ea360f974b53d8808  -
+$ big_chunk_hash=7fbd4a4dce97d0ed509a76448227aac527cb31e20d03096ea360f974b53d8808
+
+# Compute the hash of the third chunk, which is different.
+$ head -c 1 /dev/zero | hash_chunk
+f330e9ad408a5f3ff2842b45948730c91a3f4d81f98526400ea7e9ba877dcdb3  -
+$ small_chunk_hash=f330e9ad408a5f3ff2842b45948730c91a3f4d81f98526400ea7e9ba877dcdb3
 
 # Define an alias for parsing hex.
 $ alias unhex='python3 -c "import sys, binascii; sys.stdout.buffer.write(binascii.unhexlify(sys.argv[1]))"'
 
-# Compute the hash of the first and second chunks, which are the same.
-$ head -c 4096 /dev/zero | hash_chunk
-a25e9d5e1234d18300035f6536bfaa8f9f212a4ff7df5d2dedcdb3ada6401d9c  -
-$ big_chunk_hash=a25e9d5e1234d18300035f6536bfaa8f9f212a4ff7df5d2dedcdb3ada6401d9c
-
-# Compute the hash of the third chunk, which is different.
-$ head -c 1 /dev/zero | hash_chunk
-f9ec85fd293fd5d0ea0698a4d86758d5ee11dc3c02be26378d94930496e191e5  -
-$ small_chunk_hash=f9ec85fd293fd5d0ea0698a4d86758d5ee11dc3c02be26378d94930496e191e5
-
 # Compute the hash of the first two chunks' parent node.
 $ unhex $big_chunk_hash$big_chunk_hash | hash_parent
-b88c24a32c8e780ae9e350fc815fb698cacb6da2ae38c52f020914fb6a79cdbc  -
-$ left_parent_hash=b88c24a32c8e780ae9e350fc815fb698cacb6da2ae38c52f020914fb6a79cdbc
+1926c3048e0391cdac5a0b116bd63e03a307e2c10d745b25d24c558e8be2bec9  -
+$ left_parent_hash=1926c3048e0391cdac5a0b116bd63e03a307e2c10d745b25d24c558e8be2bec9
 
 # Define another alias converting the input length to 16-byte little-endian hex.
-$ alias hexint='python3 -c "import sys; print(int(sys.argv[1]).to_bytes(16, \"little\").hex())"'
+$ alias hexint='python3 -c "import sys; print(int(sys.argv[1]).to_bytes(8, \"little\").hex())"'
 
 # Compute the hash of the root node, with the length suffix and last node flag.
 $ unhex $left_parent_hash$small_chunk_hash$(hexint 8193) | hash_parent --last-node
-5dde07a94c1294dac9816a2e7d7aff2cd23ebe83fe686435e33bbdc6270322c9  -
+bed2e488d2644ce514036824dd5486c0ad16bd1d4b9ee8e9940f810d8c40284e  -
 
 # Verify that this matches the Bao hash of the same input.
 $ head -c 8193 /dev/zero | bao hash
-5dde07a94c1294dac9816a2e7d7aff2cd23ebe83fe686435e33bbdc6270322c9
+bed2e488d2644ce514036824dd5486c0ad16bd1d4b9ee8e9940f810d8c40284e
 ```
 
 ## Combined Encoding Format
 
 The combined encoding file format is the contents of the chunks and parent
 nodes of the tree concatenated together in pre-order (that is a parent,
-followed by its left subtree, followed by its right subtree), with the 64-bit
+followed by its left subtree, followed by its right subtree), with the 8-byte
 little-endian unsigned input length prepended to the very front. This makes the
 order of nodes on disk the same as the order in which a depth-first traversal
 would encounter them, so a reader decoding the tree from beginning to end
@@ -130,15 +130,15 @@ doesn't need to do any seeking. Here's the same example tree above, formatted
 as an encoded file and shown as hex:
 
 ```
-input length                    |root parent node  |left parent node  |first chunk|second chunk|last chunk
-01200000000000000000000000000000|b88c24...f9ec85...|a25e9d...a25e9d...|\x00 * 4096|\x00 * 4096 |\x00
+input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
+0120000000000000|1926c3...f330e9...|7fbd4a...7fbd4a...|\x00 * 4096|\x00 * 4096 |\x00
 ```
 
 Note carefully that this is the mirror of how the root node is hashed. Hashing
 the root node *appends* the length as associated data, which makes it possible
-to digest parts of the first chunk before knowing whether its the root.
-Encoding *prepends* the length, because it's the first thing that the decoder
-needs to know. In both cases it's a 64-bit little-endian unsigned integer.
+to start hashing the first chunk before knowing whether its the root. Encoding
+*prepends* the length, because it's the first thing that the decoder needs to
+know.
 
 The decoder first reads the 8-byte length from the front. The length indicates
 whether the first node is a chunk (<=4096) or a parent (>4096), and it verifies
@@ -153,20 +153,20 @@ root hash
 
 Because of the prepended length, the encoding format is self-delimiting. Most
 decoders won't read an encoded file all the way to EOF, and so it's generally
-allowed to append extra garbage bytes to a valid encoding. Trailing garbage has
-no effect on the content, but it's worth clarifying what is and isn't
+allowed to append extra garbage bytes to a valid encoded file. Trailing garbage
+has no effect on the content, but it's worth clarifying what is and isn't
 guaranteed by the encoding format:
 
-- If the Bao hash of a given input is used in decoding, it will never
-  successfully decode anything other than exactly that input. Corruptions in
-  the encoding might lead to a partial decoding followed by an error, but any
-  partially decoded bytes will always be a prefix of the original input.
-- Further, there are no "alternative" hashes for a given input or a given
-  encoding. There is at most one hash that can decode any content, even partial
-  content followed by an error, from a given encoding. If the decoding is
-  complete, that hash is always the Bao hash of the decoded content. If two
-  decoding hashes are different, then any content they successfully and
-  completely decode is always different.
+- There is only one input (if any) for a given hash. If the Bao hash of a given
+  input is used in decoding, it will never successfully decode anything other
+  than exactly that input. Corruptions in the encoding might lead to partial
+  output followed by an error, but any partial output will always be a prefix
+  of the original input.
+- There is only one hash for a given input. There is at most one hash that can
+  decode any content, even partial content followed by an error, from a given
+  encoding. If the decoding is complete, that hash is always the Bao hash of
+  the decoded content. If two decoding hashes are different, then any content
+  they successfully and completely decode is always different.
 - However, multiple "different" encoded files can decode using the same hash,
   if they differ only in their trailing garbage. So while there's a unique hash
   for any given input, there's not a unique valid encoded file, and comparing
@@ -190,8 +190,8 @@ of bytes less than or equal to 4096 (up to the end of that chunk), the
 resulting slice will be this:
 
 ```
-input length                    |root parent node  |left parent node  |second chunk
-01200000000000000000000000000000|b88c24...f9ec85...|a25e9d...a25e9d...|\x00 * 4096
+input length    |root parent node  |left parent node  |second chunk
+0120000000000000|1926c3...f330e9...|7fbd4a...7fbd4a...|\x00 * 4096
 ```
 
 Although slices can be extracted from either a combined encoding or an outboard
@@ -223,10 +223,11 @@ tree without knowing the input that produced it? If so, that's a length
 extension, again regardless of the properties of the underlying hash. There are
 many possible variants of these problems.
 
-In [*Sufficient conditions for sound tree and sequential hashing
-modes*](https://eprint.iacr.org/2009/210.pdf) (2009), Bertoni et al. develop a
-minimal set of requirements for a tree mode, to prevent attacks like the above.
-This section describes how Bao satisfies those requirements. They are:
+[*Sufficient conditions for sound tree and sequential hashing
+modes*](https://eprint.iacr.org/2009/210.pdf) (2009), authored by the
+Keccak/SHA-3 team, lays out a minimal set of requirements for a tree mode, to
+prevent attacks like the above. This section describes how Bao satisfies those
+requirements. They are:
 
 1. **Tree decodability.** The exact definition of this property is fairly
    technical, but the gist of it is that it needs to be impossible to take a
@@ -242,27 +243,27 @@ We ensure **tree decodability** by by domain-separating parent nodes from leaf
 nodes (chunks) with the **node depth** parameter. BLAKE2's parameters are
 functionally similar to the frame bits used in the paper, in that two inputs
 with different parameters always produce a different hash, though the
-parameters are implemented as tweaks to the IV rather than concatenating them
-with the input. Because chunks are domain-separated from parent nodes, adding
-children to a chunk is always invalid. That, coupled with the fact that parent
-nodes are always full and never have room for more children, means that adding
-nodes to a valid tree is always invalid.
+parameters are implemented as tweaks to the IV rather than by concatenating
+them with the input. Because chunks are domain-separated from parent nodes,
+adding children to a chunk is always invalid. That, coupled with the fact that
+parent nodes are always full and never have room for more children, means that
+adding nodes to a valid tree is always invalid.
 
 Note that we could have established tree decodability without relying on domain
 separation, by referring to the length counter appended to the root node. Since
 the layout of the tree is entirely determined by the input length, adding
 children without changing the length can never be valid. However, this approach
-raises troubling questions about what happens when the length counter
-overflows. It's easy to say in theory that such trees would be invalid, but
+raises troubling questions about what would happen if the length counter
+overflowed. It's easy to say in theory that such trees would be invalid, but
 implementations in the real world might tend to produce them rather than
-aborting, and that could lead to collisions in practice. Although we chose the
-counter size to be impossible to overflow with serial input, a clever sparse
-file application could exploit symmetry in the interior of the tree to hash an
-astronomically large file of mostly zeros (more discussion of sparse files in
-the Design Rationales below). Also, future tree hashes modeled on Bao might
-choose to use a smaller counter, without realizing that the size of the counter
-is a security requirement. Relying on domain separation as we do above is more
-robust in all of these ways, and it has no performance cost.
+aborting, and that could lead to collisions in practice. Although the 8-byte
+counter is large enough that overflowing it is unrealistic for most
+implementations, it's within reach of powerful distributed systems like the one
+Google Research used to break SHA-1. A clever sparse file application could
+also exploit symmetry in the interior of the tree to hash an astronomically
+large file of mostly zeros (more discussion of sparse files in the Design
+Rationales below). Domain separation avoids all of these problems, and in
+BLAKE2 it has no performance cost.
 
 **Message completeness** is of course a basic design requirement of the
 encoding format, and all the bits of the format are included in the tree. (The
@@ -283,24 +284,16 @@ appends the length counter to the root rather than prepending it.
 
 ## Storage Requirements
 
-Computing the tree hash requires storing at minimum one hash (32 bytes) for
-every level of the tree, in addition to the 336 bytes [required by
-BLAKE2b](https://blake2.net/blake2.pdf). Given the 128-bit length counter at
-the root and the 4096-byte chunk size (2^12), the largest possible well-defined
-Bao tree requires 116 hashes or 3712 bytes of storage overhead.
+A Bao implementation needs to store one hash (32 bytes) for every level of the
+tree. The largest supported input is 2<sup>64</sup> - 1 bytes. Given the
+4096-byte chunk size (2<sup>12</sup>), that's 2<sup>52</sup> leaf nodes, or a
+maximum tree height of 52. Storing 52 hashes, 32 bytes each, requires 1664
+bytes, in addition to the [336 bytes](https://blake2.net/blake2.pdf) required
+by BLAKE2b. For comparison, the TLS record buffer is 16384 bytes.
 
-However, Bao uses a 128-bit counter precisely because filling it is impossible;
-that security assumption is baked into all 256-bit hash functions.
-Implementations that are concerned about storage space can make much more
-practical assumptions about their largest possible input. For example, the
-largest supported input for SHA-256 is 2^61 bytes, and a Bao input of that size
-requires 49 hashes or 1568 bytes of storage overhead. Implementations can
-safely assume that even if they encounter an input that large, they'll never be
-able to finish hashing it.
-
-Extremely space-constrained implementations that want to use Bao will need to
-define a more aggressive limit for the maximum input size and report failure if
-they exceed that size. In some cases, such a limit is already provided by the
+Extremely space-constrained implementations that want to use Bao have to define
+a more aggressive limit for their maximum input size and report failure if they
+exceed that size. In some cases, such a limit is already provided by the
 protocol they're implementing. For example, the largest possible IPv6
 "jumbogram" is 4 GiB, and limited to that maximum input size Bao's storage
 overhead would be 20 hashes or 640 bytes.
@@ -340,7 +333,7 @@ below). Also for the same reason, a 64-byte Bao output would only have 32
 effective bytes of security, so it might be misleading to even offer the longer
 digest.
 
-### Why not use the full 64-byte BLAKE2b hash as the inner subtree hash size?
+### Why not use the full 64 bytes of BLAKE2b output?
 
 **Storage overhead.** Note that in the [Storage
 Requirements](#storage-requirements), the storage overhead is proportional to
@@ -461,6 +454,42 @@ complicate several algorithms involved in managing the state, like the "cute
 trick" we use to figure out how many subtree hashes to merge after each
 completed chunk. Overall, the cost of hashing parent nodes is already designed
 to be small, and shrinking it further isn't worth these tradeoffs.
+
+### Is 64 bits large enough for the length counter?
+
+**Yes.** Every filesystem in use today has a maximum file size of
+2<sup>64</sup> bytes or less. It's possible that some trickery with sparse
+files (more discussion above) might let you effectively hash something that
+large, but at that point there's no practical limit to your input size and no
+particular reason to assume that 2<sup>128</sup> or 2<sup>256</sup> bytes would
+be enough.
+
+Bao's decoding features are designed to work with the IO interfaces of
+mainstream programming languages, particularly around streaming and seeking.
+These interfaces are [usually
+restricted](https://doc.rust-lang.org/std/io/enum.SeekFrom.html) to 64-bit
+sizes and offsets. If Bao supported longer streams in theory, implementations
+would need to handle more unrepresentable edge cases. (Though even with a
+64-bit counter, the maximum _encoded_ file size can exceed 64 bits, and a
+complete seek implementation needs to seek twice to reach input near the end.)
+
+Implementations also need to decide how much storage overhead is reasonable. If
+the counter was 128 bits, it would still make almost no sense to allocate space
+for a 128-level tree. The recommended default would probably be to assume a
+maximum of 52 levels like today, but it would put the burden of choice on each
+implementation.
+
+### Could a similar design be based on a different underlying hash function?
+
+**Yes, as long as the underlying hash prevents length extension.** SHA-256 or
+SHA-512 aren't suitable, but SHA-512/256 and SHA-3 could be.
+
+Domain separation between the root and the non-root nodes, and between chunks
+and parent nodes, is a security requirement. For hash functions without
+associated data parameters, you can achieve domain separation with a small
+amount of overhead by appending some bits to every node. See for example the
+[Sakura coding](https://keccak.team/files/Sakura.pdf), also designed by the
+Keccak/SHA-3 team.
 
 ## Other Related Work
 
