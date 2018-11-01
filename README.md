@@ -20,10 +20,11 @@ Why is `bao hash` so fast? It's mostly parallelism, multiple threads
 working on different subtrees at the same time. The demo above is from
 the 4-core i5-8250U processor in my laptop, but Bao can scale much
 higher. In-memory benchmarks on a 48-core AWS m5.24xlarge instance hit
-[91 GB/s of throughput](docs/bao_htop.png). Bao is also based on
-BLAKE2b, which was [designed to outperform SHA-1](https://blake2.net/),
-and it uses the [fastest SIMD implementation
-available](https://github.com/oconnor663/blake2b_simd).
+[91 GB/s of
+throughput](https://raw.githubusercontent.com/oconnor663/bao/master/docs/bao_htop.png).
+Bao is also based on BLAKE2b, which was [designed to outperform
+SHA-1](https://blake2.net/), and it uses the [fastest SIMD
+implementation available](https://github.com/oconnor663/blake2b_simd).
 
 ## Encoded files
 
