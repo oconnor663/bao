@@ -29,13 +29,17 @@ available](https://github.com/oconnor663/blake2b_simd).
 
 Apart from parallelism, tree hashes make it possible to verify a file
 piece-by-piece rather than all-at-once. This is done by storing both the
-input and the entire hash tree together in an encoded file.
+input and the entire hash tree together in an encoded file. Clients can
+stream these files, or do random seeks into them, with the guarantee
+that every byte they read matches the root hash.
 
-Use case: A cryptographic messaging app might want to add support for
-attachments, like large video files. If the message metadata includes
-the Bao hash of its attachment, the client can stream stream an attached
-video without compromising its immutability. (This problem was in fact
-the original inspiration for the Bao project.)
+Use case: A secure messaging app might support attachment files by
+including the hash of an attachment in a message. With a regular hash,
+the recipient would need to download an entire attachment to verify it,
+but that's impractical for e.g. large video files. With a Bao hash, the
+recipient can stream a video, while still verifying each byte as it
+comes in. (This scenario was in fact the original motivation for the Bao
+project.)
 
 ```sh
 # Create an input file that's a megabyte of random data.
@@ -71,14 +75,24 @@ cmp: EOF on /proc/self/fd/11 which is empty
 
 ## Encoded slices
 
-For situations where you need to serve some verifiable bytes from the
-middle of a file, without forcing the recipient to stream whole thing
-from the front, you can extract an encoded slice.
+Encoded files support random seeking, but seeking might not be available
+or efficent over a network. (Note that one seek in the content usually
+requires several seeks in the encoding, as the decoder traverses the
+hash tree level-by-level.) In these situations, rather than e.g. hacking
+a seek interface into your HTTP client, you can instead request an
+encoded slice. A slice contains some part of the original file and the
+parts of the hash tree needed to verify it. Creating a slice requires
+seeking over the full encoding, but the recipient can then stream the
+slice without needing to seek. Decoding a slice uses the same root hash
+as regular decoding, so it doesn't require any preparation in advance
+from the sender or the recipient.
 
 Use case: A BitTorrent-like application could fetch different slices of
-a file from different peers. Or, a distributed file storage application
-could request random slices of an archived file from its storage
-providers, to prove that they're honestly storing the file.
+a file from different peers, without needing to define the slices ahead
+of time. Or a distributed file storage application could request random
+slices of an archived file from its storage providers, to prove that
+they're honestly storing the file, without needing to prepare or store
+challenges for the future.
 
 ```sh
 # Using the encoded file from above, extract a 100 KB from somewhere in
