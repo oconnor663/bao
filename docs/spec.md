@@ -394,15 +394,15 @@ responsible for hashing the root eventually reaches its own throughput limit.
 This happens at a parallelism degree equal to the ratio of the chunk size and
 the hash length, 256 in the case of KangarooTwelve. That sounds like an
 extraordinary number of threads, but consider that one of Bao's benchmarks is
-running on a 96-core AWS machine, and that Bao uses an AVX2 implementation of
-BLAKE2b that hashes 4 chunks in parallel per thread. That benchmark is hitting
-parallelism degree 384 today. Also consider that Intel's upcoming Cannon Lake
-generation of processors will probably support the AVX-512 instruction set
-(8-way SIMD) on 16 logical cores, for a parallelism degree of 128 on a
-mainstream desktop processor. Now to be fair, this arithmetic is cheating
-badly, because logical cores aren't physical cores, and because hashing 4
-inputs with SIMD isn't 4x as fast as hashing 1 input. But it's flirting in the
-general direction of the truth.
+running on a 96-logical-core AWS machine, and that Bao uses an AVX2
+implementation of BLAKE2b that hashes 4 chunks in parallel per thread. That
+benchmark is hitting parallelism degree 384 today. Also consider that Intel's
+upcoming Cannon Lake generation of processors will probably support the AVX-512
+instruction set (8-way SIMD) on 16 logical cores, for a parallelism degree of
+128 on a mainstream desktop processor. Now to be fair, this arithmetic is
+cheating badly, because logical cores aren't physical cores, and because
+hashing 4 inputs with SIMD isn't 4x as fast as hashing 1 input. But it's
+flirting in the general direction of the truth.
 
 ### Should we fall back to serial hashing for messages above some maximum size?
 
