@@ -104,14 +104,24 @@ pub(crate) fn decode_len(bytes: &[u8; HEADER_SIZE]) -> u64 {
     LittleEndian::read_u64(bytes)
 }
 
-fn new_blake2b_params() -> blake2b_simd::Params {
+fn common_params() -> blake2b_simd::Params {
     let mut params = blake2b_simd::Params::new();
-    params.hash_length(HASH_SIZE);
+    params
+        .hash_length(HASH_SIZE)
+        .fanout(2)
+        .max_depth(64)
+        .max_leaf_length(CHUNK_SIZE as u32)
+        .node_offset(0)
+        .inner_hash_length(HASH_SIZE);
     params
 }
 
-pub(crate) fn new_blake2b_state() -> blake2b_simd::State {
-    new_blake2b_params().to_state()
+pub(crate) fn new_chunk_state() -> blake2b_simd::State {
+    common_params().node_depth(0).to_state()
+}
+
+pub(crate) fn new_parent_state() -> blake2b_simd::State {
+    common_params().node_depth(1).to_state()
 }
 
 // The root node is hashed differently from interior nodes. It gets suffixed
@@ -140,10 +150,24 @@ pub(crate) fn finalize_hash(state: &mut blake2b_simd::State, finalization: Final
     }
 }
 
-pub(crate) fn hash_node(chunk: &[u8], finalization: Finalization) -> Hash {
+pub(crate) fn hash_chunk(chunk: &[u8], finalization: Finalization) -> Hash {
     debug_assert!(chunk.len() <= CHUNK_SIZE);
-    let mut state = new_blake2b_state();
+    let mut state = new_chunk_state();
     state.update(chunk);
+    finalize_hash(&mut state, finalization)
+}
+
+pub(crate) fn hash_parent(parent: &[u8], finalization: Finalization) -> Hash {
+    debug_assert_eq!(parent.len(), PARENT_SIZE);
+    let mut state = new_parent_state();
+    state.update(parent);
+    finalize_hash(&mut state, finalization)
+}
+
+pub(crate) fn parent_hash(left_hash: &Hash, right_hash: &Hash, finalization: Finalization) -> Hash {
+    let mut state = new_parent_state();
+    state.update(left_hash.as_bytes());
+    state.update(right_hash.as_bytes());
     finalize_hash(&mut state, finalization)
 }
 
@@ -155,10 +179,10 @@ fn hash_four_chunk_subtree(
     finalization: Finalization,
 ) -> Hash {
     // This relies on the fact that finalize_hash does nothing for non-root nodes.
-    let mut state0 = new_blake2b_state();
-    let mut state1 = new_blake2b_state();
-    let mut state2 = new_blake2b_state();
-    let mut state3 = new_blake2b_state();
+    let mut state0 = new_chunk_state();
+    let mut state1 = new_chunk_state();
+    let mut state2 = new_chunk_state();
+    let mut state3 = new_chunk_state();
     blake2b_simd::update4(
         &mut state0,
         &mut state1,
@@ -170,23 +194,16 @@ fn hash_four_chunk_subtree(
         chunk3,
     );
     let chunk_hashes = blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3);
-    let mut left_subtree_state = new_blake2b_state();
+    let mut left_subtree_state = new_parent_state();
     left_subtree_state.update(chunk_hashes[0].as_bytes());
     left_subtree_state.update(chunk_hashes[1].as_bytes());
-    let mut right_subtree_state = new_blake2b_state();
+    let mut right_subtree_state = new_parent_state();
     right_subtree_state.update(chunk_hashes[2].as_bytes());
     right_subtree_state.update(chunk_hashes[3].as_bytes());
-    let mut parent_state = new_blake2b_state();
+    let mut parent_state = new_parent_state();
     parent_state.update(left_subtree_state.finalize().as_bytes());
     parent_state.update(right_subtree_state.finalize().as_bytes());
     finalize_hash(&mut parent_state, finalization)
-}
-
-pub(crate) fn parent_hash(left_hash: &Hash, right_hash: &Hash, finalization: Finalization) -> Hash {
-    let mut state = new_blake2b_state();
-    state.update(left_hash.as_bytes());
-    state.update(right_hash.as_bytes());
-    finalize_hash(&mut state, finalization)
 }
 
 // Find the largest power of two that's less than or equal to `n`. We use this
@@ -206,7 +223,7 @@ pub(crate) fn left_len(content_len: u64) -> u64 {
 
 fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
-        return hash_node(input, finalization);
+        return hash_chunk(input, finalization);
     }
     // Special case: If the input is exactly four chunks, hashing those four chunks in parallel
     // with SIMD is more efficient than going one by one.
@@ -231,7 +248,7 @@ fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
 #[cfg(feature = "std")]
 fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
-        return hash_node(input, finalization);
+        return hash_chunk(input, finalization);
     }
     // Special case: If the input is exactly four chunks, hashing those four chunks in parallel
     // with SIMD is more efficient than going one by one.
@@ -440,7 +457,7 @@ pub struct Writer {
 impl Writer {
     pub fn new() -> Self {
         Self {
-            chunk: new_blake2b_state(),
+            chunk: new_chunk_state(),
             state: State::new(),
         }
     }
@@ -451,7 +468,7 @@ impl Writer {
             if self.chunk.count() as usize == CHUNK_SIZE {
                 let hash = finalize_hash(&mut self.chunk, NotRoot);
                 self.state.push_subtree(&hash, CHUNK_SIZE);
-                self.chunk = new_blake2b_state();
+                self.chunk = new_chunk_state();
             }
             let want = CHUNK_SIZE - self.chunk.count() as usize;
             let take = cmp::min(want, input.len());
@@ -577,11 +594,11 @@ mod test {
             NotRoot
         };
         while input.len() > CHUNK_SIZE {
-            let hash = hash_node(&input[..CHUNK_SIZE], NotRoot);
+            let hash = hash_chunk(&input[..CHUNK_SIZE], NotRoot);
             state.push_subtree(&hash, CHUNK_SIZE);
             input = &input[CHUNK_SIZE..];
         }
-        let hash = hash_node(input, finalization);
+        let hash = hash_chunk(input, finalization);
         state.push_subtree(&hash, input.len());
         state.finish()
     }

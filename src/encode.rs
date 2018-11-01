@@ -208,7 +208,7 @@ fn encode_recurse(input: &[u8], output: &mut [u8], finalization: Finalization) -
     );
     if input.len() <= CHUNK_SIZE {
         output.copy_from_slice(input);
-        return hash::hash_node(input, finalization);
+        return hash::hash_chunk(input, finalization);
     }
     let left_len = hash::left_len(input.len() as u64);
     let (left_in, right_in) = input.split_at(left_len as usize);
@@ -229,7 +229,7 @@ fn encode_recurse_rayon(input: &[u8], output: &mut [u8], finalization: Finalizat
     );
     if input.len() <= CHUNK_SIZE {
         output.copy_from_slice(input);
-        return hash::hash_node(input, finalization);
+        return hash::hash_chunk(input, finalization);
     }
     let left_len = hash::left_len(input.len() as u64);
     let (left_in, right_in) = input.split_at(left_len as usize);
@@ -250,7 +250,7 @@ fn encode_outboard_recurse(input: &[u8], output: &mut [u8], finalization: Finali
         outboard_subtree_size(input.len() as u64)
     );
     if input.len() <= CHUNK_SIZE {
-        return hash::hash_node(input, finalization);
+        return hash::hash_chunk(input, finalization);
     }
     let left_len = hash::left_len(input.len() as u64);
     let (left_in, right_in) = input.split_at(left_len as usize);
@@ -274,7 +274,7 @@ fn encode_outboard_recurse_rayon(
         outboard_subtree_size(input.len() as u64)
     );
     if input.len() <= CHUNK_SIZE {
-        return hash::hash_node(input, finalization);
+        return hash::hash_chunk(input, finalization);
     }
     let left_len = hash::left_len(input.len() as u64);
     let (left_in, right_in) = input.split_at(left_len as usize);
@@ -315,7 +315,7 @@ fn layout_chunks_in_place(
 fn write_parents_in_place(buf: &mut [u8], content_len: usize, finalization: Finalization) -> Hash {
     if content_len <= CHUNK_SIZE {
         debug_assert_eq!(content_len, buf.len());
-        hash::hash_node(buf, finalization)
+        hash::hash_chunk(buf, finalization)
     } else {
         let left_len = hash::left_len(content_len as u64) as usize;
         let right_len = content_len - left_len;
@@ -339,7 +339,7 @@ fn write_parents_in_place_rayon(
 ) -> Hash {
     if content_len <= CHUNK_SIZE {
         debug_assert_eq!(content_len, buf.len());
-        hash::hash_node(buf, finalization)
+        hash::hash_chunk(buf, finalization)
     } else {
         let left_len = hash::left_len(content_len as u64) as usize;
         let right_len = content_len - left_len;
@@ -569,7 +569,7 @@ impl<T: Read + Write + Seek> Writer<T> {
         Self {
             inner,
             total_len: 0,
-            chunk_state: hash::new_blake2b_state(),
+            chunk_state: hash::new_chunk_state(),
             tree_state: hash::State::new(),
             outboard: false,
         }
@@ -675,7 +675,7 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
         }
         if self.chunk_state.count() as usize == CHUNK_SIZE {
             let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
-            self.chunk_state = hash::new_blake2b_state();
+            self.chunk_state = hash::new_chunk_state();
             self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
             while let Some(parent) = self.tree_state.merge_parent() {
                 self.inner.write_all(&parent)?;

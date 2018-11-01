@@ -104,6 +104,7 @@ fn blake2b(bytes: &[u8]) -> String {
 #[test]
 fn test_hash_vectors() {
     for case in &TEST_VECTORS.hash {
+        println!("case {:?}", case);
         let input = make_input(case.input_len);
         let hash = bao::hash::hash(&input);
         assert_eq!(case.bao_hash, hash.to_hex().to_string());

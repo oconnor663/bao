@@ -1,3 +1,4 @@
+extern crate bao;
 #[macro_use]
 extern crate duct;
 extern crate rand;
@@ -27,11 +28,9 @@ pub fn bao_exe() -> PathBuf {
 
 #[test]
 fn test_hash_one() {
+    let expected = bao::hash::hash(b"foo").to_hex();
     let output = cmd!(bao_exe(), "hash").input("foo").read().unwrap();
-    assert_eq!(
-        "81fcbc391ab46bfb6a0c68393c0c48a55abc6d6e6cd6705447bc7c2ae67e5946",
-        output
-    );
+    assert_eq!(&*expected, &*output);
 }
 
 #[test]
@@ -45,13 +44,16 @@ fn test_hash_many() {
         .input("baz")
         .read()
         .unwrap();
+    let foo_hash = bao::hash::hash(b"foo");
+    let bar_hash = bao::hash::hash(b"bar");
+    let baz_hash = bao::hash::hash(b"baz");
     let expected = format!(
-        "\
-81fcbc391ab46bfb6a0c68393c0c48a55abc6d6e6cd6705447bc7c2ae67e5946  {}
-86cb1ecbc885b22862b5800f86d5f5588eaef9c7b967287ef4596e526ee06e65  {}
-d99e7ff490091c550718f89a6046974ec84a0bcc4d9c393f32eb9e7afa4146a0  -",
+        "{}  {}\n{}  {}\n{}  -",
+        foo_hash.to_hex(),
         file1.to_string_lossy(),
-        file2.to_string_lossy()
+        bar_hash.to_hex(),
+        file2.to_string_lossy(),
+        baz_hash.to_hex(),
     );
     assert_eq!(expected, output);
 }

@@ -58,8 +58,18 @@ use std::io;
 #[cfg(feature = "std")]
 use std::io::prelude::*;
 
-fn verify_hash(node_bytes: &[u8], hash: &Hash, finalization: Finalization) -> Result<()> {
-    let computed = hash::hash_node(node_bytes, finalization);
+fn verify_chunk(chunk_bytes: &[u8], hash: &Hash, finalization: Finalization) -> Result<()> {
+    let computed = hash::hash_chunk(chunk_bytes, finalization);
+    // Hash implements constant time equality.
+    if hash == &computed {
+        Ok(())
+    } else {
+        Err(Error::HashMismatch)
+    }
+}
+
+fn verify_parent(parent_bytes: &[u8], hash: &Hash, finalization: Finalization) -> Result<()> {
+    let computed = hash::hash_parent(parent_bytes, finalization);
     // Hash implements constant time equality.
     if hash == &computed {
         Ok(())
@@ -99,14 +109,14 @@ fn verify_one_level(buf: &[u8], subtree: &Subtree) -> Result<Verified> {
     } = subtree;
     if content_len <= CHUNK_SIZE {
         let chunk = &buf[offset..][..content_len];
-        verify_hash(chunk, hash, finalization)?;
+        verify_chunk(chunk, hash, finalization)?;
         Ok(Verified::Chunk {
             offset,
             len: content_len,
         })
     } else {
         let parent = array_ref!(buf, offset, PARENT_SIZE);
-        verify_hash(parent, hash, finalization)?;
+        verify_parent(parent, hash, finalization)?;
         let (left_hash, right_hash) = split_parent(parent);
         let left = Subtree {
             offset: subtree.offset + PARENT_SIZE,
@@ -346,17 +356,19 @@ pub fn hash_from_encoded_nostd<F, E>(mut read_exact_fn: F) -> result::Result<Has
 where
     F: FnMut(&mut [u8]) -> result::Result<(), E>,
 {
-    let mut buf = [0; CHUNK_SIZE];
-    read_exact_fn(&mut buf[..HEADER_SIZE])?;
-    let content_len = hash::decode_len(array_ref!(buf, 0, HEADER_SIZE));
-    let node;
+    let mut header = [0; HEADER_SIZE];
+    read_exact_fn(&mut header)?;
+    let content_len = hash::decode_len(&header);
     if content_len <= CHUNK_SIZE as u64 {
-        node = &mut buf[..content_len as usize];
+        let mut chunk_buf = [0; CHUNK_SIZE];
+        let chunk = &mut chunk_buf[..content_len as usize];
+        read_exact_fn(chunk)?;
+        Ok(hash::hash_chunk(chunk, Root(content_len)))
     } else {
-        node = &mut buf[..PARENT_SIZE];
+        let mut parent = [0; PARENT_SIZE];
+        read_exact_fn(&mut parent)?;
+        Ok(hash::hash_parent(&parent, Root(content_len)))
     }
-    read_exact_fn(node)?;
-    Ok(hash::hash_node(node, Root(content_len)))
 }
 
 /// Given an outboard encoding, quickly determine the root hash by reading just the root node.
@@ -395,18 +407,19 @@ where
     F1: FnOnce(&mut [u8]) -> result::Result<(), E>,
     F2: FnMut(&mut [u8]) -> result::Result<(), E>,
 {
-    let mut buf = [0; CHUNK_SIZE];
-    outboard_read_exact_fn(&mut buf[..HEADER_SIZE])?;
-    let content_len = hash::decode_len(array_ref!(buf, 0, HEADER_SIZE));
-    let node;
+    let mut header = [0; HEADER_SIZE];
+    outboard_read_exact_fn(&mut header)?;
+    let content_len = hash::decode_len(&header);
     if content_len <= CHUNK_SIZE as u64 {
-        node = &mut buf[..content_len as usize];
-        content_read_exact_fn(node)?;
+        let mut chunk_buf = [0; CHUNK_SIZE];
+        let chunk = &mut chunk_buf[..content_len as usize];
+        content_read_exact_fn(chunk)?;
+        Ok(hash::hash_chunk(chunk, Root(content_len)))
     } else {
-        node = &mut buf[..PARENT_SIZE];
-        outboard_read_exact_fn(node)?;
+        let mut parent = [0; PARENT_SIZE];
+        outboard_read_exact_fn(&mut parent)?;
+        Ok(hash::hash_parent(&parent, Root(content_len)))
     }
-    Ok(hash::hash_node(node, Root(content_len)))
 }
 
 /// Given a combined encoding beind a `Read` interface, quickly determine the root hash by reading
@@ -507,7 +520,7 @@ mod verify_state {
         pub(crate) fn feed_parent(&mut self, parent: &hash::ParentNode) -> Result<()> {
             let finalization = self.parser.finalization();
             let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
-            let computed_hash = hash::hash_node(parent, finalization);
+            let computed_hash = hash::hash_parent(parent, finalization);
             // Hash implements constant time equality.
             if expected_hash != computed_hash {
                 return Err(Error::HashMismatch);
@@ -664,7 +677,7 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
         // seeks don't think there's valid data there.
         self.clear_buf();
         self.input.read_exact(&mut self.buf[..size])?;
-        let hash = hash::hash_node(&self.buf[..size], finalization);
+        let hash = hash::hash_chunk(&self.buf[..size], finalization);
         self.state.feed_chunk(hash)?;
         self.buf_end = size;
         Ok(())
