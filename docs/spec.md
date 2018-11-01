@@ -503,7 +503,7 @@ Keccak/SHA-3 team.
   the decoder's storage requirements much larger. Also, as noted by the
   Keccak/SHA-3 team in [*Sufficient
   conditions*](https://eprint.iacr.org/2009/210.pdf), THEX doesn't
-  domain-separate the root node, and so it's vulnerable to length extension
+  domain-separate its root node, so it's vulnerable to length extension
   regardless of the security of the underlying hash function.
 - [Tree
   Hashing](https://www.cryptolux.org/mediawiki-esc2013/images/c/ca/SL_tree_hashing_esc.pdf)
