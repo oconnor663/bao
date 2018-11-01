@@ -1,6 +1,6 @@
 [package]
 name = "bao_bin"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Jack O'Connor"]
 description = "the command line utility that's part of the bao crate"
 license = "MIT"
@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 arrayref = "0.3.4"
-bao = { path = "..", version = "0.4.0" }
+bao = { path = "..", version = "0.5.0" }
 docopt = "1.0.1"
 failure = "0.1.2"
 hex = "0.3.2"
