@@ -377,10 +377,9 @@ to allow for parallelism in the implementation. This is much simpler to
 implement than a full binary tree, and it adds less storage overhead.
 
 However, a shallow tree would limit the usefulness of Bao's encoding and
-slicing features. The root node becomes linear in the size of the input, with a
-growth factor of 1/8192 in the case of KangarooTwelve. Encoding a video file
-several gigabytes in size, for example, would produce a root node approaching a
-megabyte. The recipient would need to fetch and buffer the entire root before
+slicing features. The root node becomes linear in the size of the input.
+Encoding a gigabyte file, for example, would produce root that's several
+megabytes. The recipient would need to fetch and buffer the entire root before
 verifying any content bytes, and decoding would require heap allocation. The
 usefulness of the encoding format would be limited to the space of files big
 enough that streaming is valuable, but small enough that the root node is
