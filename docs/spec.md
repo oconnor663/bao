@@ -26,21 +26,21 @@ level of the tree, the rightmost node is raised to the level above. Here's what
 the tree looks like as it grows from 1 to 4 chunks.
 
 ```
-                                     <parent>                   <parent>
-                                      /    \                   /       \
-              <parent>          <parent>  [CHUNK]      <parent>         <parent>
-               /   \             /   \                  /   \            /   \
-[CHUNK]   [CHUNK] [CHUNK]   [CHUNK] [CHUNK]        [CHUNK] [CHUNK]  [CHUNK] [CHUNK]
+                                     <parent>                    <parent>
+                                      /    \                    /       \
+              <parent>          <parent>  [CHUNK]       <parent>         <parent>
+               /   \             /   \                   /   \            /   \
+[CHUNK]   [CHUNK] [CHUNK]   [CHUNK] [CHUNK]         [CHUNK] [CHUNK]  [CHUNK] [CHUNK]
 ```
 
-We can also define the tree recursively:
+We can also describe the tree recursively:
 
 - If a tree/subtree contains 4096 input bytes or less, the tree/subtree is just
   a chunk.
-- Otherwise, the tree/subtree is rooted at a parent node, with the input bytes
-  divided between its left and right child subtrees. The number of input bytes
-  on the left is largest power of 2 times 4096 that's strictly less than the
-  total. The remainder, always at least 1 byte, goes on the right.
+- Otherwise, the tree/subtree is rooted at a parent node, and its input bytes
+  are divided between its left and right child subtrees. The number of input
+  bytes on the left is largest power of 2 times 4096 that's strictly less than
+  the total. The remainder, always at least 1 byte, goes on the right.
 
 Hashing nodes is done with BLAKE2b, using the following parameters:
 
@@ -53,10 +53,10 @@ Hashing nodes is done with BLAKE2b, using the following parameters:
 - **Inner hash length** is 32.
 
 In addition, the root node -- whether it's a chunk or a parent -- is hashed
-with two tweaks:
+with two extra steps:
 
-- The input byte length, encoded as an 8-byte little-endian integer, is
-  appended to the bytes of the node.
+- The total input byte length, encoded as an 8-byte little-endian integer, is
+  appended to the root node.
 - The **last node** BLAKE2 finalization flag is set to true. Note that BLAKE2
   supports setting the last node flag at any time, so hashing the first chunk
   can begin without knowing whether it's the root.
@@ -78,8 +78,9 @@ chunk hash: 7fbd4a...   chunk hash: 7fbd4a...
 ```
 
 We can verify those values on the command line using the `b2sum` utility from
-https://github.com/oconnor663/blake2b_simd, which supports the necessary flags
-(the coreutils `b2sum` doesn't expose the parameters we need):
+[`blake2b_simd`](https://github.com/oconnor663/blake2b_simd), which supports
+the necessary flags (the coreutils `b2sum` doesn't expose all the BLAKE2
+parameters):
 
 ```bash
 # Define some aliases for hashing nodes. Note that --length and
@@ -106,7 +107,7 @@ $ unhex $big_chunk_hash$big_chunk_hash | hash_parent
 1926c3048e0391cdac5a0b116bd63e03a307e2c10d745b25d24c558e8be2bec9  -
 $ left_parent_hash=1926c3048e0391cdac5a0b116bd63e03a307e2c10d745b25d24c558e8be2bec9
 
-# Define another alias converting the input length to 16-byte little-endian hex.
+# Define another alias converting the input length to 8-byte little-endian hex.
 $ alias hexint='python3 -c "import sys; print(int(sys.argv[1]).to_bytes(8, \"little\").hex())"'
 
 # Compute the hash of the root node, with the length suffix and last node flag.
@@ -127,18 +128,18 @@ little-endian unsigned input length prepended to the very front. This makes the
 order of nodes on disk the same as the order in which a depth-first traversal
 would encounter them, so a reader decoding the tree from beginning to end
 doesn't need to do any seeking. Here's the same example tree above, formatted
-as an encoded file and shown as hex:
+as an encoded file:
 
 ```
 input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
-0120000000000000|1926c3...f330e9...|7fbd4a...7fbd4a...|\x00 * 4096|\x00 * 4096 |\x00
+0120000000000000|1926c3...f330e9...|7fbd4a...7fbd4a...|000000...  |000000...   |00
 ```
 
-Note carefully that this is the mirror of how the root node is hashed. Hashing
-the root node *appends* the length as associated data, which makes it possible
-to start hashing the first chunk before knowing whether its the root. Encoding
-*prepends* the length, because it's the first thing that the decoder needs to
-know.
+Note carefully that the first two sections are the reverse of how the root node
+is hashed. Hashing the root node *appends* the length as associated data, which
+makes it possible to start hashing the first chunk before knowing whether its
+the root. Encoding *prepends* the length, because it's the first thing that the
+decoder needs to know.
 
 The decoder first reads the 8-byte length from the front. The length indicates
 whether the first node is a chunk (<=4096) or a parent (>4096), and it verifies
@@ -178,7 +179,7 @@ The outboard encoding format is the same as the combined encoding format,
 except that all the chunks are omitted. Whenever the decoder would read a
 chunk, it instead reads the corresponding offset from the original input file.
 This is intended for situations where the benefit of retaining the unmodified
-input file is worth the complexity of reading two separate files.
+input file is worth the complexity of reading two separate files to decode.
 
 ## Slice Format
 
@@ -191,17 +192,18 @@ resulting slice will be this:
 
 ```
 input length    |root parent node  |left parent node  |second chunk
-0120000000000000|1926c3...f330e9...|7fbd4a...7fbd4a...|\x00 * 4096
+0120000000000000|1926c3...f330e9...|7fbd4a...7fbd4a...|000000...
 ```
 
 Although slices can be extracted from either a combined encoding or an outboard
 encoding, there is no such thing as an "outboard slice". Slices always include
-chunks inline, as the combined encoding does.
+chunks inline, as the combined encoding does. A slice that includes the entire
+input is exactly the same as the combined encoding of that input.
 
-Decoding a slice works just like decoding a full encoding. The only difference
-is that in cases where the full decoder would normally seek forward, the slice
-decoder continues reading in series, all the seeking having been taken care of
-by the slice extractor.
+Decoding a slice works just like decoding a combined encoding. The only
+difference is that in cases where the decoder would normally seek forward, the
+slice decoder continues reading in series, since all the seeking has been taken
+care of by the slice extractor.
 
 There are some unspecified edge cases in the slice parameters:
 
@@ -239,7 +241,7 @@ requirements. They are:
    but the gist is that it needs to be impossible for any root node and any
    non-root node to have the same hash.
 
-We ensure **tree decodability** by by domain-separating parent nodes from leaf
+We ensure **tree decodability** by domain-separating parent nodes from leaf
 nodes (chunks) with the **node depth** parameter. BLAKE2's parameters are
 functionally similar to the frame bits used in the paper, in that two inputs
 with different parameters always produce a different hash, though the
@@ -292,11 +294,10 @@ bytes, in addition to the [336 bytes](https://blake2.net/blake2.pdf) required
 by BLAKE2b. For comparison, the TLS record buffer is 16384 bytes.
 
 Extremely space-constrained implementations that want to use Bao have to define
-a more aggressive limit for their maximum input size and report failure if they
-exceed that size. In some cases, such a limit is already provided by the
-protocol they're implementing. For example, the largest possible IPv6
-"jumbogram" is 4 GiB, and limited to that maximum input size Bao's storage
-overhead would be 20 hashes or 640 bytes.
+a more aggressive limit for their maximum input size. In some cases, such a
+limit is already provided by the protocol they're implementing. For example,
+the largest possible IPv6 "jumbogram" is 4 GiB, and limited to that maximum
+input size Bao's storage overhead would be 20 hashes or 640 bytes.
 
 ## Design Rationales and Open Questions
 
@@ -320,30 +321,31 @@ impossible to implement with Python's `hashlib.blake2b` API, which ties the key
 length and key bytes together. An approach that applied the key bytes to every
 node would fit into Python's API, but it would both depart from the spec
 conventions and add extra overhead. Implementing Bao in pure Python isn't
-necessarily a requirement, but it's useful for generating test vectors, and the
-majority of BLAKE2 implementations in the wild have similar limitations.
+necessarily a requirement, but the majority of BLAKE2 implementations in the
+wild have similar limitations.
 
 The variable output length has a similar issue. In BLAKE2bp, the root node's
 output length is the hash length parameter, and the leaf nodes' output length
 is the inner hash length parameter, with those two parameters set the same way
 for all nodes. That's again impossible in the Python API, where the output
 length and the hash length parameter are always set together. Bao has the same
-problem, because the interior hashes are always 32 bytes (discussed immediately
-below). Also for the same reason, a 64-byte Bao output would only have 32
-effective bytes of security, so it might be misleading to even offer the longer
-digest.
+problem, because the interior subtree hashes are always 32 bytes. Also, a
+64-byte Bao output would have the same effective security as the 32-byte
+output, so it might be misleading to even offer the longer version.
 
-### Why not use the full 64 bytes of BLAKE2b output?
+### Why not use the full 64 bytes of BLAKE2b output in the interior of the tree?
 
 **Storage overhead.** Note that in the [Storage
 Requirements](#storage-requirements), the storage overhead is proportional to
 the size of a subtree hash. Storing 64-byte hashes would double the overhead.
+This does mean that BLAKE2b's 256 bits of collision resistance is reduced to
+128 bits, even if a future extension makes the full 64-byte root output
+available.
 
 It's worth noting that BLAKE2b's block size is 128 bytes, so hashing a parent
 node takes the same amount of time whether the child hashes are 32 bytes or 64.
 However, the 32-byte size does leave room in the block for the root length
-suffix, and it's possible that future extensions could implement the general
-parameters (discussed above) as additional suffixes.
+suffix.
 
 ### Should we stick closer to the BLAKE2 spec when setting node offset and node depth?
 
@@ -362,10 +364,11 @@ memoizing the hashes of all-zero subtrees. That approach works with any pattern
 of bytes that repeats on a subtree boundary. But if we set the node offset
 parameter differently in every subtree, memoizing no longer helps.
 
-We're also considering departing from the BLAKE2 spec to implement keying
-(above), so there might not be much value in sticking closely to it here. And
-computing these values would require even more "cute tricks" in a
-space-efficient incremental implementation.
+Also, we're already departing from the BLAKE2 spec in our use of the last node
+flag. The spec intended it to be set for all nodes on the right edge of the
+tree, but we only set it for the root node. It doesn't seem worth it to make
+implementations do more bookkeeping to be slightly-more-but-still-not-entirely
+compliant with the spec.
 
 ### Could we use a simpler tree mode, like KangarooTwelve does?
 
@@ -401,18 +404,18 @@ upcoming Cannon Lake generation of processors will probably support the AVX-512
 instruction set (8-way SIMD) on 16 logical cores, for a parallelism degree of
 128 on a mainstream desktop processor. Now to be fair, this arithmetic is
 cheating badly, because logical cores aren't physical cores, and because
-hashing 4 inputs with SIMD isn't 4x as fast as hashing 1 input. But it's
-flirting in the general direction of the truth.
+hashing 4 inputs with SIMD isn't 4x as fast as hashing 1 input. But the real
+throughput of that AWS benchmark is about 90x the max throughput of a single
+node, so 256x is only a few hardware generations away.
 
 ### Should we fall back to serial hashing for messages above some maximum size?
 
 **No.** Many tree modes, including some described in the [BLAKE2
-spec](https://blake2.net/blake2.pdf), fall back to a serial mode after the
-input reaches some threshold size. The main benefit is that this allows them to
-specify a small maximum tree height for reduced memory requirements. However,
-one of Bao's main benefits is parallelism over huge files, and falling back to
-serial hashing would conflict with that. It would also complicate encoding and
-decoding.
+spec](https://blake2.net/blake2.pdf), fall back to a serial mode after some
+threshold. That allows them to specify a small maximum tree height for reduced
+memory requirements. However, one of Bao's main benefits is parallelism over
+huge files, and falling back to serial hashing would conflict with that. It
+would also complicate encoding and decoding.
 
 ### What's the best way to choose the chunk size?
 
@@ -445,14 +448,13 @@ children, assuming there are no extra suffixes. That would cut the total number
 of parent nodes down by a factor of 3 (because 1/4 + 1/16 + ... = 1/3), with
 potentially no additional cost per parent.
 
-However, the storage overhead of this design is actually more than with the
+However, the storage overhead of this design is actually higher than with the
 binary tree. While a 4-ary tree is half as tall as a binary tree over the same
 number of chunks, its stack needs space for 3 subtree hashes per level, making
-total overhead 3/2 times as large. Also, a 4-ary tree would substantially
-complicate several algorithms involved in managing the state, like the "cute
-trick" we use to figure out how many subtree hashes to merge after each
-completed chunk. Overall, the cost of hashing parent nodes is already designed
-to be small, and shrinking it further isn't worth these tradeoffs.
+the total overhead 3/2 times as large. Also, a 4-ary tree would substantially
+complicate the algorithms for merging partial subtrees and computing encoded
+offsets. Overall, the cost of hashing parent nodes is already designed to be
+small, and shrinking it further isn't worth these tradeoffs.
 
 ### Is 64 bits large enough for the length counter?
 
@@ -470,7 +472,8 @@ restricted](https://doc.rust-lang.org/std/io/enum.SeekFrom.html) to 64-bit
 sizes and offsets. If Bao supported longer streams in theory, implementations
 would need to handle more unrepresentable edge cases. (Though even with a
 64-bit counter, the maximum _encoded_ file size can exceed 64 bits, and a
-complete seek implementation needs to seek twice to reach input near the end.)
+perfect decoder implementation needs to seek twice to reach bytes near the end
+of max-size encodings. In practice the decoder returns an overflow error.)
 
 Implementations also need to decide how much storage overhead is reasonable. If
 the counter was 128 bits, it would still make almost no sense to allocate space
@@ -480,18 +483,29 @@ implementation.
 
 ### Could a similar design be based on a different underlying hash function?
 
-**Yes, as long as the underlying hash prevents length extension.** SHA-256 or
+**Yes, as long as the underlying hash prevents length extension.** SHA-256 and
 SHA-512 aren't suitable, but SHA-512/256 and SHA-3 could be.
 
-Domain separation between the root and the non-root nodes, and between chunks
-and parent nodes, is a security requirement. For hash functions without
-associated data parameters, you can achieve domain separation with a small
-amount of overhead by appending some bits to every node. See for example the
-[Sakura coding](https://keccak.team/files/Sakura.pdf), also designed by the
+Domain separation between the root and non-root nodes, and between chunks and
+parent nodes, is a security requirement. For hash functions without associated
+data parameters, you can achieve domain separation with a small amount of
+overhead by appending some bits to every node. See for example the [Sakura
+coding](https://keccak.team/files/Sakura.pdf), also designed by the
 Keccak/SHA-3 team.
 
 ## Other Related Work
 
-- the [Tree Hash Exchange (THEX)](https://adc.sourceforge.io/draft-jchapweske-thex-02.html) format
-- [Tree Hashing](https://www.cryptolux.org/mediawiki-esc2013/images/c/ca/SL_tree_hashing_esc.pdf),
-  2013, a presentation by Stefan Lucks
+- The [Tree Hash
+  Exchange](https://adc.sourceforge.io/draft-jchapweske-thex-02.html) format
+  (2003). THEX and Bao have similar tree structures, and both specify a binary
+  format for encoding the tree to enable incremental decoding. THEX uses a
+  breadth-first rather than depth-first encoding layout, however, which makes
+  the decoder's storage requirements much larger. Also, as noted by the
+  Keccak/SHA-3 team in [*Sufficient
+  conditions*](https://eprint.iacr.org/2009/210.pdf), THEX doesn't
+  domain-separate the root node, and so it's vulnerable to length extension
+  regardless of the security of the underlying hash function.
+- [Tree
+  Hashing](https://www.cryptolux.org/mediawiki-esc2013/images/c/ca/SL_tree_hashing_esc.pdf)
+  (2013), a presentation by Stefan Lucks, discussing the requirements for
+  standardizing a tree hashing mode.
