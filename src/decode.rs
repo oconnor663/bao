@@ -464,6 +464,8 @@ pub fn hash_from_outboard_encoded<C: Read, O: Read>(
 mod verify_state {
     use super::*;
 
+    // This incremental verifier layers on top of encode::ParseState, and supports both the Reader
+    // and the SliceReader.
     #[derive(Clone)]
     pub(crate) struct VerifyState {
         stack: ArrayVec<[Hash; MAX_DEPTH]>,

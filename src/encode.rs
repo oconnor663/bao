@@ -448,6 +448,13 @@ pub(crate) fn pre_order_parent_nodes(chunk: u64, content_len: u64) -> u8 {
     cmp::min(starting_bound, interior_bound) as u8
 }
 
+// This type implements post-order-to-pre-order flipping for the encoder, in a way that could
+// support an incremental or asynchronous flip. (Though currently its only callers do the whole
+// flip all-at-once.)
+//
+// As discussed below and in bao.py, encoding first in post-order and then flipping to pre-order
+// makes it possible encode without knowing the input length in advance, and without requiring
+// buffer space for the entire input.
 #[derive(Clone)]
 struct FlipperState {
     parents: ArrayVec<[hash::ParentNode; hash::MAX_DEPTH]>,
@@ -705,6 +712,8 @@ use self::parse_state::StateNext;
 pub(crate) mod parse_state {
     use super::*;
 
+    // This incremental parser supports the SliceExtractor (which doesn't check any hashes) and the
+    // VerifyState in decode.rs (which adds hash verification on top of this).
     #[derive(Clone, Debug)]
     pub(crate) struct ParseState {
         content_len: Option<u64>,

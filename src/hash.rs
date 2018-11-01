@@ -313,6 +313,9 @@ pub(crate) enum StateFinish {
 /// that could be hashed in the real world, and implementations that are starved for stack space
 /// could cut that buffer in half and still be able to hash about 17 terabytes (`2^32` times the
 /// 4096-byte chunk size).
+///
+/// Note that this type used to be public, but is currently private. It could be re-exposed if
+/// there's demand from no_std callers.
 #[derive(Clone)]
 pub(crate) struct State {
     subtrees: ArrayVec<[Hash; MAX_DEPTH]>,
