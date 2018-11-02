@@ -11,6 +11,7 @@ yet been reviewed. The output may change prior to the 1.0 release.
 * [Slice Format](#slice-format)
 * [Security](#security)
 * [Storage Requirements](#storage-requirements)
+* [Performance Notes](#performance-notes)
 * [Design Rationales and Open Questions](#design-rationales-and-open-questions)
 * [Other Related Work](#other-related-work)
 
@@ -298,6 +299,38 @@ a more aggressive limit for their maximum input size. In some cases, such a
 limit is already provided by the protocol they're implementing. For example,
 the largest possible IPv6 "jumbogram" is 4 GiB, and limited to that maximum
 input size Bao's storage overhead would be 20 hashes or 640 bytes.
+
+## Performance Notes
+
+To get the highest possible throughput, the Bao implementation uses both
+threads and SIMD. Threads let the computation take advantage of multiple CPU
+cores, and SIMD gives each thread a higher overall throughput by hashing
+multiple chunks at once.
+
+Multithreading in the current implementation is done with the
+[`join`](https://docs.rs/rayon/latest/rayon/fn.join.html) function from the
+[Rayon](https://github.com/rayon-rs/rayon) library. It splits up its input
+recursively -- an excellent fit for traversing a tree -- and allows worker
+threads to "steal" the right half of the split, if they happen to be free. Once
+the global thread pool is initialized, this approach doesn't require any heap
+allocations.
+
+There are two different approaches to using SIMD to speed up BLAKE2b. The more
+common way is to optimize a single instance, and that's the approach that eeks
+past SHA-1 in the [BLAKE2b benchmarks](https://blake2.net/). But the more
+efficient way is to optimize multiple instances in parallel on a single thread.
+That's what the [reference AVX2 implementation of
+BLAKE2bp](https://github.com/sneves/blake2-avx2/blob/master/blake2bp.c) does,
+and it doubles the overall throughput. The
+[`blake2b_simd`](https://github.com/oconnor663/blake2b_simd) implementation
+includes an
+[`update4`](https://docs.rs/blake2b_simd/latest/blake2b_simd/fn.update4.html)
+interface, which provides the same speedup for multiple instances of BLAKE2b,
+and Bao uses that interface to make each worker thread hash four chunks in
+parallel. Note that the main downside of BLAKE2bp is that it hardcodes 4-way
+parallelism, such that moving to a higher degree of parallelism would change
+the output. But multi-way-BLAKE2b doesn't have that limitation, and when 8-way
+SIMD becomes more widespread, Bao can swap out `update4` for `update8`.
 
 ## Design Rationales and Open Questions
 
