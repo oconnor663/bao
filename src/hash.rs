@@ -26,7 +26,7 @@ use rayon;
 #[cfg(feature = "std")]
 use std::io;
 
-/// The size of a `Hash`.
+/// The size of a `Hash`, 32 bytes.
 pub const HASH_SIZE: usize = 32;
 pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
 pub(crate) const HEADER_SIZE: usize = 8;
@@ -270,7 +270,7 @@ fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
 }
 
 /// Hash a slice of input bytes all at once. If the `std` feature is enabled, as it is by default,
-/// this will use multiple threads via Rayon.
+/// this will use multiple threads via Rayon. This is the fastest hashing implementation.
 ///
 /// # Example
 ///
@@ -458,6 +458,7 @@ pub struct Writer {
 }
 
 impl Writer {
+    /// Create a new `Writer`.
     pub fn new() -> Self {
         Self {
             chunk: new_chunk_state(),
@@ -465,7 +466,7 @@ impl Writer {
         }
     }
 
-    /// This is equivalent to `write`, except that it's also available with `no_std`.
+    /// Add input. This is equivalent to `write`, except that it's also available with `no_std`.
     pub fn update(&mut self, mut input: &[u8]) {
         while !input.is_empty() {
             if self.chunk.count() as usize == CHUNK_SIZE {
@@ -480,8 +481,7 @@ impl Writer {
         }
     }
 
-    /// After feeding all the input bytes to `write`, return the root hash. The writer cannot be
-    /// used after this.
+    /// Finish computing the root hash. The writer cannot be used after this.
     pub fn finish(&mut self) -> Hash {
         let finalization = if self.state.count() == 0 {
             Root(self.chunk.count() as u64)
@@ -499,6 +499,158 @@ impl io::Write for Writer {
     fn write(&mut self, input: &[u8]) -> io::Result<usize> {
         self.update(input);
         Ok(input.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+const JOB_SIZE: usize = 4 * CHUNK_SIZE;
+
+#[cfg(feature = "std")]
+#[derive(Debug)]
+struct Job {
+    sender: crossbeam_channel::Sender<(Job, Hash)>,
+    receiver: crossbeam_channel::Receiver<(Job, Hash)>,
+    buffer: Vec<u8>,
+}
+
+#[cfg(feature = "std")]
+impl Job {
+    fn new() -> Self {
+        let (sender, receiver) = crossbeam_channel::bounded(1);
+        Self {
+            sender,
+            receiver,
+            buffer: Vec::with_capacity(JOB_SIZE),
+        }
+    }
+
+    fn compute_hash(&self, finalization: Finalization) -> Hash {
+        debug_assert!(self.buffer.len() <= JOB_SIZE);
+        if self.buffer.len() == JOB_SIZE {
+            hash_four_chunk_subtree(
+                array_ref!(self.buffer, 0 * CHUNK_SIZE, CHUNK_SIZE),
+                array_ref!(self.buffer, 1 * CHUNK_SIZE, CHUNK_SIZE),
+                array_ref!(self.buffer, 2 * CHUNK_SIZE, CHUNK_SIZE),
+                array_ref!(self.buffer, 3 * CHUNK_SIZE, CHUNK_SIZE),
+                finalization,
+            )
+        } else {
+            hash_recurse(&self.buffer, finalization)
+        }
+    }
+}
+
+/// A multi-threaded version of [`Writer`], which is much faster, but which requires allocation.
+///
+/// The fastest hashing implementation is the recursive [`hash`] function, which uses
+/// [`rayon::join`] to parallelize efficiently without allocating. However, that API only works
+/// with in-memory slices or memory-mapped files. For incremental input like we get through the
+/// `std::io::Write` interface, we need to buffer input on the heap, so that hashing can continue
+/// in the background while control returns to the caller. As a result, this type has more overhead
+/// [`hash`], and it isn't available under `no_std`.
+///
+/// This implementation is a proof of concept, and it isn't as efficient as it could be. The
+/// benchmarks put it at about 85% of the throughput of [`hash`] for long messages. The allocation
+/// overhead is costly for short messages, though we could work around that in a future version.
+/// Other currently missing features:
+///
+/// - a `Clone` impl
+/// - a way to clear the writer and reuse its allocations
+///
+/// [`Writer`]: struct.Writer.html
+/// [`hash`]: fn.hash.html
+/// [`rayon::join`]: https://docs.rs/rayon/latest/rayon/fn.join.html
+#[cfg(feature = "std")]
+#[derive(Debug)]
+pub struct ParallelWriter {
+    state: State,
+    receivers: std::collections::VecDeque<crossbeam_channel::Receiver<(Job, Hash)>>,
+    next_job: Job,
+    max_jobs: usize,
+}
+
+#[cfg(feature = "std")]
+impl ParallelWriter {
+    /// Create a new `ParallelWriter`.
+    pub fn new() -> Self {
+        Self {
+            state: State::new(),
+            receivers: std::collections::VecDeque::new(),
+            next_job: Job::new(),
+            max_jobs: num_cpus::get(),
+        }
+    }
+
+    fn await_job(&mut self) -> Job {
+        let receiver = self.receivers.pop_front().unwrap();
+        let (mut job, hash) = receiver.recv().expect("channel closed");
+        self.state.push_subtree(&hash, job.buffer.len());
+        job.buffer.clear();
+        job
+    }
+
+    /// Add input. This is equivalent to `write`.
+    pub fn update(&mut self, mut input: &[u8]) {
+        while !input.is_empty() {
+            // There's still input to go, so if the next job is full we need to send it off.
+            if self.next_job.buffer.len() == JOB_SIZE {
+                // If we've exceeded the maximum number of jobs in flight, await one of them and
+                // process its result. Otherwise create a new one.
+                let new_job = if self.receivers.len() >= self.max_jobs {
+                    self.await_job()
+                } else {
+                    Job::new()
+                };
+
+                // Send off the next job, and replace it with the clean one we just got. Note that
+                // rayon::spawn is an extra allocation, but I'm not sure that's avoidable without a
+                // custom-built thread pool.
+                let next_job = mem::replace(&mut self.next_job, new_job);
+                self.receivers.push_back(next_job.receiver.clone());
+                rayon::spawn(move || {
+                    let hash = next_job.compute_hash(NotRoot);
+                    let sender = next_job.sender.clone();
+                    sender.send((next_job, hash));
+                });
+            }
+
+            // Now that we have a next job with some space available, take as much input as we can.
+            // If we can't consume the whole input, we'll loop back to the top to send off the job
+            // and keep going.
+            let want = JOB_SIZE - self.next_job.buffer.len();
+            let take = cmp::min(want, input.len());
+            self.next_job.buffer.extend_from_slice(&input[..take]);
+            input = &input[take..];
+        }
+    }
+
+    /// Finish computing the root hash. The writer cannot be used after this.
+    pub fn finish(&mut self) -> Hash {
+        let finalization = if self.receivers.is_empty() && self.state.count() == 0 {
+            Root(self.next_job.buffer.len() as u64)
+        } else {
+            NotRoot
+        };
+        let last_job_hash = self.next_job.compute_hash(finalization);
+
+        while !self.receivers.is_empty() {
+            self.await_job();
+        }
+
+        self.state
+            .push_subtree(&last_job_hash, self.next_job.buffer.len());
+        self.state.finish()
+    }
+}
+
+#[cfg(feature = "std")]
+impl io::Write for ParallelWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.update(buf);
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -625,6 +777,11 @@ mod test {
             let expected = hash(&input);
 
             let mut writer = Writer::new();
+            writer.write_all(&input).unwrap();
+            let found = writer.finish();
+            assert_eq!(expected, found, "hashes don't match");
+
+            let mut writer = ParallelWriter::new();
             writer.write_all(&input).unwrap();
             let found = writer.finish();
             assert_eq!(expected, found, "hashes don't match");

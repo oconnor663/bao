@@ -35,6 +35,10 @@ extern crate byteorder;
 extern crate constant_time_eq;
 extern crate copy_in_place;
 #[cfg(feature = "std")]
+extern crate crossbeam_channel;
+#[cfg(feature = "std")]
+extern crate num_cpus;
+#[cfg(feature = "std")]
 extern crate rayon;
 
 pub mod decode;

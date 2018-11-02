@@ -114,6 +114,12 @@ fn test_hash_vectors() {
         writer.write_all(&input).unwrap();
         let writer_hash = writer.finish();
         assert_eq!(hash, writer_hash);
+
+        // Make sure the ParallelWriter gives the same answer.
+        let mut writer = bao::hash::ParallelWriter::new();
+        writer.write_all(&input).unwrap();
+        let writer_hash = writer.finish();
+        assert_eq!(hash, writer_hash);
     }
 }
 

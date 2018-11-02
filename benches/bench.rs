@@ -104,7 +104,7 @@ fn bench_bao_hash_slice_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_writer_short(b: &mut Bencher) {
+fn bench_bao_hash_serial_writer_short(b: &mut Bencher) {
     let input = input(b, SHORT);
     b.iter(|| {
         let mut writer = hash::Writer::new();
@@ -114,7 +114,7 @@ fn bench_bao_hash_writer_short(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_writer_medium(b: &mut Bencher) {
+fn bench_bao_hash_serial_writer_medium(b: &mut Bencher) {
     let input = input(b, MEDIUM);
     b.iter(|| {
         let mut writer = hash::Writer::new();
@@ -124,10 +124,40 @@ fn bench_bao_hash_writer_medium(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_writer_long(b: &mut Bencher) {
+fn bench_bao_hash_serial_writer_long(b: &mut Bencher) {
     let input = input(b, LONG);
     b.iter(|| {
         let mut writer = hash::Writer::new();
+        writer.write_all(&input).unwrap();
+        writer.finish()
+    });
+}
+
+#[bench]
+fn bench_bao_hash_parallel_writer_short(b: &mut Bencher) {
+    let input = input(b, SHORT);
+    b.iter(|| {
+        let mut writer = hash::ParallelWriter::new();
+        writer.write_all(&input).unwrap();
+        writer.finish()
+    });
+}
+
+#[bench]
+fn bench_bao_hash_parallel_writer_medium(b: &mut Bencher) {
+    let input = input(b, MEDIUM);
+    b.iter(|| {
+        let mut writer = hash::ParallelWriter::new();
+        writer.write_all(&input).unwrap();
+        writer.finish()
+    });
+}
+
+#[bench]
+fn bench_bao_hash_parallel_writer_long(b: &mut Bencher) {
+    let input = input(b, LONG);
+    b.iter(|| {
+        let mut writer = hash::ParallelWriter::new();
         writer.write_all(&input).unwrap();
         writer.finish()
     });
