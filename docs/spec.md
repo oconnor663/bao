@@ -27,11 +27,11 @@ level of the tree, the rightmost node is raised to the level above. Here's what
 the tree looks like as it grows from 1 to 4 chunks.
 
 ```
-                                     <parent>                    <parent>
-                                      /    \                    /       \
-              <parent>          <parent>  [CHUNK]       <parent>         <parent>
-               /   \             /   \                   /   \            /   \
-[CHUNK]   [CHUNK] [CHUNK]   [CHUNK] [CHUNK]         [CHUNK] [CHUNK]  [CHUNK] [CHUNK]
+                                         <parent>                       <parent>
+                                          /    \                      /          \
+                <parent>            <parent>  [CHUNK3]         <parent>           <parent>
+                 /   \               /   \                     /   \              /   \
+[CHUNK1]   [CHUNK1] [CHUNK2]   [CHUNK1] [CHUNK2]         [CHUNK1] [CHUNK2]  [CHUNK3] [CHUNK4]
 ```
 
 We can also describe the tree recursively:
@@ -318,8 +318,8 @@ allocations.
 There are two different approaches to using SIMD to speed up BLAKE2b. The more
 common way is to optimize a single instance, and that's the approach that eeks
 past SHA-1 in the [BLAKE2b benchmarks](https://blake2.net/). But the more
-efficient way is to optimize multiple instances in parallel on a single thread.
-That's what the [reference AVX2 implementation of
+efficient way, when you have enough input, is to optimize multiple instances in
+parallel on a single thread. That's what the [reference AVX2 implementation of
 BLAKE2bp](https://github.com/sneves/blake2-avx2/blob/master/blake2bp.c) does,
 and it doubles the overall throughput. The
 [`blake2b_simd`](https://github.com/oconnor663/blake2b_simd) implementation
@@ -414,7 +414,7 @@ implement than a full binary tree, and it adds less storage overhead.
 
 However, a shallow tree would limit the usefulness of Bao's encoding and
 slicing features. The root node becomes linear in the size of the input.
-Encoding a gigabyte file, for example, would produce root that's several
+Encoding a gigabyte file, for example, would produce a root node that's several
 megabytes. The recipient would need to fetch and buffer the entire root before
 verifying any content bytes, and decoding would require heap allocation. The
 usefulness of the encoding format would be limited to the space of files big
