@@ -96,8 +96,9 @@ they're honestly storing the file, without needing to prepare or store
 challenges for the future.
 
 ```sh
-# Using the encoded file from above, extract a 100 KB from somewhere in
-# the middle. We'll use start=500000 (500 KB) and count=100000 (100 KB).
+# Using the encoded file from above, extract a 100 KB slice from
+# somewhere in the middle. We'll use start=500000 (500 KB) and
+# count=100000 (100 KB).
 > bao slice 500000 100000 f.bao f.slice
 
 # Look at the size of the slice. It contains the 100 KB of content plus
