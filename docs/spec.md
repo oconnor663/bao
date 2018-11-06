@@ -318,10 +318,12 @@ allocations.
 There are two different approaches to using SIMD to speed up BLAKE2b. The more
 common way is to optimize a single instance, and that's the approach that eeks
 past SHA-1 in the [BLAKE2b benchmarks](https://blake2.net/). But the more
-efficient way, when you have enough input, is to optimize multiple instances in
-parallel on a single thread. That's what the [reference AVX2 implementation of
-BLAKE2bp](https://github.com/sneves/blake2-avx2/blob/master/blake2bp.c) does,
-and it doubles the overall throughput. The
+efficient way, when you have multiple inputs, is to run multiple instances in
+parallel on a single thread. Samuel Neves discussed the second approach in [a
+2012 paper](https://eprint.iacr.org/2012/275.pdf) and implemented it in the
+[reference AVX2 implementation of
+BLAKE2bp](https://github.com/sneves/blake2-avx2/blob/master/blake2bp.c). The
+overall throughput is about double that of a single instance. The
 [`blake2b_simd`](https://github.com/oconnor663/blake2b_simd) implementation
 includes an
 [`update4`](https://docs.rs/blake2b_simd/latest/blake2b_simd/fn.update4.html)
