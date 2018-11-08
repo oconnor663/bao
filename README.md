@@ -126,8 +126,8 @@ Error: Custom { kind: InvalidData, error: StringError("hash mismatch") }
 By default, all of the operations above work with a "combined" encoded
 file, that is, one that contains both the content bytes and the tree
 hash bytes interleaved. However, sometimes you want to keep them
-separate, like to avoid copying the contents of a very large input file.
-In these cases, you can use the "outboard" encoded format, via the
+separate, for example to avoid duplicating a very large input file. In
+these cases, you can use the "outboard" encoding format, via the
 `--outboard` flag:
 
 ```sh
