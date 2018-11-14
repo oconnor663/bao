@@ -23,7 +23,7 @@ const LONG: usize = 10_000_000;
 
 fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
     b.bytes = size as u64;
-    vec![0; size]
+    vec![0xff; size]
 }
 
 // Note that because of header byte overhead included above, these raw blake2b() benchmarks aren't
