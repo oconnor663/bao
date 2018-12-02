@@ -9,10 +9,11 @@ hasn't yet been reviewed. The output may change prior to the 1.0
 release.
 
 Bao (rhymes with bough 🌳) is a general purpose tree hash for files.
-Here's the [full specification](docs/spec.md). What makes a tree hash
-different from a regular hash? Depending on how many cores you've got in
-your machine, the first thing you might notice is that it's ten times
-faster than SHA-2:
+Here's the [full specification](docs/spec.md). Here's a [talk I gave
+about it](https://youtu.be/Dya9c2DXMqQ) in November 2018. What makes a
+tree hash different from a regular hash? Depending on how many cores
+you've got in your machine, the first thing you might notice is that
+it's ten times faster than SHA-2:
 
 ![snazzy gif](docs/bao_hash.gif)
 
