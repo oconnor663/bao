@@ -544,3 +544,5 @@ Keccak/SHA-3 team.
   Hashing](https://www.cryptolux.org/mediawiki-esc2013/images/c/ca/SL_tree_hashing_esc.pdf)
   (2013), a presentation by Stefan Lucks, discussing the requirements for
   standardizing a tree hashing mode.
+- [RFC 6962](https://tools.ietf.org/html/rfc6962) uses a similar tree layout
+  and growth strategy.
