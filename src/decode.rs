@@ -1311,7 +1311,7 @@ mod test {
             let (hash, encoded) = encode::encode_to_vec(&input);
             let mut bad_bytes = *hash.as_bytes();
             bad_bytes[0] ^= 1;
-            let mut bad_hash = Hash::new(bad_bytes);
+            let bad_hash = Hash::new(bad_bytes);
 
             // Seeking past the end of a tree should succeed with the right hash.
             let mut output = Vec::new();
