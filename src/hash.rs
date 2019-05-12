@@ -116,12 +116,24 @@ fn common_params() -> blake2b_simd::Params {
     params
 }
 
+fn chunk_params() -> blake2b_simd::Params {
+    let mut params = common_params();
+    params.node_depth(0);
+    params
+}
+
+fn node_params() -> blake2b_simd::Params {
+    let mut params = common_params();
+    params.node_depth(1);
+    params
+}
+
 pub(crate) fn new_chunk_state() -> blake2b_simd::State {
-    common_params().node_depth(0).to_state()
+    chunk_params().to_state()
 }
 
 pub(crate) fn new_parent_state() -> blake2b_simd::State {
-    common_params().node_depth(1).to_state()
+    node_params().to_state()
 }
 
 // The root node is hashed differently from interior nodes. It gets suffixed
@@ -179,27 +191,20 @@ fn hash_four_chunk_subtree(
     finalization: Finalization,
 ) -> Hash {
     // This relies on the fact that finalize_hash does nothing for non-root nodes.
-    let mut state0 = new_chunk_state();
-    let mut state1 = new_chunk_state();
-    let mut state2 = new_chunk_state();
-    let mut state3 = new_chunk_state();
-    blake2b_simd::update4(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        chunk0,
-        chunk1,
-        chunk2,
-        chunk3,
-    );
-    let chunk_hashes = blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3);
+    let params = chunk_params();
+    let mut chunk_jobs = [
+        blake2b_simd::many::HashManyJob::new(&params, chunk0),
+        blake2b_simd::many::HashManyJob::new(&params, chunk1),
+        blake2b_simd::many::HashManyJob::new(&params, chunk2),
+        blake2b_simd::many::HashManyJob::new(&params, chunk3),
+    ];
+    blake2b_simd::many::hash_many(chunk_jobs.iter_mut());
     let mut left_subtree_state = new_parent_state();
-    left_subtree_state.update(chunk_hashes[0].as_bytes());
-    left_subtree_state.update(chunk_hashes[1].as_bytes());
+    left_subtree_state.update(chunk_jobs[0].to_hash().as_bytes());
+    left_subtree_state.update(chunk_jobs[1].to_hash().as_bytes());
     let mut right_subtree_state = new_parent_state();
-    right_subtree_state.update(chunk_hashes[2].as_bytes());
-    right_subtree_state.update(chunk_hashes[3].as_bytes());
+    right_subtree_state.update(chunk_jobs[2].to_hash().as_bytes());
+    right_subtree_state.update(chunk_jobs[3].to_hash().as_bytes());
     let mut parent_state = new_parent_state();
     parent_state.update(left_subtree_state.finalize().as_bytes());
     parent_state.update(right_subtree_state.finalize().as_bytes());
