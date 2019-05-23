@@ -43,7 +43,7 @@ We can also describe the tree recursively:
   bytes on the left is largest power of 2 times 4096 that's strictly less than
   the total. The remainder, always at least 1 byte, goes on the right.
 
-Hashing nodes is done with BLAKE2b, using the following parameters:
+Hashing nodes is done with BLAKE2s, using the following parameters:
 
 - **Hash length** is 32.
 - **Fanout** is 2.
@@ -79,8 +79,8 @@ chunk hash: 7fbd4a...   chunk hash: 7fbd4a...
 ```
 
 We can verify those values on the command line using the `b2sum` utility from
-[`blake2b_simd`](https://github.com/oconnor663/blake2b_simd), which supports
-the necessary flags (the coreutils `b2sum` doesn't expose all the BLAKE2
+[blake2_simd](https://github.com/oconnor663/blake2_simd), which supports the
+necessary flags (the coreutils `b2sum` doesn't expose all the BLAKE2
 parameters):
 
 ```bash
@@ -291,8 +291,8 @@ A Bao implementation needs to store one hash (32 bytes) for every level of the
 tree. The largest supported input is 2<sup>64</sup> - 1 bytes. Given the
 4096-byte chunk size (2<sup>12</sup>), that's 2<sup>52</sup> leaf nodes, or a
 maximum tree height of 52. Storing 52 hashes, 32 bytes each, requires 1664
-bytes, in addition to the [336 bytes](https://blake2.net/blake2.pdf) required
-by BLAKE2b. For comparison, the TLS record buffer is 16384 bytes.
+bytes, in addition to the [168 bytes](https://blake2.net/blake2.pdf) required
+by BLAKE2s. For comparison, the TLS record buffer is 16384 bytes.
 
 Extremely space-constrained implementations that want to use Bao have to define
 a more aggressive limit for their maximum input size. In some cases, such a
@@ -315,26 +315,119 @@ threads to "steal" the right half of the split, if they happen to be free. Once
 the global thread pool is initialized, this approach doesn't require any heap
 allocations.
 
-There are two different approaches to using SIMD to speed up BLAKE2b. The more
+There are two different approaches to using SIMD to speed up BLAKE2. The more
 common way is to optimize a single instance, and that's the approach that eeks
 past SHA-1 in the [BLAKE2b benchmarks](https://blake2.net/). But the more
 efficient way, when you have multiple inputs, is to run multiple instances in
 parallel on a single thread. Samuel Neves discussed the second approach in [a
 2012 paper](https://eprint.iacr.org/2012/275.pdf) and implemented it in the
 [reference AVX2 implementation of
-BLAKE2bp](https://github.com/sneves/blake2-avx2/blob/master/blake2bp.c). The
-overall throughput is about double that of a single instance. The
-[`blake2b_simd`](https://github.com/oconnor663/blake2b_simd) implementation
-includes an
-[`update4`](https://docs.rs/blake2b_simd/latest/blake2b_simd/fn.update4.html)
-interface, which provides the same speedup for multiple instances of BLAKE2b,
-and Bao uses that interface to make each worker thread hash four chunks in
-parallel. Note that the main downside of BLAKE2bp is that it hardcodes 4-way
+BLAKE2s](https://github.com/sneves/blake2-avx2/blob/master/blake2sp.c). The
+overall throughput is about quadruple that of a single BLAKE2s instance. The
+[`blake2s_simd`](https://github.com/oconnor663/blake2_simd) implementation
+includes a
+[`hash_many`](https://docs.rs/blake2s_simd/0.5.1/blake2s_simd/many/fn.hash_many.html)
+interface, which provides the same speedup for multiple instances of BLAKE2s,
+and Bao uses that interface to make each worker thread hash multiple chunks in
+parallel. Note that the main downside of BLAKE2sp is that it hardcodes 8-way
 parallelism, such that moving to a higher degree of parallelism would change
-the output. But multi-way-BLAKE2b doesn't have that limitation, and when 8-way
-SIMD becomes more widespread, Bao can swap out `update4` for `update8`.
+the output. But `hash_many` doesn't have that limitation, and when AVX-512
+becomes more widespread, it will execute 16-way parallelism without an API
+change.
 
 ## Design Rationales and Open Questions
+
+### Why BLAKE2s instead of BLAKE2b?
+
+**It's faster both on small 32-bit embedded systems and on modern 64-bit
+systems with SIMD.** There are two important differences between BLAKE2s and
+BLAKE2b:
+
+- BLAKE2s operates on 32-bit words, while BLAKE2b operates on 64-bit words.
+- BLAKE2s does 10 rounds of compression, while BLAKE2b does 12. This is related
+  to their 128-bit vs 256-bit security levels and the larger state size of
+  BLAKE2b, which needs more rounds to get good diffusion.
+
+This is similar to the difference between SHA-256 and SHA-512. With both BLAKE2
+and SHA-2, many sources note that the 64-bit variants have better performance
+on 64-bit systems. This is true for hashing a single input, because 64-bit
+instructions handle twice as many input bits without being twice as slow. On
+modern SIMD hardware, a single instance of BLAKE2b can also take advantage of
+256-bit vector arithmetic, while BLAKE2s can only make use of 128-bit vectors.
+
+However, when the implementation is designed to hash multiple inputs in
+parallel, the effect of SIMD is different. In the parallel mode, both BLAKE2b
+and BLAKE2s can use vectors of any size, by accumulating words from a
+corresponding number of different inputs. Besides being more flexible, this
+approach is also substantially more efficient, because the diagonalization step
+in the BLAKE2 compression function disappears. With 32-bit words and 64-bit
+words on a level playing field in terms of SIMD throughput, the remaining
+performance difference between the two functions is that BLAKE2s has fewer
+rounds, which makes it faster.
+
+Those are the considerations for long inputs, but it's also useful to look at
+short inputs. With just a few bytes of input, both BLAKE2s and BLAKE2b will
+compress a single block, and most of that block will be padded with zeros. In
+that case it's not the average throughput that matters, but the time it takes
+to hash a single block. Here BLAKE2s wins again, mainly because of its smaller
+block size.
+
+There's a regime in the middle where BLAKE2b does better. For inputs about one
+chunk long, there's nothing to parallelize, and the higher single-instance
+throughput of BLAKE2b on 64-bit machines wins out. Also for inputs of a few
+chunks, the lower parallelism degree of BLAKE2b helps make earlier use of wider
+vectors and multiple threads. For example, a parallel implementation of BLAKE2b
+using 256-bit SIMD vectors executes 4 hashes at once, so an input 8 chunks long
+could be efficiently split between 2 threads. But a parallel implementation of
+BLAKE2s using 256-bit vectors executes 8 hashes at once, so the 4-chunk input
+is stuck using 128-bit vectors, and the 8-chunk input has no room for a second
+thread. In general it takes twice as many chunks for BLAKE2s to engage the full
+parallelism of the hardware. However, this advantage for BLAKE2b comes with
+several caveats:
+
+- It assumes a constant chunk size, but the chunk size is a free parameter in
+  the Bao design. Bao could make up the difference by halving the chunk size,
+  probably with only a few percentage points of overall throughput sacrificed
+  to parent node overhead. See the next section.
+- Performance is most important at the extremes. For extremely large inputs,
+  BLAKE2s wins because of its higher throughput. For extremely small hardware,
+  BLAKE2s wins because of its 32-bit words.
+- It's possible to parallelize Bao across multiple inputs just like we
+  parallelize BLAKE2s across multiple inputs. In fact, inputs less than one
+  chunk long are just a single BLAKE2s hash, and the parallel BLAKE2s
+  implementation could be reused as-is to parallelize the Bao hashes of those
+  short inputs. It's unlikely that anyone will implement this in practice, but
+  an application with a critical bottleneck hashing moderate-length inputs has
+  this option.
+
+### What's the best way to choose the chunk size?
+
+**Open question.** There are many efficiency tradeoffs at the margins. As noted
+above, the main advantage of a small chunk size is that it allows the
+implementation to parallelize more work for inputs that are only a few chunks
+long. Meanwhile, the advantage of a large chunk size is that it reduces the
+number of parent nodes in the tree and the overhead of hashing them. I chose
+4096 somewhat arbitrarily, because it seems to be a common page size, and
+because the performance overhead is subjectively small in testing. Different
+applications are likely to have different priorities around this tradeoff, and
+we won't be able to settle this question without more experiments. See
+[issue #17](https://github.com/oconnor663/bao/issues/17).
+
+### Does Bao have a "high security" variant?
+
+**No.** A 256-bit digest with its 128-bit security level is enough for
+practically any cryptographic application, which is why everyone uses SHA-256
+for TLS certificates and why the Intel SHA Extensions don't include SHA-512.
+Higher security levels waste cycles, and longer digests waste bandwidth. Also
+having multiple variants of the same algorithm causes confusion around which
+variant people are talking about and which variant a new application should
+choose.
+
+In some future world with large quantum computers, it could theoretically make
+sense for applications to target a 256-bit security level. In that world, we
+could define a hash function similar to Bao but with a 64-bit digest. Such a
+design could use BLAKE2b in place of BLAKE2s and tweak the parameters to
+reflect the larger digest size. In my imagination, I call this function "Ciao".
 
 ### Can we expose the BLAKE2 general parameters through the Bao API?
 
@@ -349,17 +442,17 @@ The right approach for the secret key is less clear. The BLAKE2 spec says:
 followed by a number of bytes equal to (at most) the maximal leaf length." That
 remark actually leaves the trickiest detail unsaid, which is that while only
 the leaf nodes hash the key bytes, _all_ nodes include the key length as
-associated data. This is behavior is visible in the BLAKE2bp [reference
-implementation](https://github.com/BLAKE2/BLAKE2/blob/a90684ab3fe788b2ca45076cf9b38335de289f58/ref/blake2bp-ref.c#L65)
+associated data. This is behavior is visible in the BLAKE2sp [reference
+implementation](https://github.com/BLAKE2/BLAKE2/blob/a90684ab3fe788b2ca45076cf9b38335de289f58/ref/blake2sp-ref.c#L65)
 and confirmed by its test vectors. Unfortunately, this behavior is actually
-impossible to implement with Python's `hashlib.blake2b` API, which ties the key
+impossible to implement with Python's `hashlib.blake2s` API, which ties the key
 length and key bytes together. An approach that applied the key bytes to every
 node would fit into Python's API, but it would both depart from the spec
 conventions and add extra overhead. Implementing Bao in pure Python isn't
 necessarily a requirement, but the majority of BLAKE2 implementations in the
 wild have similar limitations.
 
-The variable output length has a similar issue. In BLAKE2bp, the root node's
+The variable output length has a similar issue. In BLAKE2sp, the root node's
 output length is the hash length parameter, and the leaf nodes' output length
 is the inner hash length parameter, with those two parameters set the same way
 for all nodes. That's again impossible in the Python API, where the output
@@ -367,20 +460,6 @@ length and the hash length parameter are always set together. Bao has the same
 problem, because the interior subtree hashes are always 32 bytes. Also, a
 64-byte Bao output would have the same effective security as the 32-byte
 output, so it might be misleading to even offer the longer version.
-
-### Why not use the full 64 bytes of BLAKE2b output in the interior of the tree?
-
-**Storage overhead.** Note that in the [Storage
-Requirements](#storage-requirements), the storage overhead is proportional to
-the size of a subtree hash. Storing 64-byte hashes would double the overhead.
-This does mean that BLAKE2b's 256 bits of collision resistance is reduced to
-128 bits, even if a future extension makes the full 64-byte root output
-available.
-
-It's worth noting that BLAKE2b's block size is 128 bytes, so hashing a parent
-node takes the same amount of time whether the child hashes are 32 bytes or 64.
-However, the 32-byte size does leave room in the block for the root length
-suffix.
 
 ### Should we stick closer to the BLAKE2 spec when setting node offset and node depth?
 
@@ -429,19 +508,18 @@ A two-level tree would also limit parallelism. As noted in the [KangarooTwelve
 paper](https://eprint.iacr.org/2016/770.pdf), given enough worker threads
 hashing input chunks and adding their hashes to the root, the thread
 responsible for hashing the root eventually reaches its own throughput limit.
-This happens at a parallelism degree equal to the ratio of the chunk size and
-the hash length, 256 in the case of KangarooTwelve. That sounds like an
-extraordinary number of threads, but consider that one of Bao's benchmarks is
-running on a 96-logical-core AWS machine, and that Bao uses an AVX2
-implementation of BLAKE2b that hashes 4 chunks in parallel per thread. That
-benchmark is hitting parallelism degree 384 today. Also consider that Intel's
-upcoming Cannon Lake generation of processors will probably support the AVX-512
-instruction set (8-way SIMD) on 16 logical cores, for a parallelism degree of
-128 on a mainstream desktop processor. Now to be fair, this arithmetic is
-cheating badly, because logical cores aren't physical cores, and because
-hashing 4 inputs with SIMD isn't 4x as fast as hashing 1 input. But the real
-throughput of that AWS benchmark is about 90x the max throughput of a single
-node, so 256x is only a few hardware generations away.
+If the root hash has the same throughput as the leaves, this happens at a
+parallelism degree equal to the ratio of the chunk size and the hash length,
+256 in the case of KangarooTwelve. In practice, devoting an entire core to a
+single instance roughly doubles that one instance's throughput, bringing the
+max degree to 512.
+
+That sounds like an impossibly high number, but consider that one of Bao's
+benchmarks runs on a 48-physical-core AWS "m5.24xlarge" machine, and that the
+AVX-512 version of BLAKE2s ([preliminary
+benchmarks](https://github.com/oconnor663/blake2s_simd/issues/1#issuecomment-484572123))
+will hash 16 chunks in parallel per thread. That machine supports parallelism
+degree 768 today.
 
 ### Should we fall back to serial hashing for messages above some maximum size?
 
@@ -451,45 +529,6 @@ threshold. That allows them to specify a small maximum tree height for reduced
 memory requirements. However, one of Bao's main benefits is parallelism over
 huge files, and falling back to serial hashing would conflict with that. It
 would also complicate encoding and decoding.
-
-### What's the best way to choose the chunk size?
-
-**Open question.** I chose 4096 somewhat arbitrarily, because it seems to be a
-common page size, and because the performance overhead seems subjectively small
-in testing. But there are many efficiency tradeoffs at the margins, and we
-might not be able to settle this question without more real world
-implementation experience. See [issue #17](https://github.com/oconnor663/bao/issues/17).
-
-While Bao is intended to be a "one size fits all" hash function, the chunk size
-is the parameter that different implementations are most likely to need to
-tweak. For example, an embedded implementation that implements decoding (will
-there ever be such a thing?) needs to allocate buffer space for an entire
-chunk. It's possible that a tiny chunk size would be a hard requirement, and
-that cutting the overall throughput by a large factor might not matter.
-
-If an implementation needs to customize the chunk size, it will of course break
-compatibility with standard Bao. Such an implementation _must_ set the **max
-leaf length** parameter accordingly to avoid any chance of causing collisions.
-But note that these variants shouldn't change the max depth; that parameter
-only represents the size of the input byte count.
-
-### Would it be more efficient to use an arity larger than 2?
-
-**Maybe, but it would add storage overhead.** There's an efficiency argument
-for allowing parent nodes to have 4 children. As noted above, the BLAKE2b block
-size is 128 bytes. If we're using hashes that are 32 bytes long, hashing a
-parent with 2 children takes just as much time as hashing a parent with 4
-children, assuming there are no extra suffixes. That would cut the total number
-of parent nodes down by a factor of 3 (because 1/4 + 1/16 + ... = 1/3), with
-potentially no additional cost per parent.
-
-However, the storage overhead of this design is actually higher than with the
-binary tree. While a 4-ary tree is half as tall as a binary tree over the same
-number of chunks, its stack needs space for 3 subtree hashes per level, making
-the total overhead 3/2 times as large. Also, a 4-ary tree would substantially
-complicate the algorithms for merging partial subtrees and computing encoded
-offsets. Overall, the cost of hashing parent nodes is already designed to be
-small, and shrinking it further isn't worth these tradeoffs.
 
 ### Is 64 bits large enough for the length counter?
 

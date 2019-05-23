@@ -1,7 +1,7 @@
 //! The tests in this file run bao against the standard set of test vectors.
 
 extern crate bao;
-extern crate blake2b_simd;
+extern crate blake2s_simd;
 extern crate byteorder;
 #[macro_use]
 extern crate lazy_static;
@@ -42,7 +42,7 @@ struct EncodeTest {
     input_len: usize,
     output_len: usize,
     bao_hash: String,
-    encoded_blake2b: String,
+    encoded_blake2s: String,
     corruptions: Vec<usize>,
 }
 
@@ -51,7 +51,7 @@ struct OutboardTest {
     input_len: usize,
     output_len: usize,
     bao_hash: String,
-    encoded_blake2b: String,
+    encoded_blake2s: String,
     outboard_corruptions: Vec<usize>,
     input_corruptions: Vec<usize>,
 }
@@ -74,7 +74,7 @@ struct SliceTestSlice {
     start: u64,
     len: u64,
     output_len: usize,
-    output_blake2b: String,
+    output_blake2s: String,
     corruptions: Vec<usize>,
 }
 
@@ -91,12 +91,10 @@ fn make_input(len: usize) -> Vec<u8> {
     output
 }
 
-fn blake2b(bytes: &[u8]) -> String {
-    blake2b_simd::Params::new()
+fn blake2s(bytes: &[u8]) -> String {
+    blake2s_simd::Params::new()
         .hash_length(16)
-        .to_state()
-        .update(bytes)
-        .finalize()
+        .hash(bytes)
         .to_hex()
         .to_string()
 }
@@ -176,7 +174,7 @@ fn test_encode_vectors() {
         assert_eq!(case.bao_hash, hash.to_hex().to_string());
 
         // Make sure the encoded output is correct.
-        assert_eq!(case.encoded_blake2b, blake2b(&encoded));
+        assert_eq!(case.encoded_blake2s, blake2s(&encoded));
 
         // Make sure all the other implementations of encode give the same answer.
         {
@@ -245,7 +243,7 @@ fn test_outboard_vectors() {
         assert_eq!(case.bao_hash, hash.to_hex().to_string());
 
         // Make sure the outboard output is correct.
-        assert_eq!(case.encoded_blake2b, blake2b(&outboard));
+        assert_eq!(case.encoded_blake2s, blake2s(&outboard));
 
         // Make sure all the other implementations of encode give the same answer.
         {
@@ -414,7 +412,7 @@ fn test_slice_vectors() {
             let mut combined_slice = Vec::new();
             combined_extractor.read_to_end(&mut combined_slice).unwrap();
             assert_eq!(slice.output_len, combined_slice.len());
-            assert_eq!(slice.output_blake2b, blake2b(&combined_slice));
+            assert_eq!(slice.output_blake2s, blake2s(&combined_slice));
 
             // Make sure slicing the outboard encoding also gives the right output.
             let mut outboard_extractor = bao::encode::SliceExtractor::new_outboard(

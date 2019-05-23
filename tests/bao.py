@@ -82,7 +82,7 @@ def decode_len(len_bytes):
 # case, the finalization parameter is the content length as an integer. All
 # interior nodes set finalization=None.
 def hash_node(node_bytes, is_chunk, finalization):
-    state = hashlib.blake2b(
+    state = hashlib.blake2s(
         digest_size=HASH_SIZE,
         fanout=2,
         depth=64,

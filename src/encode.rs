@@ -38,7 +38,7 @@
 //! ```
 
 use arrayvec::ArrayVec;
-use blake2b_simd;
+use blake2s_simd;
 use copy_in_place::copy_in_place;
 use core::cmp;
 use core::fmt;
@@ -562,7 +562,7 @@ enum FlipperNext {
 pub struct Writer<T: Read + Write + Seek> {
     inner: T,
     total_len: u64,
-    chunk_state: blake2b_simd::State,
+    chunk_state: blake2s_simd::State,
     tree_state: hash::State,
     outboard: bool,
 }

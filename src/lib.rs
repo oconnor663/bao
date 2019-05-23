@@ -30,7 +30,7 @@ extern crate core;
 #[macro_use]
 extern crate arrayref;
 extern crate arrayvec;
-extern crate blake2b_simd;
+extern crate blake2s_simd;
 extern crate byteorder;
 extern crate constant_time_eq;
 extern crate copy_in_place;

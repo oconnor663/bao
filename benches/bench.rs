@@ -1,7 +1,7 @@
 #![feature(test)]
 
 extern crate bao;
-extern crate blake2b_simd;
+extern crate blake2s_simd;
 extern crate rand;
 extern crate tempfile;
 extern crate test;
@@ -12,9 +12,9 @@ use std::io::prelude::*;
 use std::io::{Cursor, SeekFrom::Start};
 use test::Bencher;
 
-// The tiniest relvant benchmark is one that fills a single BLAKE2b block. But if we don't account
+// The tiniest relvant benchmark is one that fills a single BLAKE2s block. But if we don't account
 // for the header bytes, we'll actually fill two blocks, and the results will look awful.
-const SHORT: usize = blake2b_simd::BLOCKBYTES - hash::benchmarks::HEADER_SIZE;
+const SHORT: usize = blake2s_simd::BLOCKBYTES - hash::benchmarks::HEADER_SIZE;
 
 // Same as short, but for a single chunk of input.
 const MEDIUM: usize = hash::benchmarks::CHUNK_SIZE - hash::benchmarks::HEADER_SIZE;
@@ -26,25 +26,25 @@ fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
     vec![0xff; size]
 }
 
-// Note that because of header byte overhead included above, these raw blake2b() benchmarks aren't
+// Note that because of header byte overhead included above, these raw blake2s() benchmarks aren't
 // filling up a full BLOCKBYTES block, and so they appear worse than in the upstream crate. All the
 // other benchmarks below will pay the same overhead, so this is the correct comparison.
 #[bench]
-fn bench_blake2b_whole_short(b: &mut Bencher) {
+fn bench_blake2s_whole_short(b: &mut Bencher) {
     let input = input(b, SHORT);
-    b.iter(|| blake2b_simd::blake2b(&input));
+    b.iter(|| blake2s_simd::blake2s(&input));
 }
 
 #[bench]
-fn bench_blake2b_whole_medium(b: &mut Bencher) {
+fn bench_blake2s_whole_medium(b: &mut Bencher) {
     let input = input(b, MEDIUM);
-    b.iter(|| blake2b_simd::blake2b(&input));
+    b.iter(|| blake2s_simd::blake2s(&input));
 }
 
 #[bench]
-fn bench_blake2b_whole_long(b: &mut Bencher) {
+fn bench_blake2s_whole_long(b: &mut Bencher) {
     let input = input(b, LONG);
-    b.iter(|| blake2b_simd::blake2b(&input));
+    b.iter(|| blake2s_simd::blake2s(&input));
 }
 
 fn hash_chunks(mut len: usize) {
@@ -53,34 +53,34 @@ fn hash_chunks(mut len: usize) {
     // our state management is adding anything on top.
     let chunk = [0; hash::benchmarks::CHUNK_SIZE];
     while len > hash::benchmarks::CHUNK_SIZE {
-        let mut chunk_state = blake2b_simd::State::new();
+        let mut chunk_state = blake2s_simd::State::new();
         chunk_state.update(&chunk);
         test::black_box(chunk_state.finalize());
-        let mut parent_state = blake2b_simd::State::new();
+        let mut parent_state = blake2s_simd::State::new();
         parent_state.update(&[0; 2 * hash::HASH_SIZE]);
         test::black_box(parent_state.finalize());
         len -= chunk.len();
     }
-    let mut chunk_state = blake2b_simd::State::new();
+    let mut chunk_state = blake2s_simd::State::new();
     chunk_state.update(&chunk[..len]);
     chunk_state.update(&[0; hash::benchmarks::HEADER_SIZE]);
     test::black_box(chunk_state.finalize());
 }
 
 #[bench]
-fn bench_blake2b_chunks_short(b: &mut Bencher) {
+fn bench_blake2s_chunks_short(b: &mut Bencher) {
     b.bytes = SHORT as u64;
     b.iter(|| hash_chunks(SHORT));
 }
 
 #[bench]
-fn bench_blake2b_chunks_medium(b: &mut Bencher) {
+fn bench_blake2s_chunks_medium(b: &mut Bencher) {
     b.bytes = MEDIUM as u64;
     b.iter(|| hash_chunks(MEDIUM));
 }
 
 #[bench]
-fn bench_blake2b_chunks_long(b: &mut Bencher) {
+fn bench_blake2s_chunks_long(b: &mut Bencher) {
     b.bytes = LONG as u64;
     b.iter(|| hash_chunks(LONG));
 }

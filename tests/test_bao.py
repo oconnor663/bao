@@ -140,8 +140,8 @@ def test_hash_cli():
     assert expected_hash == computed_hash
 
 
-def blake2b(b):
-    return hashlib.blake2b(b, digest_size=16).hexdigest()
+def blake2s(b):
+    return hashlib.blake2s(b, digest_size=16).hexdigest()
 
 
 def assert_decode_failure(f, *args):
@@ -159,13 +159,13 @@ def test_encoded():
         input_bytes = generate_input.input_bytes(input_len)
         output_len = case["output_len"]
         expected_bao_hash = case["bao_hash"]
-        encoded_blake2b = case["encoded_blake2b"]
+        encoded_blake2s = case["encoded_blake2s"]
         corruptions = case["corruptions"]
 
         # First make sure the encoded output is what it's supposed to be.
         encoded = bao_encode(input_bytes)
         assert output_len == len(encoded)
-        assert encoded_blake2b == blake2b(encoded)
+        assert encoded_blake2s == blake2s(encoded)
 
         # Test hashing the encoded bytes.
         encoded_hash = bao_hash_encoded(encoded)
@@ -200,7 +200,7 @@ def test_encoded_cli():
     input_bytes = generate_input.input_bytes(input_len)
     output_len = case["output_len"]
     expected_bao_hash = case["bao_hash"]
-    encoded_blake2b = case["encoded_blake2b"]
+    encoded_blake2s = case["encoded_blake2s"]
 
     # First make sure the encoded output is what it's supposed to be.
     input_file = make_tempfile(input_bytes)
@@ -208,7 +208,7 @@ def test_encoded_cli():
     bao_cli("encode", input_file.name, encoded_file.name)
     encoded = encoded_file.read()
     assert output_len == len(encoded)
-    assert encoded_blake2b == blake2b(encoded)
+    assert encoded_blake2s == blake2s(encoded)
 
     # Test hashing the encoded bytes.
     encoded_hash = bao_cli("hash", "--encoded",
@@ -230,14 +230,14 @@ def test_outboard():
         input_bytes = generate_input.input_bytes(input_len)
         output_len = case["output_len"]
         expected_bao_hash = case["bao_hash"]
-        encoded_blake2b = case["encoded_blake2b"]
+        encoded_blake2s = case["encoded_blake2s"]
         outboard_corruptions = case["outboard_corruptions"]
         input_corruptions = case["input_corruptions"]
 
         # First make sure the encoded output is what it's supposed to be.
         outboard = bao_encode_outboard(input_bytes)
         assert output_len == len(outboard)
-        assert encoded_blake2b == blake2b(outboard)
+        assert encoded_blake2s == blake2s(outboard)
 
         # Test `bao hash --outboard`.
         bao_hash_encoded = bao_hash_outboard(input_bytes, outboard)
@@ -275,7 +275,7 @@ def test_outboard_cli():
     input_bytes = generate_input.input_bytes(input_len)
     output_len = case["output_len"]
     expected_bao_hash = case["bao_hash"]
-    encoded_blake2b = case["encoded_blake2b"]
+    encoded_blake2s = case["encoded_blake2s"]
 
     # First make sure the encoded output is what it's supposed to be.
     input_file = make_tempfile(input_bytes)
@@ -283,7 +283,7 @@ def test_outboard_cli():
     bao_cli("encode", input_file.name, "--outboard", outboard_file.name)
     outboard = outboard_file.read()
     assert output_len == len(outboard)
-    assert encoded_blake2b == blake2b(outboard)
+    assert encoded_blake2s == blake2s(outboard)
 
     # Test `bao hash --outboard`.
     outboard_encoded_hash = bao_cli("hash", input_file.name, "--outboard",
@@ -320,13 +320,13 @@ def test_slices():
             slice_start = slice_case["start"]
             slice_len = slice_case["len"]
             output_len = slice_case["output_len"]
-            output_blake2b = slice_case["output_blake2b"]
+            output_blake2s = slice_case["output_blake2s"]
             corruptions = slice_case["corruptions"]
 
             # Make sure the slice output is what it should be.
             slice_bytes = bao_slice(encoded, slice_start, slice_len)
             assert output_len == len(slice_bytes)
-            assert output_blake2b == blake2b(slice_bytes)
+            assert output_blake2s == blake2s(slice_bytes)
 
             # Make sure slicing an outboard tree is the same.
             outboard_slice_bytes = bao_slice_outboard(input_bytes, outboard,
@@ -374,13 +374,13 @@ def test_slices_cli():
     slice_start = slice_case["start"]
     slice_len = slice_case["len"]
     output_len = slice_case["output_len"]
-    output_blake2b = slice_case["output_blake2b"]
+    output_blake2s = slice_case["output_blake2s"]
 
     # Make sure the slice output is what it should be.
     slice_bytes = bao_cli("slice", str(slice_start), str(slice_len),
                           encoded_file.name)
     assert output_len == len(slice_bytes)
-    assert output_blake2b == blake2b(slice_bytes)
+    assert output_blake2s == blake2s(slice_bytes)
 
     # Make sure slicing an outboard tree is the same.
     outboard_slice_bytes = bao_cli("slice", str(slice_start), str(slice_len),
