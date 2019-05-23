@@ -4,9 +4,9 @@
 [Rust Crate](https://crates.io/crates/bao) —
 [Rust Docs](https://docs.rs/bao)
 
-**Caution:** Bao is intended to be a cryptographic hash function, but it
-hasn't yet been reviewed. The output may change prior to the 1.0
-release.
+**Caution:** Not yet suitable for production use. The output of Bao isn't
+stable. Hashes in v0.6 (next) will differ from v0.5 (current), and there might
+be more changes before 1.0.
 
 Bao (rhymes with bough 🌳) is a general purpose tree hash for files.
 Here's the [full specification](docs/spec.md). Here's a [talk I gave
