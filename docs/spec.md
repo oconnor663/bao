@@ -1,6 +1,6 @@
 # The Bao Spec
 
-**Caution:** Not yet suitable for production use. The output of Bao isn't
+> **Caution!** Not yet suitable for production use. The output of Bao isn't
 stable. Hashes in v0.6 (next) will differ from v0.5 (current), and there might
 be more changes before 1.0.
 
@@ -352,9 +352,9 @@ BLAKE2b:
 This is similar to the difference between SHA-256 and SHA-512. With both BLAKE2
 and SHA-2, many sources note that the 64-bit variants have better performance
 on 64-bit systems. This is true for hashing a single input, because 64-bit
-instructions handle twice as many input bits without being twice as slow. On
-modern SIMD hardware, a single instance of BLAKE2b can also take advantage of
-256-bit vector arithmetic, while BLAKE2s can only make use of 128-bit vectors.
+instructions handle twice as much input without being twice as slow. On modern
+SIMD hardware, a single instance of BLAKE2b can also take advantage of 256-bit
+vector arithmetic, while BLAKE2s can only make use of 128-bit vectors.
 
 However, when the implementation is designed to hash multiple inputs in
 parallel, the effect of SIMD is different. In the parallel mode, both BLAKE2b
@@ -363,56 +363,56 @@ corresponding number of different inputs. Besides being more flexible, this
 approach is also substantially more efficient, because the diagonalization step
 in the BLAKE2 compression function disappears. With 32-bit words and 64-bit
 words on a level playing field in terms of SIMD throughput, the remaining
-performance difference between the two functions is that BLAKE2s has fewer
+performance difference between the two functions is that BLAKE2s does fewer
 rounds, which makes it faster.
 
-Those are the considerations for long inputs, but it's also useful to look at
-short inputs. With just a few bytes of input, both BLAKE2s and BLAKE2b will
+That's the story for long inputs, but for short inputs there are more factors
+to consider. With just a few bytes of input, both BLAKE2s and BLAKE2b will
 compress a single block, and most of that block will be padded with zeros. In
-that case it's not the average throughput that matters, but the time it takes
-to hash a single block. Here BLAKE2s wins again, mainly because of its smaller
-block size.
+that case it's not average throughput that matters, but the time it takes to
+hash a single block. Here BLAKE2s wins again, both because of its smaller round
+count and because of its smaller block size.
 
-There's a regime in the middle where BLAKE2b does better. For inputs about one
-chunk long, there's nothing to parallelize, and the higher single-instance
-throughput of BLAKE2b on 64-bit machines wins out. Also for inputs of a few
-chunks, the lower parallelism degree of BLAKE2b helps make earlier use of wider
-vectors and multiple threads. For example, a parallel implementation of BLAKE2b
-using 256-bit SIMD vectors executes 4 hashes at once, so an input 8 chunks long
-could be efficiently split between 2 threads. But a parallel implementation of
-BLAKE2s using 256-bit vectors executes 8 hashes at once, so the 4-chunk input
-is stuck using 128-bit vectors, and the 8-chunk input has no room for a second
-thread. In general it takes twice as many chunks for BLAKE2s to engage the full
-parallelism of the hardware. However, this advantage for BLAKE2b comes with
-several caveats:
+On the other hand, there is a regime in the middle where BLAKE2b scores some
+points. For inputs that are one chunk long, there's nothing to parallelize, and
+the higher single-instance throughput of BLAKE2b wins on 64-bit machines. Also
+for inputs that are a few chunks long, the lower parallelism degree of BLAKE2b
+helps make earlier use of SIMD. For example, a parallel implementation of
+BLAKE2b using 256-bit vectors executes 4 hashes at once, so an 8-chunk input
+can be efficiently split between 2 threads. But a parallel implementation of
+BLAKE2s using 256-bit vectors executes 8 hashes at once, so the 8-chunk input
+has no room for a second thread, and a 4-chunk input would be stuck using
+128-bit vectors. In general it takes twice as many chunks for BLAKE2s to make
+full use of SIMD. However, this advantage for BLAKE2b comes with several
+caveats:
 
 - It assumes a constant chunk size, but the chunk size is a free parameter in
   the Bao design. Bao could make up the difference by halving the chunk size,
   probably with only a few percentage points of overall throughput sacrificed
   to parent node overhead. See the next section.
-- Performance is most important at the extremes. For extremely large inputs,
-  BLAKE2s wins because of its higher throughput. For extremely small hardware,
-  BLAKE2s wins because of its 32-bit words.
+- Performance differences matter more at the extremes. For extremely large
+  inputs, BLAKE2s wins because of its higher throughput. For extremely small
+  hardware, BLAKE2s wins because of its 32-bit words.
 - It's possible to parallelize Bao across multiple inputs just like we
-  parallelize BLAKE2s across multiple inputs. In fact, inputs less than one
-  chunk long are just a single BLAKE2s hash, and the parallel BLAKE2s
-  implementation could be reused as-is to parallelize the Bao hashes of those
-  short inputs. It's unlikely that anyone will implement this in practice, but
-  an application with a critical bottleneck hashing moderate-length inputs has
-  this option.
+  parallelize BLAKE2s across multiple inputs. In fact, inputs up to one chunk
+  long are just a single BLAKE2s hash, and the parallel BLAKE2s implementation
+  could be reused as-is to parallelize the Bao hashes of those short inputs.
+  It's unlikely that anyone will go through the trouble of implementing this in
+  practice, but an application with a critical bottleneck hashing
+  moderate-length inputs has this option.
 
 ### What's the best way to choose the chunk size?
 
 **Open question.** There are many efficiency tradeoffs at the margins. As noted
 above, the main advantage of a small chunk size is that it allows the
 implementation to parallelize more work for inputs that are only a few chunks
-long. Meanwhile, the advantage of a large chunk size is that it reduces the
-number of parent nodes in the tree and the overhead of hashing them. I chose
-4096 somewhat arbitrarily, because it seems to be a common page size, and
-because the performance overhead is subjectively small in testing. Different
+long. The advantage of a large chunk size is that it reduces the number of
+parent nodes in the tree and the overhead of hashing them. I chose 4096
+somewhat arbitrarily, because it seems to be a common page size, and because
+the performance overhead is subjectively small in testing. But different
 applications are likely to have different priorities around this tradeoff, and
-we won't be able to settle this question without more experiments. See
-[issue #17](https://github.com/oconnor663/bao/issues/17).
+we won't be able to settle this question without more experiments. See [issue
+17](https://github.com/oconnor663/bao/issues/17).
 
 ### Does Bao have a "high security" variant?
 
@@ -420,15 +420,8 @@ we won't be able to settle this question without more experiments. See
 practically any cryptographic application, which is why everyone uses SHA-256
 for TLS certificates and why the Intel SHA Extensions don't include SHA-512.
 Higher security levels waste cycles, and longer digests waste bandwidth. Also
-having multiple variants of the same algorithm causes confusion around which
-variant people are talking about and which variant a new application should
-choose.
-
-In some future world with large quantum computers, it could theoretically make
-sense for applications to target a 256-bit security level. In that world, we
-could define a hash function similar to Bao but with a 64-bit digest. Such a
-design could use BLAKE2b in place of BLAKE2s and tweak the parameters to
-reflect the larger digest size. In my imagination, I call this function "Ciao".
+having multiple variants of the same algorithm complicates implementations and
+confuses people.
 
 ### Can we expose the BLAKE2 general parameters through the Bao API?
 
@@ -567,6 +560,11 @@ data parameters, you can achieve domain separation with a small amount of
 overhead by appending some bits to every node. See for example the [Sakura
 coding](https://keccak.team/files/Sakura.pdf), also designed by the
 Keccak/SHA-3 team.
+
+As noted above, there's no "high security" variant of Bao. However, in some
+future world with large quantum computers, it could theoretically make sense to
+define a new hash function targetting a 256-bit security level. We could
+achieve that by replacing BLAKE2s with BLAKE2b with very few other changes.
 
 ## Other Related Work
 
