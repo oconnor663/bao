@@ -395,6 +395,12 @@ pub(crate) fn chunk_size(chunk: u64, content_len: u64) -> usize {
     cmp::min(CHUNK_SIZE, (content_len - chunk_start) as usize)
 }
 
+// When flipping the post-order tree to pre-order during encoding, and when
+// traversing the pre-order tree during decoding, we need to know how many
+// parent nodes go before (in pre-order) or after (in post-order) each chunk.
+// The following three functions use cute arithmetic tricks to figure that out
+// without doing much work.
+
 /// Prior to the final chunk, to calculate the number of post-order parent nodes for a chunk, we
 /// need to know the height of the subtree for which the chunk is the rightmost. This is the same as
 /// the number of trailing ones in the chunk index (counting from 0). For example, chunk number 11
@@ -449,7 +455,7 @@ pub(crate) fn pre_order_parent_nodes(chunk: u64, content_len: u64) -> u8 {
 }
 
 // This type implements post-order-to-pre-order flipping for the encoder, in a way that could
-// support an incremental or asynchronous flip. (Though currently its only callers do the whole
+// support an incremental or asynchronous flip. (Though currently its only caller does the whole
 // flip all-at-once.)
 //
 // As discussed below and in bao.py, encoding first in post-order and then flipping to pre-order
@@ -592,8 +598,8 @@ impl<T: Read + Write + Seek> Writer<T> {
         writer
     }
 
-    /// Finalize the encoding, after all the input has been written. You can't use this type again
-    /// after calling `finish`.
+    /// Finalize the encoding, after all the input has been written. You can't
+    /// use this Writer again after calling `finish`.
     ///
     /// The underlying strategy of the `Writer` is to first store the tree in a post-order layout,
     /// and then to go back and flip the entire thing into pre-order. That makes it possible to
@@ -804,6 +810,7 @@ pub(crate) mod parse_state {
             }
         }
 
+        // TODO: The golden rule should be "EOF occurs during the read the final chunk."
         fn is_eof(&self) -> bool {
             match self.len_next() {
                 LenNext::Len(len) => self.next_chunk >= count_chunks(len),

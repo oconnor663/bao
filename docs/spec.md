@@ -298,8 +298,8 @@ by BLAKE2s. For comparison, the TLS record buffer is 16384 bytes.
 Extremely space-constrained implementations that want to use Bao have to define
 a more aggressive limit for their maximum input size. In some cases, such a
 limit is already provided by the protocol they're implementing. For example,
-the largest possible IPv6 "jumbogram" is 4 GiB, and limited to that maximum
-input size Bao's storage overhead would be 20 hashes or 640 bytes.
+the largest possible IPv6 "jumbogram" is 4 GiB. Limited to that maximum input
+size, Bao's storage overhead would be 20 hashes or 640 bytes.
 
 ## Performance Notes
 
@@ -333,14 +333,14 @@ and Bao uses that interface to make each worker thread hash multiple chunks in
 parallel. Note that the main downside of BLAKE2sp is that it hardcodes 8-way
 parallelism, such that moving to a higher degree of parallelism would change
 the output. But `hash_many` doesn't have that limitation, and when AVX-512
-becomes more widespread, it will execute 16-way parallelism without an API
-change.
+becomes more widespread, it will execute 16-way parallelism without changing
+the output or the API.
 
 ## Design Rationales and Open Questions
 
 ### Why BLAKE2s instead of BLAKE2b?
 
-**It's faster both on small 32-bit embedded systems and on modern 64-bit
+**It's faster, both on small 32-bit embedded systems and on modern 64-bit
 systems with SIMD.** There are two important differences between BLAKE2s and
 BLAKE2b:
 
@@ -373,7 +373,7 @@ that case it's not average throughput that matters, but the time it takes to
 hash a single block. Here BLAKE2s wins again, both because of its smaller round
 count and because of its smaller block size.
 
-On the other hand, there is a regime in the middle where BLAKE2b scores some
+On the other hand, there's a regime in the middle where BLAKE2b scores some
 points. For inputs that are one chunk long, there's nothing to parallelize, and
 the higher single-instance throughput of BLAKE2b wins on 64-bit machines. Also
 for inputs that are a few chunks long, the lower parallelism degree of BLAKE2b
@@ -383,16 +383,17 @@ can be efficiently split between 2 threads. But a parallel implementation of
 BLAKE2s using 256-bit vectors executes 8 hashes at once, so the 8-chunk input
 has no room for a second thread, and a 4-chunk input would be stuck using
 128-bit vectors. In general it takes twice as many chunks for BLAKE2s to make
-full use of SIMD. However, this advantage for BLAKE2b comes with several
-caveats:
+use of any given SIMD vector width. However, this advantage for BLAKE2b comes
+with several caveats:
 
 - It assumes a constant chunk size, but the chunk size is a free parameter in
   the Bao design. Bao could make up the difference by halving the chunk size,
   probably with only a few percentage points of overall throughput sacrificed
   to parent node overhead. See the next section.
 - Performance differences matter more at the extremes. For extremely large
-  inputs, BLAKE2s wins because of its higher throughput. For extremely small
-  hardware, BLAKE2s wins because of its 32-bit words.
+  inputs, BLAKE2s wins because its lower round count leads to higher overall
+  throughput. For extremely limited hardware without 64-bit arithmetic or SIMD,
+  BLAKE2s wins because of its 32-bit words.
 - It's possible to parallelize Bao across multiple inputs just like we
   parallelize BLAKE2s across multiple inputs. In fact, inputs up to one chunk
   long are just a single BLAKE2s hash, and the parallel BLAKE2s implementation
