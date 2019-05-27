@@ -395,63 +395,80 @@ pub(crate) fn chunk_size(chunk: u64, content_len: u64) -> usize {
     cmp::min(CHUNK_SIZE, (content_len - chunk_start) as usize)
 }
 
+// ----------------------------------------------------------------------------
 // When flipping the post-order tree to pre-order during encoding, and when
 // traversing the pre-order tree during decoding, we need to know how many
 // parent nodes go before (in pre-order) or after (in post-order) each chunk.
 // The following three functions use cute arithmetic tricks to figure that out
 // without doing much work.
+//
+// Note that each of these tricks is very similar to the one we're using in
+// hash::State::needs_merge. In general the zeros and ones that flip over
+// between two chunk indexes are closely related to the subtrees that start or
+// end at that boundary, because binary numbers and binary trees have a lot in
+// common.
+// ----------------------------------------------------------------------------
 
-/// Prior to the final chunk, to calculate the number of post-order parent nodes for a chunk, we
-/// need to know the height of the subtree for which the chunk is the rightmost. This is the same as
-/// the number of trailing ones in the chunk index (counting from 0). For example, chunk number 11
-/// (0b1011) has two trailing parent nodes.
-///
-/// Note that this is closely related to the trick we're using in hash::State::needs_merge. The
-/// number of trailing zeroes at a given index is the same as the number of ones that switched off
-/// when we moved rightward from the previous index.
-fn post_order_parent_nodes_nonfinal(chunk: u64) -> u8 {
-    (!chunk).trailing_zeros() as u8
+// Prior to the final chunk, to calculate the number of post-order parent nodes
+// for a chunk, we need to know the height of the subtree for which the chunk
+// is the rightmost. This is the same as the number of trailing ones in the
+// chunk index (counting from 0). For example, chunk number 11 (0b1011) has two
+// trailing parent nodes.
+fn post_order_parent_nodes_nonfinal(chunk_index: u64) -> u8 {
+    (!chunk_index).trailing_zeros() as u8
 }
 
-/// The final chunk of a post order tree has to have a parent node for each of the not yet merged
-/// subtrees behind it. This is the same as the total number of ones in the chunk index (counting
-/// from 0).
-fn post_order_parent_nodes_final(chunk: u64) -> u8 {
-    chunk.count_ones() as u8
+// The final chunk of a post order tree has to have a parent node for each of
+// the not yet merged subtrees behind it. This is the same as the total number
+// of ones in the chunk index (counting from 0).
+fn post_order_parent_nodes_final(chunk_index: u64) -> u8 {
+    chunk_index.count_ones() as u8
 }
 
-/// In pre-order there are a couple considerations for counting the number of parent nodes:
-///
-/// - The number of parents for the first chunk in a tree, is equal to the bit length of the index
-///   of the final chunk (counting from 0). For example, a tree of 16 chunks (final chunk index 15
-///   or 0b1111) has 4 leading parent nodes, while a tree of 17 chunks has 5.
-/// - In the interior of the tree -- ignoring the chunks near the end for a moment -- the number of
-///   parent nodes is the height of the tree for which the given chunk is the leftmost. This is
-///   equal to the number of trailing zeros in the chunk index. This ends up being similar to the
-///   post_order_parent_nodes_nonfinal calculation above, except offset by one.
-///
-/// Unlike the post-order logic above, where all the subtrees we're looking at before the final
-/// chunk are complete, the pre-order case has to account for partial subtrees. For example, chunk 4
-/// would normally (in any tree of 8 or more chunks) be the start of a subtree of size 4 and height
-/// 2. However, if the tree has a total of 7 chunks, then the subtree starting at chunk 4 is only of
-/// size 3. And if the tree has a total of 5 chunks, then chunk 4 is the final chunk and the only
-/// chunk in its subtree.
-///
-/// To account for this, for every chunk after the first, we take the minimum of both rules, with
-/// respect to the number of chunks *remaining*. For example, in the 7 chunk tree, chunk 4 starts a
-/// subtree of the 3 remaining chunks. That means it still has 2 parent nodes, because a 3 chunk
-/// tree is still of height 2. But in the 5 chunk tree, chunk 4 has no parent nodes at all, because
-/// a 1 chunk tree is of height 0.
-pub(crate) fn pre_order_parent_nodes(chunk: u64, content_len: u64) -> u8 {
+// In pre-order, there are a few different regimes we need to consider:
+//
+// - The number of parent nodes before the first chunk is the height of the
+//   entire tree. For example, a tree of 4 chunks is of height 2, while a tree
+//   of 5 chunks is of height 3. We can compute that as the bit length of [the
+//   total number of chunks minus 1]. For example, 3 (0b11) has bit length 2,
+//   and 4 (0b100) has bit length 3.
+// - The number of parent nodes before an interior chunk is the height of the
+//   largest subtree for which that chunk is the leftmost. For example, chunk
+//   index 6 (the seventh chunk) is usually the leftmost chunk in the two-chunk
+//   subtree that contains indexes 6 and 7. A two-chunk subtree is of height 1,
+//   so index 6 is preceded by one parent node. We can usually compute that by
+//   seeing that index 6 (0b110) has 1 trailing zero.
+// - Along the right edge of the tree, not all subtrees are complete, and the
+//   second rule doesn't always apply. For example, if chunk index 6 happens to
+//   be the final chunk in the tree, and there is no chunk index 7, then index
+//   6 doesn't begin a subtree of height 1, and there won't be a parent node in
+//   front of it.
+//
+// We can call the first rule the "bit length rule" and the second rule the
+// "trailing zeros rule". It turns out that we can understand the third rule as
+// the *minimum* of the other two, and in fact doing that gives us the unified
+// rule for all cases. That is, for a given chunk index we compute two things:
+//
+// - If this chunk and all the chunks after it were in a tree by themselves,
+//   what would be the height of that tree? That is, the bit length of [that
+//   number of chunks minus one].
+// - If the subtree started by this chunk index was complete (as in the
+//   interior of a large tree, not near the right edge), what would be the
+//   height of that subtree? That is, the number of trailing zeros in the chunk
+//   index. Note that this is undefined / maximally large for chunk index 0.
+//
+// We then take the minimum of those two values, and that's the number of
+// parent nodes before each chunk.
+pub(crate) fn pre_order_parent_nodes(chunk_index: u64, content_len: u64) -> u8 {
+    fn bit_length(x: u64) -> u32 {
+        64 - x.leading_zeros()
+    }
     let total_chunks = count_chunks(content_len);
-    debug_assert!(
-        chunk < total_chunks,
-        "attempted to count parent nodes after EOF"
-    );
-    let remaining = total_chunks - chunk;
-    let starting_bound = 64 - (remaining - 1).leading_zeros();
-    let interior_bound = chunk.trailing_zeros();
-    cmp::min(starting_bound, interior_bound) as u8
+    debug_assert!(chunk_index < total_chunks);
+    let total_chunks_after_this = total_chunks - chunk_index;
+    let bit_length_rule = bit_length(total_chunks_after_this - 1);
+    let trailing_zeros_rule = chunk_index.trailing_zeros();
+    cmp::min(bit_length_rule, trailing_zeros_rule) as u8
 }
 
 // This type implements post-order-to-pre-order flipping for the encoder, in a way that could
@@ -465,7 +482,7 @@ pub(crate) fn pre_order_parent_nodes(chunk: u64, content_len: u64) -> u8 {
 struct FlipperState {
     parents: ArrayVec<[hash::ParentNode; hash::MAX_DEPTH]>,
     content_len: u64,
-    chunk_moved: u64,
+    last_chunk_moved: u64,
     parents_needed: u8,
     parents_available: u8,
 }
@@ -476,7 +493,7 @@ impl FlipperState {
         Self {
             parents: ArrayVec::new(),
             content_len,
-            chunk_moved: total_chunks,
+            last_chunk_moved: count_chunks(content_len), // one greater than the final chunk index
             parents_needed: post_order_parent_nodes_final(total_chunks - 1),
             parents_available: 0,
         }
@@ -489,8 +506,8 @@ impl FlipperState {
             FlipperNext::TakeParent
         } else if self.parents_needed > 0 {
             FlipperNext::FeedParent
-        } else if self.chunk_moved > 0 {
-            FlipperNext::Chunk(chunk_size(self.chunk_moved - 1, self.content_len))
+        } else if self.last_chunk_moved > 0 {
+            FlipperNext::Chunk(chunk_size(self.last_chunk_moved - 1, self.content_len))
         } else {
             FlipperNext::Done
         }
@@ -499,18 +516,18 @@ impl FlipperState {
     pub fn chunk_moved(&mut self) {
         // Add the pre-order parents available for the chunk that just moved and the post-order
         // parents needed for the chunk to its left.
-        debug_assert!(self.chunk_moved > 0);
+        debug_assert!(self.last_chunk_moved > 0);
         debug_assert_eq!(self.parents_available, 0);
         debug_assert_eq!(self.parents_needed, 0);
-        self.chunk_moved -= 1;
-        self.parents_available = pre_order_parent_nodes(self.chunk_moved, self.content_len);
-        if self.chunk_moved > 0 {
-            self.parents_needed = post_order_parent_nodes_nonfinal(self.chunk_moved - 1);
+        self.last_chunk_moved -= 1;
+        self.parents_available = pre_order_parent_nodes(self.last_chunk_moved, self.content_len);
+        if self.last_chunk_moved > 0 {
+            self.parents_needed = post_order_parent_nodes_nonfinal(self.last_chunk_moved - 1);
         }
     }
 
     pub fn feed_parent(&mut self, parent: hash::ParentNode) {
-        debug_assert!(self.chunk_moved > 0);
+        debug_assert!(self.last_chunk_moved > 0);
         debug_assert_eq!(self.parents_available, 0);
         debug_assert!(self.parents_needed > 0);
         self.parents_needed -= 1;
@@ -526,8 +543,8 @@ impl FlipperState {
 
 impl fmt::Debug for FlipperState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "FlipperState {{ parents: {}, content_len: {}, chunk_moved: {}, parents_needed: {}, parents_available: {} }}",
-               self.parents.len(), self.content_len, self.chunk_moved, self.parents_needed, self.parents_available)
+        write!(f, "FlipperState {{ parents: {}, content_len: {}, last_chunk_moved: {}, parents_needed: {}, parents_available: {} }}",
+               self.parents.len(), self.content_len, self.last_chunk_moved, self.parents_needed, self.parents_available)
     }
 }
 
