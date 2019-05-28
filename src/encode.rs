@@ -461,6 +461,9 @@ fn post_order_parent_nodes_final(chunk_index: u64) -> u8 {
 // parent nodes before each chunk.
 pub(crate) fn pre_order_parent_nodes(chunk_index: u64, content_len: u64) -> u8 {
     fn bit_length(x: u64) -> u32 {
+        // As mentioned above, note that this reports a bit length of 64 for
+        // x=0. That works for us, because cmp::min below will always choose
+        // the other rule, but think about it before you copy/paste this.
         64 - x.leading_zeros()
     }
     let total_chunks = count_chunks(content_len);
