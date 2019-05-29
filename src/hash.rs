@@ -579,19 +579,22 @@ impl Job {
     }
 }
 
-/// A multi-threaded version of [`Writer`], which is much faster, but which requires allocation.
+/// A multi-threaded version of [`Writer`], which is much faster, but which
+/// requires allocation.
 ///
-/// The fastest hashing implementation is the recursive [`hash`] function, which uses
-/// [`rayon::join`] to parallelize efficiently without allocating. However, that API only works
-/// with in-memory slices or memory-mapped files. For incremental input like we get through the
-/// `std::io::Write` interface, we need to buffer input on the heap, so that hashing can continue
-/// in the background while control returns to the caller. As a result, this type has more overhead
-/// [`hash`], and it isn't available under `no_std`.
+/// The fastest hashing implementation is the recursive [`hash`] function,
+/// which uses [`rayon::join`] to parallelize efficiently without allocating.
+/// However, that API only works with in-memory slices or memory-mapped files.
+/// For incremental input like we get through the `std::io::Write` interface,
+/// we need to buffer input on the heap, so that hashing can continue in the
+/// background while control returns to the caller. As a result, this type has
+/// more overhead than [`hash`], and it isn't available under `no_std`.
 ///
-/// This implementation is a proof of concept, and it isn't as efficient as it could be. The
-/// benchmarks put it at about 85% of the throughput of [`hash`] for long messages. The allocation
-/// overhead is costly for short messages, though we could work around that in a future version.
-/// Other currently missing features:
+/// This implementation is a proof of concept, and it isn't as efficient as it
+/// could be. The benchmarks put it at about 85% of the throughput of [`hash`]
+/// for long messages. The allocation overhead is costly for short messages,
+/// though we could work around that in a future version. Other currently
+/// missing features:
 ///
 /// - a `Clone` impl
 /// - a way to clear the writer and reuse its allocations
