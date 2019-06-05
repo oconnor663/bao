@@ -243,21 +243,26 @@ def bao_slice(input_stream,
               slice_len,
               outboard_stream=None):
     tree_stream = outboard_stream or input_stream
+    content_len_bytes = read_exact(tree_stream, HEADER_SIZE)
+    output_stream.write(content_len_bytes)
+    content_len = decode_len(content_len_bytes)
+    slice_end = slice_start + slice_len
 
-    # Note that the root node is always included, regardless of whether the
-    # start is after EOF or the len is zero. This means the recipient always
-    # verifies the root hash.
-    def slice_recurse(subtree_start, subtree_len, is_root):
-        slice_end = slice_start + slice_len
+    # Seeking past EOF still needs to validate the final chunk. The easiest way
+    # to do that is to repoint slice_start to be the byte right before the end.
+    if slice_start >= content_len:
+        slice_start = content_len - 1 if content_len > 0 else 0
+
+    def slice_recurse(subtree_start, subtree_len):
         subtree_end = subtree_start + subtree_len
-        if subtree_end <= slice_start and not is_root:
+        if subtree_end <= slice_start:
             # Seek past the current subtree.
             parent_nodes_size = encoded_subtree_size(subtree_len,
                                                      outboard=True)
             # `1` here means seek from the current position.
             tree_stream.seek(parent_nodes_size, 1)
             input_stream.seek(subtree_len, 1)
-        elif slice_end <= subtree_start and not is_root:
+        elif slice_end <= subtree_start:
             # We've sliced all the requested content, and we're done.
             pass
         elif subtree_len <= CHUNK_SIZE:
@@ -268,17 +273,14 @@ def bao_slice(input_stream,
             output_stream.write(chunk)
         else:
             # We need to read a parent node and recurse into the current
-            # subtree. Note that is_root is always False after this point.
+            # subtree.
             parent = read_exact(tree_stream, PARENT_SIZE)
             output_stream.write(parent)
             llen = left_len(subtree_len)
-            slice_recurse(subtree_start, llen, False)
-            slice_recurse(subtree_start + llen, subtree_len - llen, False)
+            slice_recurse(subtree_start, llen)
+            slice_recurse(subtree_start + llen, subtree_len - llen)
 
-    content_len_bytes = read_exact(tree_stream, HEADER_SIZE)
-    output_stream.write(content_len_bytes)
-    content_len = decode_len(content_len_bytes)
-    slice_recurse(0, content_len, True)
+    slice_recurse(0, content_len)
 
 
 # Note that unlike bao_slice, there is no optional outboard parameter. Slices
@@ -286,17 +288,28 @@ def bao_slice(input_stream,
 # slice itself is always combined.
 def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
                      slice_len):
-    # As above, note that the root node is always included, regardless of
-    # whether the start is after EOF or the len is zero. This means the
-    # recipient always verifies the root hash.
+    content_len_bytes = read_exact(input_stream, HEADER_SIZE)
+    content_len = decode_len(content_len_bytes)
+    slice_end = slice_start + slice_len
+
+    # As above, if slice_start is past EOF, we repoint it to the last byte of
+    # the encoding, to make sure that the final chunk gets validated. However,
+    # we don't want to emit any bytes to the caller in that case, so we set a
+    # flag to suppress writing output.
+    skip_output = False
+    if slice_start >= content_len:
+        slice_start = content_len - 1 if content_len > 0 else 0
+        skip_output = True
+
     def decode_slice_recurse(subtree_start, subtree_len, subtree_hash,
                              finalization):
-        slice_end = slice_start + slice_len
         subtree_end = subtree_start + subtree_len
-        if subtree_end <= slice_start and finalization is None:
+        # Check content_len before skipping subtrees, to be sure we don't skip
+        # validating the empty chunk.
+        if subtree_end <= slice_start and content_len > 0:
             # This subtree isn't part of the slice. Keep going.
             pass
-        elif slice_end <= subtree_start and finalization is None:
+        elif slice_end <= subtree_start and content_len > 0:
             # We've verified all the requested content, and we're done.
             pass
         elif subtree_len <= CHUNK_SIZE:
@@ -306,7 +319,8 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
             verify_chunk(chunk, finalization, subtree_hash)
             chunk_start = max(0, min(subtree_len, slice_start - subtree_start))
             chunk_end = max(0, min(subtree_len, slice_end - subtree_start))
-            output_stream.write(chunk[chunk_start:chunk_end])
+            if not skip_output:
+                output_stream.write(chunk[chunk_start:chunk_end])
         else:
             # We need to read a parent node and recurse into the current
             # subtree. Note that the finalization is always None after this
@@ -319,8 +333,6 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
             decode_slice_recurse(subtree_start + llen, subtree_len - llen,
                                  right_hash, None)
 
-    content_len_bytes = read_exact(input_stream, HEADER_SIZE)
-    content_len = decode_len(content_len_bytes)
     decode_slice_recurse(0, content_len, hash_, content_len)
 
 

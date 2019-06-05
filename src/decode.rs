@@ -44,7 +44,7 @@ use copy_in_place::copy_in_place;
 use rayon;
 
 use crate::encode;
-use crate::encode::parse_state::{LenNext, StateNext};
+use crate::encode::NextRead;
 use crate::hash::Finalization::{self, NotRoot, Root};
 use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 
@@ -57,6 +57,8 @@ use std::error;
 use std::io;
 #[cfg(feature = "std")]
 use std::io::prelude::*;
+#[cfg(feature = "std")]
+use std::io::SeekFrom;
 
 fn verify_chunk(chunk_bytes: &[u8], hash: &Hash, finalization: Finalization) -> Result<()> {
     let computed = hash::hash_chunk(chunk_bytes, finalization);
@@ -459,105 +461,98 @@ pub fn hash_from_outboard_encoded<C: Read, O: Read>(
     )
 }
 
-// This is in its own module to enforce privacy. For example, callers should only ever read
-// content_len by calling len_next().
-mod verify_state {
-    use super::*;
+// This incremental verifier layers on top of encode::ParseState, and supports
+// both the Reader and the SliceReader.
+#[derive(Clone)]
+struct VerifyState {
+    stack: ArrayVec<[Hash; MAX_DEPTH]>,
+    parser: encode::ParseState,
+    root_hash: Hash,
+}
 
-    // This incremental verifier layers on top of encode::ParseState, and supports both the Reader
-    // and the SliceReader.
-    #[derive(Clone)]
-    pub(crate) struct VerifyState {
-        stack: ArrayVec<[Hash; MAX_DEPTH]>,
-        parser: encode::parse_state::ParseState,
-        root_hash: Hash,
-    }
-
-    impl VerifyState {
-        pub(crate) fn new(hash: &Hash) -> Self {
-            let mut stack = ArrayVec::new();
-            stack.push(*hash);
-            Self {
-                stack,
-                parser: encode::parse_state::ParseState::new(),
-                root_hash: *hash,
-            }
-        }
-
-        pub(crate) fn position(&self) -> u64 {
-            self.parser.position()
-        }
-
-        pub(crate) fn read_next(&self) -> Option<StateNext> {
-            self.parser.read_next()
-        }
-
-        pub(crate) fn len_next(&self) -> LenNext {
-            self.parser.len_next()
-        }
-
-        pub(crate) fn seek_next(
-            &mut self,
-            seek_to: u64,
-            buffered_bytes: usize,
-        ) -> (Option<usize>, Option<u128>, Option<StateNext>) {
-            let position_before = self.position();
-            let ret = self.parser.seek_next(seek_to, buffered_bytes);
-            if self.position() < position_before {
-                // Any leftward seek requires resetting the stack to the beginning.
-                self.stack.clear();
-                self.stack.push(self.root_hash);
-            }
-            debug_assert!(self.stack.len() >= self.parser.stack_depth());
-            while self.stack.len() > self.parser.stack_depth() {
-                self.stack.pop();
-            }
-            ret
-        }
-
-        pub(crate) fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
-            self.parser.feed_header(header);
-        }
-
-        pub(crate) fn feed_parent(&mut self, parent: &hash::ParentNode) -> Result<()> {
-            let finalization = self.parser.finalization();
-            let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
-            let computed_hash = hash::hash_parent(parent, finalization);
-            // Hash implements constant time equality.
-            if expected_hash != computed_hash {
-                return Err(Error::HashMismatch);
-            }
-            let (left_child, right_child) = split_parent(parent);
-            self.stack.pop();
-            self.stack.push(right_child);
-            self.stack.push(left_child);
-            self.parser.advance_parent();
-            Ok(())
-        }
-
-        pub(crate) fn feed_chunk(&mut self, chunk_hash: Hash) -> Result<()> {
-            let expected_hash = *self.stack.last().expect("unexpectedly empty stack");
-            // Hash implements constant time equality.
-            if chunk_hash != expected_hash {
-                return Err(Error::HashMismatch);
-            }
-            self.stack.pop();
-            self.parser.advance_chunk();
-            Ok(())
+impl VerifyState {
+    fn new(hash: &Hash) -> Self {
+        let mut stack = ArrayVec::new();
+        stack.push(*hash);
+        Self {
+            stack,
+            parser: encode::ParseState::new(),
+            root_hash: *hash,
         }
     }
 
-    // It's important to manually implement Debug for VerifyState, because it holds hashes that
-    // might be secret, and it would be bad to leak them to some debug log somewhere.
-    impl fmt::Debug for VerifyState {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(
-                f,
-                "VerifyState {{ stack_size: {}, parser: {:?} }}",
-                self.stack.len(), // *Only* the stack size, not the hashes themselves.
-                self.parser,      // The parser state only reveals the content length.
-            )
+    fn content_position(&self) -> u64 {
+        self.parser.content_position()
+    }
+
+    fn read_next(&self) -> NextRead {
+        self.parser.read_next()
+    }
+
+    fn seek_next(&self, seek_to: u64) -> encode::SeekBookkeeping {
+        self.parser.seek_next(seek_to)
+    }
+
+    fn seek_bookkeeping_done(&mut self, bookkeeping: encode::SeekBookkeeping) -> encode::NextRead {
+        // Leftward seeks require resetting the stack to the beginning.
+        if bookkeeping.reset_to_root() {
+            self.stack.clear();
+            self.stack.push(self.root_hash);
         }
+        // Rightward seeks require popping subtrees off the stack.
+        debug_assert!(self.stack.len() >= bookkeeping.stack_depth());
+        while self.stack.len() > bookkeeping.stack_depth() {
+            self.stack.pop();
+        }
+        self.parser.seek_bookkeeping_done(bookkeeping)
+    }
+
+    fn len_next(&self) -> encode::LenNext {
+        self.parser.len_next()
+    }
+
+    fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
+        self.parser.feed_header(header);
+    }
+
+    fn feed_parent(&mut self, parent: &hash::ParentNode) -> Result<()> {
+        let finalization = self.parser.finalization();
+        let expected_hash = self.stack.last().expect("unexpectedly empty stack");
+        let computed_hash = hash::hash_parent(parent, finalization);
+        // Hash implements constant time equality.
+        if expected_hash != &computed_hash {
+            return Err(Error::HashMismatch);
+        }
+        let (left_child, right_child) = split_parent(parent);
+        self.stack.pop();
+        self.stack.push(right_child);
+        self.stack.push(left_child);
+        self.parser.advance_parent();
+        Ok(())
+    }
+
+    fn feed_chunk(&mut self, chunk_hash: &Hash) -> Result<()> {
+        let expected_hash = self.stack.last().expect("unexpectedly empty stack");
+        // Hash implements constant time equality.
+        if chunk_hash != expected_hash {
+            return Err(Error::HashMismatch);
+        }
+        self.stack.pop();
+        self.parser.advance_chunk();
+        Ok(())
+    }
+}
+
+// It's important to manually implement Debug for VerifyState, because it holds hashes that
+// might be secret, and it would be bad to leak them to some debug log somewhere.
+impl fmt::Debug for VerifyState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "VerifyState {{ stack_size: {}, parser: {:?} }}",
+            self.stack.len(), // *Only* the stack size, not the hashes themselves.
+            self.parser,      // The parser state only reveals the content length.
+        )
     }
 }
 
@@ -603,7 +598,7 @@ impl From<Error> for io::Error {
 struct ReaderShared<T: Read, O: Read> {
     input: T,
     outboard: Option<O>,
-    state: verify_state::VerifyState,
+    state: VerifyState,
     buf: [u8; CHUNK_SIZE],
     buf_start: usize,
     buf_end: usize,
@@ -615,30 +610,17 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
         Self {
             input,
             outboard,
-            state: verify_state::VerifyState::new(hash),
+            state: VerifyState::new(hash),
             buf: [0; CHUNK_SIZE],
             buf_start: 0,
             buf_end: 0,
         }
     }
 
-    fn len(&mut self) -> io::Result<u64> {
-        loop {
-            match self.state.len_next() {
-                LenNext::Len(len) => return Ok(len),
-                LenNext::Next(next) => match next {
-                    StateNext::Header => self.read_header()?,
-                    StateNext::Parent => self.read_parent()?,
-                    StateNext::Chunk { size, finalization } => {
-                        // Note that reading a chunk (which we need to do to verify the hash if
-                        // there are no parent nodes at all) advances the reader. However, because
-                        // this can only happen at the beginning, and we buffer the last chunk
-                        // read, the caller won't skip any data.
-                        self.read_chunk(size, finalization)?;
-                    }
-                },
-            }
-        }
+    fn adjusted_content_position(&self) -> u64 {
+        // If the current buffer_len is non-empty, then it contains the bytes
+        // immediately prior to the next read.
+        self.state.content_position() - self.buf_len() as u64
     }
 
     fn buf_len(&self) -> usize {
@@ -646,15 +628,14 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
     }
 
     fn clear_buf(&mut self) {
-        // Note that because seeking can move buf_start backwards, it's important that we set them
-        // both to exactly zero. It wouldn't be enough to just set buf_start = buf_end.
         self.buf_start = 0;
         self.buf_end = 0;
     }
 
     fn read_header(&mut self) -> io::Result<()> {
+        debug_assert_eq!(0, self.buf_len());
         let mut header = [0; HEADER_SIZE];
-        if let Some(ref mut outboard) = self.outboard {
+        if let Some(outboard) = &mut self.outboard {
             outboard.read_exact(&mut header)?;
         } else {
             self.input.read_exact(&mut header)?;
@@ -664,8 +645,9 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
     }
 
     fn read_parent(&mut self) -> io::Result<()> {
+        debug_assert_eq!(0, self.buf_len());
         let mut parent = [0; PARENT_SIZE];
-        if let Some(ref mut outboard) = self.outboard {
+        if let Some(outboard) = &mut self.outboard {
             outboard.read_exact(&mut parent)?;
         } else {
             self.input.read_exact(&mut parent)?;
@@ -674,15 +656,46 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
         Ok(())
     }
 
-    fn read_chunk(&mut self, size: usize, finalization: Finalization) -> io::Result<()> {
-        // Erase the buffer before doing any IO, so that if there's a failure subsequent reads and
-        // seeks don't think there's valid data there.
-        self.clear_buf();
-        self.input.read_exact(&mut self.buf[..size])?;
-        let hash = hash::hash_chunk(&self.buf[..size], finalization);
-        self.state.feed_chunk(hash)?;
-        self.buf_end = size;
-        Ok(())
+    // Read a verified chunk from the input. If the caller_buf has enough space
+    // and there's no skip, read the chunk directy into the caller_buf,
+    // avoiding an extra copy. Otherwise, read it into our internal buffer, and
+    // then copy as much as possible into caller_buf. The caller_buf may be the
+    // empty slice, in situations like seeking where the caller isn't expecting
+    // to receive bytes. Return the number of bytes written to the caller.
+    fn read_chunk(
+        &mut self,
+        size: usize,
+        finalization: Finalization,
+        skip: usize,
+        caller_buf: &mut [u8],
+    ) -> io::Result<usize> {
+        debug_assert_eq!(0, self.buf_len());
+        let direct = caller_buf.len() >= size && skip == 0;
+        let dest = if direct {
+            &mut caller_buf[..size]
+        } else {
+            &mut self.buf[..size]
+        };
+        self.input.read_exact(dest)?;
+        let hash = hash::hash_chunk(dest, finalization);
+        let feed_result = self.state.feed_chunk(&hash);
+        // If there's a hash mismatch, zero the destination buffer out of an
+        // abundance of caution. This reduces the chance that some buffer
+        // handling bug exposes bad bytes to the caller.
+        if feed_result.is_err() {
+            for i in 0..dest.len() {
+                dest[i] = 0;
+            }
+        }
+        feed_result?;
+        if direct {
+            Ok(size)
+        } else {
+            self.buf_start = skip;
+            self.buf_end = size;
+            let take = self.take_bytes(caller_buf);
+            Ok(take)
+        }
     }
 
     fn take_bytes(&mut self, buf: &mut [u8]) -> usize {
@@ -690,6 +703,64 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
         buf[..take].copy_from_slice(&self.buf[self.buf_start..self.buf_start + take]);
         self.buf_start += take;
         take
+    }
+
+    // Returns Ok(true) to indicate the seek is finished. Note that both the
+    // Reader and the SliceReader will use this method (which doesn't depend on
+    // io::Seek), but only the Reader will call handle_seek_bookkeeping first.
+    // This may read a chunk, but it never leaves output bytes in the buffer.
+    // (Because the only time seeking reads a chunk it also skips the entire
+    // thing.)
+    fn handle_seek_read(&mut self, next: NextRead) -> io::Result<bool> {
+        debug_assert_eq!(0, self.buf_len());
+        match next {
+            NextRead::Header => self.read_header()?,
+            NextRead::Parent => self.read_parent()?,
+            NextRead::Chunk {
+                size,
+                finalization,
+                skip,
+            } => {
+                // Note that there's no caller buffer in this case, so we pass
+                // in the empty slice. This will always skip the entire chunk.
+                let n = self.read_chunk(size, finalization, skip, &mut [])?;
+                debug_assert_eq!(0, n);
+                debug_assert_eq!(0, self.buf_len());
+            }
+            NextRead::Done => return Ok(true), // The seek is done.
+        }
+        Ok(false)
+    }
+}
+
+#[cfg(feature = "std")]
+impl<T: Read + Seek, O: Read + Seek> ReaderShared<T, O> {
+    // The Reader will call this as part of seeking, but note that the
+    // SliceReader won't, because all the seek bookkeeping has already been
+    // taken care of during slice extraction.
+    fn handle_seek_bookkeeping(
+        &mut self,
+        bookkeeping: encode::SeekBookkeeping,
+    ) -> io::Result<NextRead> {
+        // The VerifyState handles all the subtree stack management. We just
+        // need to handle the underlying seek. This is done differently
+        // depending on whether the encoding is combined or outboard.
+        if let Some(outboard) = &mut self.outboard {
+            if let Some((content_pos, outboard_pos)) = bookkeeping.underlying_seek_outboard() {
+                // As with Reader in the outboard case, the outboard extractor has to seek both of
+                // its inner readers. The content position of the state goes into the content
+                // reader, and the rest of the reported seek offset goes into the outboard reader.
+                self.input.seek(SeekFrom::Start(content_pos))?;
+                outboard.seek(SeekFrom::Start(outboard_pos))?;
+            }
+        } else {
+            if let Some(encoding_position) = bookkeeping.underlying_seek() {
+                let position_u64: u64 = encode::cast_offset(encoding_position)?;
+                self.input.seek(SeekFrom::Start(position_u64))?;
+            }
+        }
+        let next = self.state.seek_bookkeeping_done(bookkeeping);
+        Ok(next)
     }
 }
 
@@ -766,87 +837,79 @@ impl<T: Read, O: Read> Reader<T, O> {
             shared: ReaderShared::new(inner, Some(outboard), hash),
         }
     }
-
-    /// Return the total length of the stream, according the header. This doesn't require the
-    /// underlying reader to implement `Seek`. Note that this is the *total* length, regardless of
-    /// the current read position.
-    pub fn len(&mut self) -> io::Result<u64> {
-        self.shared.len()
-    }
 }
 
 #[cfg(feature = "std")]
 impl<T: Read, O: Read> Read for Reader<T, O> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // If we need more data, loop on read_next() until we read a chunk.
-        if self.shared.buf_len() == 0 {
-            loop {
-                match self.shared.state.read_next() {
-                    Some(StateNext::Header) => self.shared.read_header()?,
-                    Some(StateNext::Parent) => self.shared.read_parent()?,
-                    Some(StateNext::Chunk { size, finalization }) => {
-                        self.shared.read_chunk(size, finalization)?;
-                        break;
-                    }
-                    None => return Ok(0), // EOF
+        // If we have bytes in our buffer, return those. Otherwise loop on
+        // read_next() until we read a chunk or hit EOF. If the caller's buffer
+        // is big enough, the chunk will be read directly into that. If not,
+        // it'll be read into our buffer and as much as possible will be copied
+        // out to the caller.
+        if self.shared.buf_len() > 0 {
+            return Ok(self.shared.take_bytes(buf));
+        }
+        loop {
+            match self.shared.state.read_next() {
+                NextRead::Header => self.shared.read_header()?,
+                NextRead::Parent => self.shared.read_parent()?,
+                NextRead::Chunk {
+                    size,
+                    finalization,
+                    skip,
+                } => {
+                    // This writes to the caller's buffer if it reads a
+                    // non-empty chunk.
+                    let n = self.shared.read_chunk(size, finalization, skip, buf)?;
+                    return Ok(n);
                 }
+                NextRead::Done => return Ok(0), // EOF
             }
         }
-        Ok(self.shared.take_bytes(buf))
     }
 }
 
 #[cfg(feature = "std")]
 impl<T: Read + Seek, O: Read + Seek> Seek for Reader<T, O> {
-    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
-        // Read and verify the length if we haven't already. The seek would take care of this
-        // itself, but we need to get our hands on it directly to compute the asolute seek offset.
-        let content_len = self.len()?;
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        // Clear the internal buffer when seeking. The buffered bytes won't be
+        // valid reads at the new offset.
+        self.shared.clear_buf();
 
-        // Compute our current position, and use that to compute the absolute seek offset.
-        let starting_position = self.shared.state.position() - self.shared.buf_len() as u64;
+        // Get the absolute seek offset. If the caller passed in
+        // SeekFrom::Start, that's what we've got. If not, we need to compute
+        // it.
         let seek_to = match pos {
-            io::SeekFrom::Start(pos) => pos,
-            io::SeekFrom::End(off) => add_offset(content_len, off)?,
-            io::SeekFrom::Current(off) => add_offset(starting_position, off)?,
+            SeekFrom::Start(offset) => offset,
+            SeekFrom::End(offset) => {
+                // To seek from the end we have to get the length, and that may
+                // require as a seek loop of its own to verify the length.
+                let content_len = loop {
+                    match self.shared.state.len_next() {
+                        encode::LenNext::Seek(bookkeeping) => {
+                            let next_read = self.shared.handle_seek_bookkeeping(bookkeeping)?;
+                            let done = self.shared.handle_seek_read(next_read)?;
+                            debug_assert!(!done);
+                        }
+                        encode::LenNext::Len(len) => break len,
+                    }
+                };
+                add_offset(content_len, offset)?
+            }
+            SeekFrom::Current(offset) => {
+                add_offset(self.shared.adjusted_content_position(), offset)?
+            }
         };
 
+        // Now with the absolute seek offset, we perform the real (possibly
+        // second) seek loop.
         loop {
-            let (maybe_buf_start, maybe_seek_offset, maybe_next) =
-                self.shared.state.seek_next(seek_to, self.shared.buf_end);
-            if let Some(buf_start) = maybe_buf_start {
-                self.shared.buf_start = buf_start;
-            } else {
-                // Seeks outside of the current buffer must erase it, because otherwise subsequent
-                // short seeks could reuse buffer data from the wrong position.
-                self.shared.clear_buf();
-            }
-            if let Some(offset) = maybe_seek_offset {
-                // In the outboard case, the input reader will seek to the exact content position,
-                // and the outboard reader will subtract that from the reported offset (which is
-                // calculated for the combined case).
-                if let Some(ref mut outboard) = self.shared.outboard {
-                    let content_position = self.shared.state.position();
-                    self.shared
-                        .input
-                        .seek(io::SeekFrom::Start(content_position))?;
-                    let outboard_offset = offset - content_position as u128;
-                    outboard.seek(io::SeekFrom::Start(encode::cast_offset(outboard_offset)?))?;
-                } else {
-                    self.shared
-                        .input
-                        .seek(io::SeekFrom::Start(encode::cast_offset(offset)?))?;
-                }
-            }
-            match maybe_next {
-                Some(StateNext::Header) => unreachable!(),
-                Some(StateNext::Parent) => self.shared.read_parent()?,
-                Some(StateNext::Chunk { size, finalization }) => {
-                    self.shared.read_chunk(size, finalization)?
-                }
-                None => {
-                    return Ok(seek_to);
-                }
+            let bookkeeping = self.shared.state.seek_next(seek_to);
+            let next_read = self.shared.handle_seek_bookkeeping(bookkeeping)?;
+            let done = self.shared.handle_seek_read(next_read)?;
+            if done {
+                return Ok(seek_to);
             }
         }
     }
@@ -927,7 +990,6 @@ pub struct SliceReader<T: Read> {
     shared: ReaderShared<T, T>,
     slice_start: u64,
     slice_remaining: u64,
-    did_seek: bool,
 }
 
 #[cfg(feature = "std")]
@@ -937,7 +999,6 @@ impl<T: Read> SliceReader<T> {
             shared: ReaderShared::new(inner, None, hash),
             slice_start,
             slice_remaining: slice_len,
-            did_seek: false,
         }
     }
 }
@@ -945,58 +1006,64 @@ impl<T: Read> SliceReader<T> {
 #[cfg(feature = "std")]
 impl<T: Read> Read for SliceReader<T> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // If we don't have any output ready to go, try to read more.
-        if self.shared.buf_len() == 0 {
-            // If we haven't done the seek yet, do the whole thing in a loop.
-            if !self.did_seek {
-                // Do the seek.
-                self.did_seek = true;
-                loop {
-                    // Note that we ignore the returned seek offset. In a slice, the next thing we
-                    // need to read is always next in the stream.
-                    let (maybe_start, _, maybe_next) = self
-                        .shared
-                        .state
-                        .seek_next(self.slice_start, self.shared.buf_end);
-                    if let Some(start) = maybe_start {
-                        self.shared.buf_start = start;
-                    } else {
-                        // Seek never needs to clear the buffer, because there's only one seek.
-                        debug_assert_eq!(0, self.shared.buf_start);
-                        debug_assert_eq!(0, self.shared.buf_end);
-                    }
-                    match maybe_next {
-                        Some(StateNext::Header) => self.shared.read_header()?,
-                        Some(StateNext::Parent) => self.shared.read_parent()?,
-                        Some(StateNext::Chunk { size, finalization }) => {
-                            self.shared.read_chunk(size, finalization)?;
-                        }
-                        None => break,
-                    }
-                }
-            }
-
-            // After seeking, if we didn't already fill the buffer above, work on reading. If we've
-            // already supplied all the requested bytes, however, don't read any more.
-            while self.slice_remaining > 0 && self.shared.buf_len() == 0 {
-                match self.shared.state.read_next() {
-                    Some(StateNext::Header) => unreachable!(),
-                    Some(StateNext::Parent) => self.shared.read_parent()?,
-                    Some(StateNext::Chunk { size, finalization }) => {
-                        self.shared.read_chunk(size, finalization)?;
-                    }
-                    None => break, // EOF
-                }
-            }
+        // If we've already supplied all the requested slice bytes, quit.
+        if self.slice_remaining == 0 {
+            return Ok(0);
         }
 
-        // Unless we're at EOF, the buffer either already had some bytes or just got refilled.
-        // Return as much as we can from it. Decrement the slice_remaining so that we know when to
-        // stop.
-        let want = cmp::min(buf.len(), self.slice_remaining as usize);
-        let take = self.shared.take_bytes(&mut buf[..want]);
-        self.slice_remaining -= take as u64;
-        Ok(take)
+        // If we already have some bytes buffered, take those.
+        let want_bytes = cmp::min(self.slice_remaining as usize, buf.len());
+        let want_buf = &mut buf[..want_bytes];
+        if self.shared.buf_len() > 0 {
+            let take = self.shared.take_bytes(want_buf);
+            self.slice_remaining -= take as u64;
+            return Ok(take);
+        }
+
+        // If we didn't have any buffered output above, we need to actually
+        // start (or continue) parsing the slice, until we either read a chunk
+        // or hit EOF.
+
+        // If we haven't done the initial seek yet, do the full seek loop
+        // first. Note that this will never leave any buffered output. The only
+        // scenario where handle_seek_read reads a chunk is if it needs to
+        // validate the final chunk, and then it skips the whole thing.
+        if self.shared.state.content_position() < self.slice_start {
+            loop {
+                let bookkeeping = self.shared.state.seek_next(self.slice_start);
+                // Note here, we skip to seek_bookkeeping_done without
+                // calling handle_seek_bookkeeping. That is, we never
+                // perform any underlying seeks. The slice extractor
+                // already took care of lining everything up for us.
+                let next = self.shared.state.seek_bookkeeping_done(bookkeeping);
+                let done = self.shared.handle_seek_read(next)?;
+                if done {
+                    break;
+                }
+            }
+            debug_assert_eq!(0, self.shared.buf_len());
+        }
+
+        // We either just finished the seek (if any), or already did it
+        // during a previous call. Continue the read.
+        loop {
+            match self.shared.state.read_next() {
+                NextRead::Header => self.shared.read_header()?,
+                NextRead::Parent => self.shared.read_parent()?,
+                NextRead::Chunk {
+                    size,
+                    finalization,
+                    skip,
+                } => {
+                    // This reads bytes into the caller's buffer, and
+                    // possibly leaves some in our internal buffer.
+                    let n = self.shared.read_chunk(size, finalization, skip, want_buf)?;
+                    self.slice_remaining -= n as u64;
+                    return Ok(n);
+                }
+                NextRead::Done => return Ok(0), // EOF
+            }
+        }
     }
 }
 
@@ -1173,9 +1240,9 @@ mod test {
                 println!("seek {}", seek);
                 // Test all three types of seeking.
                 let mut seek_froms = Vec::new();
-                seek_froms.push(io::SeekFrom::Start(seek as u64));
-                seek_froms.push(io::SeekFrom::End(seek as i64 - input_len as i64));
-                seek_froms.push(io::SeekFrom::Current(seek as i64));
+                seek_froms.push(SeekFrom::Start(seek as u64));
+                seek_froms.push(SeekFrom::End(seek as i64 - input_len as i64));
+                seek_froms.push(SeekFrom::Current(seek as i64));
                 for seek_from in seek_froms {
                     println!("seek_from {:?}", seek_from);
                     let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
@@ -1208,7 +1275,7 @@ mod test {
             let seek = prng.gen_range(0, input_len + 1);
             println!("\nseek {}", seek);
             decoder
-                .seek(io::SeekFrom::Start(seek as u64))
+                .seek(SeekFrom::Start(seek as u64))
                 .expect("seek error");
             // Clone the encoder before reading, to test repeated seeks on the same encoder.
             let mut output = Vec::new();
@@ -1255,19 +1322,21 @@ mod test {
     #[test]
     fn test_seeking_around_invalid_data() {
         for &case in hash::TEST_CASES {
-            // Skip the cases with only one chunk, so that the root stays valid.
-            if case <= CHUNK_SIZE {
+            // Skip the cases with only one or two chunks, so we have valid
+            // reads before and after the tweak.
+            if case <= 2 * CHUNK_SIZE {
                 continue;
             }
 
-            println!("case {}", case);
+            println!("\ncase {}", case);
             let input = make_test_input(case);
             let (hash, mut encoded) = encode::encode_to_vec(&input);
             println!("encoded len {}", encoded.len());
 
-            // Tweak a bit at the start of a chunk about halfway through. Loop over prior parent
-            // nodes and chunks to figure out where the target chunk actually starts.
-            let tweak_chunk = (case / CHUNK_SIZE / 2) as u64;
+            // Tweak a bit at the start of a chunk about halfway through. Loop
+            // over prior parent nodes and chunks to figure out where the
+            // target chunk actually starts.
+            let tweak_chunk = encode::count_chunks(case as u64) / 2;
             let tweak_position = tweak_chunk as usize * CHUNK_SIZE;
             println!("tweak position {}", tweak_position);
             let mut tweak_encoded_offset = HEADER_SIZE;
@@ -1295,7 +1364,7 @@ mod test {
 
             // But now if we seek past the bad chunk, things should succeed again.
             let new_start = tweak_position + CHUNK_SIZE;
-            decoder.seek(io::SeekFrom::Start(new_start as u64)).unwrap();
+            decoder.seek(SeekFrom::Start(new_start as u64)).unwrap();
             let mut output = Vec::new();
             decoder.read_to_end(&mut output).unwrap();
             assert_eq!(&input[new_start..], &*output);
@@ -1316,13 +1385,13 @@ mod test {
             // Seeking past the end of a tree should succeed with the right hash.
             let mut output = Vec::new();
             let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
-            decoder.seek(io::SeekFrom::Start(case as u64)).unwrap();
+            decoder.seek(SeekFrom::Start(case as u64)).unwrap();
             decoder.read_to_end(&mut output).unwrap();
             assert_eq!(&output, &[]);
 
             // Seeking past the end of a tree should fail if the root hash is wrong.
             let mut decoder = Reader::new(Cursor::new(&encoded), &bad_hash);
-            let result = decoder.seek(io::SeekFrom::Start(case as u64));
+            let result = decoder.seek(SeekFrom::Start(case as u64));
             assert!(result.is_err(), "a bad hash is supposed to fail!");
             assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
         }
@@ -1349,29 +1418,6 @@ mod test {
                 hash_from_outboard_encoded(&mut Cursor::new(&input), &mut Cursor::new(&outboard))
                     .unwrap();
             assert_eq!(hash, inferred_hash, "hashes don't match");
-        }
-    }
-
-    #[test]
-    fn test_len_then_read() {
-        for &case in hash::TEST_CASES {
-            println!("case {}", case);
-            let input = make_test_input(case);
-            let (hash, encoded) = encode::encode_to_vec(&input);
-            let mut decoder = Reader::new(&*encoded, &hash);
-
-            // Read the len and make sure it's correct.
-            let len = decoder.len().unwrap();
-            assert_eq!(case as u64, len, "len mismatch");
-
-            // Read all the output and make sure we didn't miss any.
-            let mut output = Vec::new();
-            decoder.read_to_end(&mut output).unwrap();
-            assert_eq!(input, output, "missed output");
-
-            // Check the len again just to be safe.
-            let len = decoder.len().unwrap();
-            assert_eq!(case as u64, len, "len mismatch");
         }
     }
 

@@ -1,14 +1,16 @@
 //! Encode some input bytes into the Bao format, or slice an existing encoding.
 //!
-//! The Bao encoding format makes it possible to stream content bytes while verifying that they
-//! match the root hash. It also supports extracting encoded slices that can be verified apart from
-//! the rest of the encoding. This module handles the sending side of these operations. For the
-//! receiving side, see the `decode` module.
+//! The Bao encoding format makes it possible to stream content bytes while
+//! verifying that they match the root hash. It also supports extracting
+//! encoded slices that can be validated apart from the rest of the encoding.
+//! This module handles the sending side of these operations. For the receiving
+//! side, see the `decode` module.
 //!
-//! There are two modes of encoding, combined (the default) and outboard. The combined mode mixes
-//! subtree hashes together with the input bytes, producing a single file that can be decoded by
-//! itself. The outboard mode avoids copying any input bytes. The outboard encoding is much
-//! smaller, but it can only be used together with the original input file.
+//! There are two modes of encoding, combined (the default) and outboard. The
+//! combined mode mixes subtree hashes together with the input bytes, producing
+//! a single file that can be decoded by itself. The outboard mode avoids
+//! copying any input bytes. The outboard encoding is much smaller, but it can
+//! only be used together with the original input file.
 //!
 //! # Example
 //!
@@ -37,13 +39,13 @@
 //! # }
 //! ```
 
+use crate::hash::Finalization::{self, NotRoot, Root};
+use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
 use arrayvec::ArrayVec;
 use blake2s_simd;
 use copy_in_place::copy_in_place;
 use core::cmp;
 use core::fmt;
-use crate::hash::Finalization::{self, NotRoot, Root};
-use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
 #[cfg(feature = "std")]
 use rayon;
 #[cfg(feature = "std")]
@@ -51,7 +53,7 @@ use std::io;
 #[cfg(feature = "std")]
 use std::io::prelude::*;
 #[cfg(feature = "std")]
-use std::io::SeekFrom::{End, Start};
+use std::io::SeekFrom;
 
 /// Encode the input bytes in the combined mode. `output.len()` must be exactly
 /// `encoded_size(input.len())`.
@@ -390,8 +392,8 @@ pub(crate) fn count_chunks(content_len: u64) -> u64 {
     cmp::max(1, full_chunks + has_partial_chunk as u64)
 }
 
-pub(crate) fn chunk_size(chunk: u64, content_len: u64) -> usize {
-    let chunk_start = chunk * CHUNK_SIZE as u64;
+pub(crate) fn chunk_size(chunk_index: u64, content_len: u64) -> usize {
+    let chunk_start = chunk_index * CHUNK_SIZE as u64;
     cmp::min(CHUNK_SIZE, (content_len - chunk_start) as usize)
 }
 
@@ -653,10 +655,10 @@ impl<T: Read + Write + Seek> Writer<T> {
     }
 
     fn flip_post_order_stream(&mut self) -> io::Result<()> {
-        let mut write_cursor = self.inner.seek(End(0))?;
+        let mut write_cursor = self.inner.seek(SeekFrom::End(0))?;
         let mut read_cursor = write_cursor - HEADER_SIZE as u64;
         let mut header = [0; HEADER_SIZE];
-        self.inner.seek(Start(read_cursor))?;
+        self.inner.seek(SeekFrom::Start(read_cursor))?;
         self.inner.read_exact(&mut header)?;
         let content_len = hash::decode_len(&header);
         let mut flipper = FlipperState::new(content_len);
@@ -664,14 +666,16 @@ impl<T: Read + Write + Seek> Writer<T> {
             match flipper.next() {
                 FlipperNext::FeedParent => {
                     let mut parent = [0; PARENT_SIZE];
-                    self.inner.seek(Start(read_cursor - PARENT_SIZE as u64))?;
+                    self.inner
+                        .seek(SeekFrom::Start(read_cursor - PARENT_SIZE as u64))?;
                     self.inner.read_exact(&mut parent)?;
                     read_cursor -= PARENT_SIZE as u64;
                     flipper.feed_parent(parent);
                 }
                 FlipperNext::TakeParent => {
                     let parent = flipper.take_parent();
-                    self.inner.seek(Start(write_cursor - PARENT_SIZE as u64))?;
+                    self.inner
+                        .seek(SeekFrom::Start(write_cursor - PARENT_SIZE as u64))?;
                     self.inner.write_all(&parent)?;
                     write_cursor -= PARENT_SIZE as u64;
                 }
@@ -679,10 +683,12 @@ impl<T: Read + Write + Seek> Writer<T> {
                     // In outboard moded, we skip over chunks.
                     if !self.outboard {
                         let mut chunk = [0; CHUNK_SIZE];
-                        self.inner.seek(Start(read_cursor - size as u64))?;
+                        self.inner
+                            .seek(SeekFrom::Start(read_cursor - size as u64))?;
                         self.inner.read_exact(&mut chunk[..size])?;
                         read_cursor -= size as u64;
-                        self.inner.seek(Start(write_cursor - size as u64))?;
+                        self.inner
+                            .seek(SeekFrom::Start(write_cursor - size as u64))?;
                         self.inner.write_all(&chunk[..size])?;
                         write_cursor -= size as u64;
                     }
@@ -690,7 +696,7 @@ impl<T: Read + Write + Seek> Writer<T> {
                 }
                 FlipperNext::Done => {
                     debug_assert_eq!(HEADER_SIZE as u64, write_cursor);
-                    self.inner.seek(Start(0))?;
+                    self.inner.seek(SeekFrom::Start(0))?;
                     self.inner.write_all(&header)?;
                     return Ok(());
                 }
@@ -735,282 +741,394 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
     }
 }
 
-// This is in its own module to enforce privacy. For example, callers should only ever read
-// content_len by calling len_next().
-use self::parse_state::StateNext;
-pub(crate) mod parse_state {
-    use super::*;
+// This incremental parser underlies the VerifyState (which does the actual
+// hash checking part of `bao decode`) and the SliceExtractor (which implements
+// `bao slice` and doesn't actually check any hashes). It encapsulates the tree
+// traversal logic, but it doesn't actually perform any IO or handle any of the
+// bytes that get read; all of that is left to the caller.
+#[derive(Clone, Debug)]
+pub(crate) struct ParseState {
+    content_len: Option<u64>,
+    content_position: u64, // can be in the middle of a chunk, after a seek
+    encoding_position: u128,
+    stack_depth: u8,
+    upcoming_parents: u8,
+    // Tracking this state is crucial for security, see the "final chunk
+    // requirement" in the spec. This parser doesn't actually check hashes, but
+    // it drives callers that do check.
+    final_chunk_validated: bool,
+}
 
-    // This incremental parser supports the SliceExtractor (which doesn't check any hashes) and the
-    // VerifyState in decode.rs (which adds hash verification on top of this).
-    #[derive(Clone, Debug)]
-    pub(crate) struct ParseState {
-        content_len: Option<u64>,
-        next_chunk: u64,
-        upcoming_parents: u8,
-        stack_depth: u8,
-        encoded_offset: u128,
-        length_verified: bool,
-        at_root: bool,
+impl ParseState {
+    pub fn new() -> Self {
+        Self {
+            content_len: None,
+            content_position: 0,
+            encoding_position: 0,
+            stack_depth: 1,
+            upcoming_parents: 0, // set later in feed_header
+            final_chunk_validated: false,
+        }
     }
 
-    impl ParseState {
-        pub(crate) fn new() -> Self {
-            Self {
-                content_len: None,
-                next_chunk: 0,
-                upcoming_parents: 0,
-                stack_depth: 1,
-                encoded_offset: 0,
-                length_verified: false,
-                at_root: true,
-            }
-        }
+    pub fn content_position(&self) -> u64 {
+        self.content_position
+    }
 
-        pub(crate) fn position(&self) -> u64 {
-            if let Some(content_len) = self.content_len {
-                cmp::min(
-                    content_len,
-                    self.next_chunk.saturating_mul(CHUNK_SIZE as u64),
-                )
-            } else {
-                0
-            }
-        }
+    fn at_root(&self) -> bool {
+        self.content_position < CHUNK_SIZE as u64 && self.stack_depth == 1
+    }
 
-        // VerifyState needs this to know when to pop nodes during a seek.
-        pub(crate) fn stack_depth(&self) -> usize {
-            self.stack_depth as usize
-        }
-
-        // As with len_next, the ParseState doesn't strictly need to know about finalizations to do
-        // its job. But its callers need to finalize, and we want to tightly gate access to
-        // content_len (so that it doesn't get accidentally used without verifying it), so we
-        // centralize the logic here.
-        pub(crate) fn finalization(&self) -> Finalization {
-            let content_len = self.content_len.expect("finalization with no len");
-            if self.at_root {
-                Root(content_len)
-            } else {
-                NotRoot
-            }
-        }
-
-        fn reset_to_root(&mut self) {
-            self.next_chunk = 0;
-            self.upcoming_parents = pre_order_parent_nodes(0, self.content_len.unwrap());
-            self.encoded_offset = HEADER_SIZE as u128;
-            self.at_root = true;
-            self.stack_depth = 1;
-        }
-
-        // Strictly speaking, since ParseState doesn't verify anything, it could just return the
-        // content_len from a parsed header without any extra fuss. However, all of the users of this
-        // struct either need to do verifying themselves (VerifyState) or will produce output that
-        // needs to have all the verifiable data in it (SliceExtractor). So it makes sense to
-        // centralize the length reading logic here.
-        //
-        // Note that if reading the length returns StateNext::Chunk (leading the caller to call
-        // feed_chunk), the content position will no longer be at the start, as with a standard read.
-        // All of our callers buffer the last chunk, so this won't ultimately cause the user to skip
-        // over any input. But a caller that didn't buffer anything would need to account for this
-        // somehow.
-        pub(crate) fn len_next(&self) -> LenNext {
-            match (self.content_len, self.length_verified) {
-                (None, false) => LenNext::Next(StateNext::Header),
-                (None, true) => unreachable!(),
-                (Some(len), false) => {
-                    if self.upcoming_parents > 0 {
-                        LenNext::Next(StateNext::Parent)
-                    } else {
-                        LenNext::Next(StateNext::Chunk {
-                            size: len as usize,
-                            finalization: Root(len),
-                        })
-                    }
+    fn at_eof(&self) -> bool {
+        if let Some(content_len) = self.content_len {
+            if self.content_position >= content_len {
+                if self.final_chunk_validated {
+                    // It's security critical that we never get to EOF without
+                    // having validated the final chunk. This is part of the
+                    // "final chunk requirement" in the spec.
+                    return true;
                 }
-                (Some(len), true) => LenNext::Len(len),
-            }
-        }
-
-        // TODO: The golden rule should be "EOF occurs during the read the final chunk."
-        fn is_eof(&self) -> bool {
-            match self.len_next() {
-                LenNext::Len(len) => self.next_chunk >= count_chunks(len),
-                LenNext::Next(_) => false,
-            }
-        }
-
-        pub(crate) fn read_next(&self) -> Option<StateNext> {
-            let content_len = match self.len_next() {
-                LenNext::Next(next) => return Some(next),
-                LenNext::Len(len) => len,
-            };
-            if self.is_eof() {
-                None
-            } else if self.upcoming_parents > 0 {
-                Some(StateNext::Parent)
-            } else {
-                Some(StateNext::Chunk {
-                    size: chunk_size(self.next_chunk, content_len),
-                    finalization: NotRoot,
-                })
-            }
-        }
-
-        // The buffered_bytes argument tells the parser how many content bytes immediately prior to
-        // the next_chunk the caller is storing. (This is generally exactly the previous chunk, but
-        // in a multi-threaded reader it could be the size of a larger pipeline of buffers.) If the
-        // seek is into that region, it will tell the caller to just adjust its buffer start,
-        // rather than seeking backwards and repeating reads.
-        //
-        // Returns (maybe buffer start, maybe seek, maybe state next). A None buffer start means
-        // that the buffer needs to be purged (such that subsequent calls to seek would pass
-        // buffered_bytes=0), otherwise the buffer should be retained and its cursor set to the new
-        // start value. A non-None seek value means that the caller should execute a seek on the
-        // underlying reader, with the offset measured from the start. No state next means the seek
-        // is done, though the first two arguments still need to be respected first.
-        pub(crate) fn seek_next(
-            &mut self,
-            seek_to: u64,
-            buffered_bytes: usize,
-        ) -> (Option<usize>, Option<u128>, Option<StateNext>) {
-            let content_len = match self.len_next() {
-                LenNext::Next(next) => {
-                    debug_assert_eq!(0, buffered_bytes);
-                    return (None, None, Some(next));
-                }
-                LenNext::Len(len) => len,
-            };
-
-            // Cap the seek_to at the content_len. This simplifies buffer adjustment and EOF
-            // checking, since content_len is the max position().
-            let seek_to = cmp::min(seek_to, content_len);
-
-            // If the seek can be handled with just a buffer adjustment, do that. This includes
-            // seeks into the middle of a chunk we just read, possibly as a result of the a LenNext
-            // above.
-            let leftmost_buffered = self.position() - buffered_bytes as u64;
-            if leftmost_buffered <= seek_to && seek_to <= self.position() {
-                let new_buf_start = (seek_to - leftmost_buffered) as usize;
-                return (Some(new_buf_start), None, None);
-            }
-
-            // If the seek is further to our left than just a buffer adjustment, reset the whole
-            // parser and stack, so that we can re-seek from the beginning. Note that this is one
-            // of the two case (along with popping subtrees from the stack below) where the call
-            // will need to execute an actual seek in the underlying stream.
-            let mut maybe_seek_offset = None;
-            let leftmost_buffered = self.position() - buffered_bytes as u64;
-            if seek_to < leftmost_buffered {
-                self.reset_to_root();
-                maybe_seek_offset = Some(self.encoded_offset);
-            }
-
-            loop {
-                // If the target is the current position, the seek is finished. This includes EOF.
-                if seek_to == self.position() {
-                    return (None, maybe_seek_offset, None);
-                }
-
-                // If the target is within the current subtree, we either need to descend in the
-                // tree or read the next chunk for a buffer adjustment.
-                if seek_to < self.subtree_end() {
-                    if self.upcoming_parents > 0 {
-                        return (None, maybe_seek_offset, Some(StateNext::Parent));
-                    } else {
-                        debug_assert!(self.subtree_size() <= CHUNK_SIZE as u64);
-                        return (
-                            None,
-                            maybe_seek_offset,
-                            Some(StateNext::Chunk {
-                                size: self.subtree_size() as usize,
-                                finalization: self.finalization(),
-                            }),
-                        );
-                    }
-                }
-
-                // Otherwise jump out of the current subtree and loop.
-                self.stack_depth -= 1;
-                self.encoded_offset += encoded_subtree_size(self.subtree_size());
-                maybe_seek_offset = Some(self.encoded_offset);
-                self.next_chunk += count_chunks(self.subtree_size());
-                if !self.is_eof() {
-                    // upcoming_parents is only meaningful if we're before EOF.
-                    self.upcoming_parents = pre_order_parent_nodes(self.next_chunk, content_len);
+                // For content_len == 0, reads won't move the offset, and the
+                // final_chunk_validated flag is usually the only way to tell
+                // that we've gotten to EOF. But for any non-empty encoding, we
+                // shouldn't be able to pass the EOF offset without also
+                // validating the final_chunk.
+                if content_len > 0 {
+                    debug_assert!(self.content_position < content_len);
                 }
             }
         }
+        false
+    }
 
-        pub(crate) fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
-            assert!(self.content_len.is_none(), "second call to feed_header");
-            let content_len = hash::decode_len(header);
-            self.content_len = Some(content_len);
+    fn next_chunk_start(&self) -> u64 {
+        debug_assert!(!self.at_eof(), "not valid at EOF");
+        self.content_position - (self.content_position % CHUNK_SIZE as u64)
+    }
+
+    fn next_chunk_index(&self) -> u64 {
+        debug_assert!(!self.at_eof(), "not valid at EOF");
+        self.content_position / CHUNK_SIZE as u64
+    }
+
+    pub fn finalization(&self) -> Finalization {
+        let content_len = self.content_len.expect("finalization before header");
+        if self.at_root() {
+            Root(content_len)
+        } else {
+            NotRoot
+        }
+    }
+
+    fn reset_to_root(&mut self) {
+        let content_len = self.content_len.expect("reset before header");
+        self.content_position = 0;
+        self.encoding_position = HEADER_SIZE as u128;
+        self.stack_depth = 1;
+        self.upcoming_parents = pre_order_parent_nodes(0, content_len);
+        // The final_chunk_validated flag is left alone. If the caller has
+        // already validated the final chunk, then they can do EOF-relative
+        // seeks or read the length without paying that cost again.
+    }
+
+    // Reading is done in a loop. The caller may need to read and process
+    // several parent nodes before encountering the next chunk. Done indicates
+    // EOF.
+    pub fn read_next(&self) -> NextRead {
+        // If we haven't yet parsed the length header, that has to happen
+        // first. Note that this isn't necessarily a validated length, which in
+        // general we can't get without seeking. The validated length isn't
+        // required unless we're returning EOF.
+        let content_len = if let Some(len) = self.content_len {
+            len
+        } else {
+            return NextRead::Header;
+        };
+        if self.at_eof() {
+            // It's security critical that we never get here without having
+            // validated the final chunk first. This is part of the "final
+            // chunk requirement" in the spec. at_eof() asserts it.
+            NextRead::Done
+        } else if self.upcoming_parents > 0 {
+            NextRead::Parent
+        } else {
+            NextRead::Chunk {
+                size: chunk_size(self.next_chunk_index(), content_len),
+                finalization: self.finalization(),
+                skip: (self.content_position % CHUNK_SIZE as u64) as usize,
+            }
+        }
+    }
+
+    // Like reading, seeking is done in a loop. The caller calls seek_next()
+    // and receives a SeekBookkeeping object. The caller handles all the
+    // indicated bookkeeping, adjusting its subtree stack if any and seeking
+    // its underlying reader if any. The caller then passes the object back to
+    // seek_bookkeeping_done(), which returns an optional NextRead action. If
+    // the action is non-None, the caller carries it out and then repeats the
+    // seek loop. If the action is None, the seek is finished.
+    //
+    // Usually seeking won't instruct the caller to read any chunks, but will
+    // instead stop when it gets to the position where the next read loop will
+    // finish by reading the target chunk. This gives the caller more
+    // flexibility to read chunk data directly into the destination buffer,
+    // rather than copying it twice.
+    //
+    // The one exception is seeking to or past the end. In that case seek will
+    // instruct the caller to read (and validate, if applicable) the final
+    // chunk. This is part of the "final chunk requirement" described in the
+    // spec, which prevents corrupt length headers from being exposed to the
+    // caller. If the caller retains that final chunk in its buffer, it'll need
+    // to mark the buffer as "already read" or whatever.
+    pub fn seek_next(&self, seek_to: u64) -> SeekBookkeeping {
+        let mut new_state = self.clone();
+        let next_read = new_state.new_state_seek_next(seek_to);
+        SeekBookkeeping {
+            old_state: self.clone(),
+            new_state,
+            next_read,
+        }
+    }
+
+    // This is called on a clone of the ParseState (`new_state` above), and the
+    // changes here are applied in seek_bookkeeping_done(). This allows
+    // seek_next() to take &self and keeps everything idempotent.
+    fn new_state_seek_next(&mut self, mut seek_to: u64) -> NextRead {
+        // If we haven't yet parsed the len, that has to happen first.
+        let content_len = if let Some(len) = self.content_len {
+            len
+        } else {
+            return NextRead::Header;
+        };
+
+        // If the seek is to or past EOF, we need to check whether the final
+        // chunk has already been validated. If not, we need to validate it as
+        // part of seeking.
+        let mut read_final_chunk = false;
+        if seek_to >= content_len {
+            if self.final_chunk_validated {
+                // The final chunk has already been validated, and we don't
+                // need to do any more work. Setting content_position at or
+                // past the content_len indicates EOF to subsequent reads.
+                // Other state parameters don't matter; they'll get reset if
+                // the caller seeks back into the encoding.
+                self.content_position = seek_to;
+                return NextRead::Done;
+            }
+            // The final chunk hasn't been validated. We repoint the seek to
+            // the last byte of the encoding, and read it when we get there.
+            seek_to = content_len.saturating_sub(1);
+            read_final_chunk = true;
+        }
+
+        // If seek_to is to the left of the next chunk, reset the whole state,
+        // so that we can re-traverse from the beginning. The caller will have
+        // to execute an underlying seek in this case. However, if seek_to is
+        // just to a different skip offset within the next chunk, resetting is
+        // unnecessary, which is why we use next_chunk_start() instead of
+        // content_position.
+        if self.at_eof() || seek_to < self.next_chunk_start() {
             self.reset_to_root();
         }
 
-        pub(crate) fn advance_parent(&mut self) {
-            assert!(
-                self.upcoming_parents > 0,
-                "too many calls to advance_parent"
-            );
-            self.upcoming_parents -= 1;
-            self.encoded_offset += PARENT_SIZE as u128;
-            self.length_verified = true;
-            self.at_root = false;
-            self.stack_depth += 1;
-        }
-
-        pub(crate) fn advance_chunk(&mut self) {
-            assert_eq!(
-                0, self.upcoming_parents,
-                "advance_chunk with non-zero upcoming parents"
-            );
-            self.encoded_offset += self.subtree_size() as u128;
-            self.next_chunk += 1;
-            self.length_verified = true;
-            self.at_root = false;
-            self.stack_depth -= 1;
-            // Note that is_eof() depends on the flag changes we just made.
-            if !self.is_eof() {
-                // upcoming_parents is only meaningful if we're before EOF.
-                self.upcoming_parents =
-                    pre_order_parent_nodes(self.next_chunk, self.content_len.unwrap());
+        // Now the meat of the seek computation. We know the seek is into or to
+        // the right of the next chunk, and not EOF. Ascend out of as many
+        // subtrees as necessary, until we're in the subtree containing the
+        // target, and then either finish the seek or descend.
+        loop {
+            // If the target is within the next chunk, the seek is usually
+            // finished. In that case we set the content_position to the exact
+            // seek target, so that if it's in the middle of the chunk, then
+            // the next read will compute the correct skip. The exception is a
+            // repointed EOF seek, where we instruct the caller to read the
+            // final chunk and call seek_next again.
+            let distance = seek_to - self.next_chunk_start();
+            if distance < CHUNK_SIZE as u64 {
+                if read_final_chunk {
+                    let size = (content_len - self.next_chunk_start()) as usize;
+                    return NextRead::Chunk {
+                        size,
+                        finalization: self.finalization(),
+                        skip: size, // Skip the whole thing.
+                    };
+                } else {
+                    self.content_position = seek_to;
+                    return NextRead::Done;
+                }
             }
-        }
 
-        fn subtree_size(&self) -> u64 {
-            debug_assert!(!self.is_eof());
-            let content_len = self.content_len.unwrap();
-            // The following should avoid overflow even if content_len is 2^64-1. upcoming_parents was
-            // computed from the chunk count, and as long as chunks are larger than 1 byte, it will
-            // always be less than 64.
-            let max_subtree_size = (1 << self.upcoming_parents) * CHUNK_SIZE as u64;
-            cmp::min(content_len - self.position(), max_subtree_size)
-        }
+            // If the target is within the current subtree but not the next
+            // chunk, we need to descend. Down-shift the distance rather than
+            // computing the maximum subtree size, to prevent overflow.
+            let downshifted_distance = distance
+                .checked_shr(self.upcoming_parents as u32)
+                .unwrap_or(0);
+            if downshifted_distance < CHUNK_SIZE as u64 {
+                debug_assert!(self.upcoming_parents > 0);
+                return NextRead::Parent;
+            }
 
-        fn subtree_end(&self) -> u64 {
-            debug_assert!(!self.is_eof());
-            self.position() + self.subtree_size()
+            // Otherwise jump out of the current subtree and loop. In this case
+            // we know the subtree size is maximal, and computing it won't
+            // overflow. The caller will have to execute an underlying seek in
+            // this case.
+            let subtree_size = (CHUNK_SIZE as u64) << self.upcoming_parents;
+            self.content_position = self.next_chunk_start() + subtree_size;
+            self.encoding_position += encoded_subtree_size(subtree_size);
+            self.stack_depth -= 1;
+            // This depends on the update to content_position immediately above.
+            self.upcoming_parents = pre_order_parent_nodes(self.next_chunk_index(), content_len);
         }
     }
 
-    #[derive(Clone, Copy, Debug)]
-    pub(crate) enum StateNext {
-        Header,
-        Parent,
-        Chunk {
-            size: usize,
-            finalization: Finalization,
-        },
+    // This consumes the SeekBookkeeping object, to try to force the caller to
+    // handle the bookkeeping instructions before the NextRead.
+    pub fn seek_bookkeeping_done(&mut self, bookkeeping: SeekBookkeeping) -> NextRead {
+        *self = bookkeeping.new_state;
+        bookkeeping.next_read
     }
 
-    #[derive(Clone, Copy, Debug)]
-    pub(crate) enum LenNext {
-        Len(u64),
-        Next(StateNext),
+    pub fn len_next(&self) -> LenNext {
+        if let Some(content_len) = self.content_len {
+            // We can only return the length once the final chunk has been
+            // validated. This is the "final chunk requirement".
+            if self.final_chunk_validated {
+                LenNext::Len(content_len)
+            } else {
+                // Otherwise we need to validate it, by seeking to EOF.
+                LenNext::Seek(self.seek_next(content_len))
+            }
+        } else {
+            // If we haven't even parsed the content header, that's the first
+            // instruction for any seek, so zero is fine.
+            LenNext::Seek(self.seek_next(0))
+        }
     }
+
+    // Returns the parsed length.
+    pub fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
+        debug_assert!(self.content_len.is_none(), "second call to feed_header");
+        let content_len = hash::decode_len(header);
+        self.content_len = Some(content_len);
+        self.reset_to_root();
+    }
+
+    pub fn advance_parent(&mut self) {
+        debug_assert!(
+            self.upcoming_parents > 0,
+            "too many calls to advance_parent"
+        );
+        self.encoding_position += PARENT_SIZE as u128;
+        self.stack_depth += 1;
+        self.upcoming_parents -= 1;
+    }
+
+    pub fn advance_chunk(&mut self) {
+        debug_assert_eq!(
+            0, self.upcoming_parents,
+            "advance_chunk with non-zero upcoming parents"
+        );
+        let content_len = self.content_len.expect("advance_chunk before header");
+        let size = chunk_size(self.next_chunk_index(), content_len);
+        let skip = self.content_position % CHUNK_SIZE as u64;
+        self.content_position += size as u64 - skip;
+        self.encoding_position += size as u128;
+        self.stack_depth -= 1;
+        if self.content_position >= content_len {
+            debug_assert_eq!(self.content_position, content_len, "position past EOF");
+            // We just validated the final chunk. This is the *only line* where
+            // we satisfy the "final chunk requirement". Any transition into an
+            // EOF state must go through this line of code.
+            self.final_chunk_validated = true;
+        } else {
+            // upcoming_parents is only meaningful if we're before EOF.
+            self.upcoming_parents = pre_order_parent_nodes(self.next_chunk_index(), content_len);
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum NextRead {
+    Header,
+    Parent,
+    Chunk {
+        size: usize,
+        finalization: Finalization,
+        skip: usize,
+    },
+    Done,
+}
+
+// This struct provides several methods that give bookkeeping instructions. The
+// caller must handle all of these:
+//
+// reset_to_root: When seeking to the left, parsing resets all the way to the
+// root. If the caller manages a stack of subtree hashes (as VerifyState does),
+// its stack needs to be reset, so that it's ready to receive the root node
+// again. This is indicated by returning true.
+//
+// stack_depth: Seeking to the right sometimes means skipping over upcoming
+// subtrees. If the caller manages a stack of subtree hashes (again as
+// VerifyState does), it might need to pop some hashes off the end of its
+// stack. It should pop until the depth of its stack is equal to the returned
+// depth. Note that giving a target depth rather than a number of pops keeps
+// this instruction idempotent; if the caller executes it twice for some reason
+// (maybe interruption or recoverable errors), they'll still get the correct
+// answer.
+//
+// underlying_seek[_outboard]: Both of the cases above require a corresponding
+// seek in the underlying reader. This is indicated by returning non-None. Note
+// that the seek target is a u128, and it's the caller's responsibility to
+// decide how to handle truncation to a u64, either by performing multiple
+// seeks or by reporting an error. This comes up for pathologically long inputs
+// close to u64::MAX bytes, where in theory encoding overhead pushes the
+// encoded length past u64::MAX. It's reasonable to fail in that case, but the
+// ParseState API itself is infallible.
+//
+// After handling all of the above, the caller passes the SeekBookkeeping back
+// to seek_done(), which might returns a NextRead for the caller to carry
+// out, or None to indicate
+#[derive(Debug)]
+pub(crate) struct SeekBookkeeping {
+    old_state: ParseState,
+    new_state: ParseState,
+    next_read: NextRead,
+}
+
+impl SeekBookkeeping {
+    pub fn reset_to_root(&self) -> bool {
+        self.new_state.at_root() && !self.old_state.at_root()
+    }
+
+    pub fn stack_depth(&self) -> usize {
+        self.new_state.stack_depth as usize
+    }
+
+    pub fn underlying_seek(&self) -> Option<u128> {
+        if self.old_state.encoding_position != self.new_state.encoding_position {
+            Some(self.new_state.encoding_position)
+        } else {
+            None
+        }
+    }
+
+    // A variant on the above for callers who keep the encoded tree separate
+    // from the content.
+    pub fn underlying_seek_outboard(&self) -> Option<(u64, u64)> {
+        if self.old_state.encoding_position != self.new_state.encoding_position {
+            let content = self.new_state.next_chunk_start();
+            let outboard = (self.new_state.encoding_position - content as u128) as u64;
+            Some((content, outboard))
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum LenNext {
+    Seek(SeekBookkeeping),
+    Len(u64),
 }
 
 /// An incremental slice extractor, which reads encoded bytes and produces a slice.
@@ -1057,8 +1175,7 @@ pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
     slice_start: u64,
     slice_len: u64,
     slice_bytes_read: u64,
-    previous_chunk_size: usize,
-    parser: parse_state::ParseState,
+    parser: ParseState,
     buf: [u8; CHUNK_SIZE],
     buf_start: usize,
     buf_end: usize,
@@ -1094,8 +1211,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
             slice_start,
             slice_len,
             slice_bytes_read: 0,
-            previous_chunk_size: 0,
-            parser: parse_state::ParseState::new(),
+            parser: ParseState::new(),
             buf: [0; CHUNK_SIZE],
             buf_start: 0,
             buf_end: 0,
@@ -1110,7 +1226,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
     // Note that unlike the regular Reader, the header bytes go into the output buffer.
     fn read_header(&mut self) -> io::Result<()> {
         let header = array_mut_ref!(self.buf, 0, HEADER_SIZE);
-        if let Some(ref mut outboard) = self.outboard {
+        if let Some(outboard) = &mut self.outboard {
             outboard.read_exact(header)?;
         } else {
             self.input.read_exact(header)?;
@@ -1124,7 +1240,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
     // Note that unlike the regular Reader, the parent bytes go into the output buffer.
     fn read_parent(&mut self) -> io::Result<()> {
         let parent = array_mut_ref!(self.buf, 0, PARENT_SIZE);
-        if let Some(ref mut outboard) = self.outboard {
+        if let Some(outboard) = &mut self.outboard {
             outboard.read_exact(parent)?;
         } else {
             self.input.read_exact(parent)?;
@@ -1135,20 +1251,19 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
         Ok(())
     }
 
-    fn read_chunk(&mut self, size: usize) -> io::Result<()> {
+    fn read_chunk(&mut self, size: usize, skip: usize) -> io::Result<()> {
         debug_assert_eq!(0, self.buf_len(), "read_chunk with nonempty buffer");
         let chunk = &mut self.buf[..size];
         self.input.read_exact(chunk)?;
         self.buf_start = 0;
         self.buf_end = size;
-        // After reading a chunk, increment slice_bytes_read. This will stop the read loop once
-        // we've read everything the caller asked for. Note that if the seek indicates we should
-        // skip partway into a chunk, we'll decrement slice_bytes_read to account for the skip.
-        self.slice_bytes_read += size as u64;
+        // After reading a chunk, increment slice_bytes_read. This will stop
+        // the read loop once we've read everything the caller asked for. If
+        // the read indicates we should skip partway into the chunk (because
+        // the target of the previous seek was in the middle), we don't count
+        // skipped bytes against the total.
+        self.slice_bytes_read += (size - skip) as u64;
         self.parser.advance_chunk();
-        // Record the size of the chunk we just read. Unlike the other readers, because this one
-        // keeps header and parent bytes in the output buffer, we can't just rely on buf_end.
-        self.previous_chunk_size = size;
         Ok(())
     }
 
@@ -1156,43 +1271,33 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
         // If we haven't finished the seek yet, do a step of that. That will buffer some output,
         // unless we just finished seeking.
         if !self.seek_done {
-            // Also note that this reader, unlike the others, has to account for
-            // previous_chunk_size separately from buf_end.
-            let (maybe_start, maybe_seek_offset, maybe_next) = self
-                .parser
-                .seek_next(self.slice_start, self.previous_chunk_size);
-            if let Some(start) = maybe_start {
-                // If the seek needs us to skip into the middle of the buffer, we don't actually
-                // skip bytes, because the recipient will need everything for decoding. However, we
-                // decrement slice_bytes_read, so that the skipped bytes don't count against what
-                // the caller asked for.
-                self.slice_bytes_read -= start as u64;
-            } else {
-                // Seek never needs to clear the buffer, because there's only one seek.
-                debug_assert_eq!(0, self.buf_len());
-                debug_assert_eq!(0, self.previous_chunk_size);
-            }
-            if let Some(offset) = maybe_seek_offset {
-                if let Some(ref mut outboard) = self.outboard {
+            let bookkeeping = self.parser.seek_next(self.slice_start);
+            // The SliceExtractor doesn't manage a subtree stack, so it only
+            // looks at the underlying_seek instruction.
+            if let Some(outboard) = &mut self.outboard {
+                if let Some((content_pos, outboard_pos)) = bookkeeping.underlying_seek_outboard() {
                     // As with Reader in the outboard case, the outboard extractor has to seek both of
                     // its inner readers. The content position of the state goes into the content
                     // reader, and the rest of the reported seek offset goes into the outboard reader.
-                    let content_position = self.parser.position();
-                    self.input.seek(io::SeekFrom::Start(content_position))?;
-                    let outboard_offset = offset - content_position as u128;
-                    outboard.seek(io::SeekFrom::Start(cast_offset(outboard_offset)?))?;
-                } else {
-                    self.input.seek(io::SeekFrom::Start(cast_offset(offset)?))?;
+                    self.input.seek(SeekFrom::Start(content_pos))?;
+                    outboard.seek(SeekFrom::Start(outboard_pos))?;
+                }
+            } else {
+                if let Some(encoding_position) = bookkeeping.underlying_seek() {
+                    self.input
+                        .seek(SeekFrom::Start(cast_offset(encoding_position)?))?;
                 }
             }
-            match maybe_next {
-                Some(StateNext::Header) => return self.read_header(),
-                Some(StateNext::Parent) => return self.read_parent(),
-                Some(StateNext::Chunk {
+            let next_read = self.parser.seek_bookkeeping_done(bookkeeping);
+            match next_read {
+                NextRead::Header => return self.read_header(),
+                NextRead::Parent => return self.read_parent(),
+                NextRead::Chunk {
                     size,
                     finalization: _,
-                }) => return self.read_chunk(size),
-                None => self.seek_done = true, // Fall through to read.
+                    skip,
+                } => return self.read_chunk(size, skip),
+                NextRead::Done => self.seek_done = true, // Fall through to read.
             }
         }
 
@@ -1200,13 +1305,14 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
         // the requested bytes, however, don't read any more.
         if self.slice_bytes_read < self.slice_len {
             match self.parser.read_next() {
-                Some(StateNext::Header) => unreachable!(),
-                Some(StateNext::Parent) => return self.read_parent(),
-                Some(StateNext::Chunk {
+                NextRead::Header => unreachable!(),
+                NextRead::Parent => return self.read_parent(),
+                NextRead::Chunk {
                     size,
                     finalization: _,
-                }) => return self.read_chunk(size),
-                None => {} // EOF
+                    skip,
+                } => return self.read_chunk(size, skip),
+                NextRead::Done => {} // EOF
             }
         }
 
