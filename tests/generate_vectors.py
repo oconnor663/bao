@@ -178,8 +178,8 @@ def slices():
                 ("len", slice_len),
                 ("output_len", len(slice_bytes.getbuffer())),
                 ("output_blake2s", slice_hash),
-                ("corruptions", slice_corruption_points(
-                    size, offset, slice_len)),
+                ("corruptions",
+                 slice_corruption_points(size, offset, slice_len)),
             ]
             slices.append(OrderedDict(fields))
         fields = [

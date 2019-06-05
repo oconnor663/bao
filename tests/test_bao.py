@@ -3,7 +3,7 @@
 # Run this file using pytest, either in this folder or at the root of the
 # project. Since test_vectors.json is generated from bao.py, it's slightly
 # cheating to then test bao.py against its own output. But at least this helps
-# is notice changes, since the vectors are checked in rather than generated
+# us notice changes, since the vectors are checked in rather than generated
 # every time. Testing the Rust implementation against the same test vectors
 # gives us some confidence that they're correct.
 
@@ -64,11 +64,10 @@ def bao_decode(hash, encoded):
 def bao_decode_outboard(hash, content, outboard):
     hashbytes = unhexlify(hash)
     output = io.BytesIO()
-    bao.bao_decode(
-        io.BytesIO(content),
-        output,
-        hashbytes,
-        outboard_stream=io.BytesIO(outboard))
+    bao.bao_decode(io.BytesIO(content),
+                   output,
+                   hashbytes,
+                   outboard_stream=io.BytesIO(outboard))
     return output.getvalue()
 
 
@@ -80,20 +79,19 @@ def bao_slice(encoded, slice_start, slice_len):
 
 def bao_slice_outboard(content, outboard, slice_start, slice_len):
     output = io.BytesIO()
-    bao.bao_slice(
-        io.BytesIO(content),
-        output,
-        slice_start,
-        slice_len,
-        outboard_stream=io.BytesIO(outboard))
+    bao.bao_slice(io.BytesIO(content),
+                  output,
+                  slice_start,
+                  slice_len,
+                  outboard_stream=io.BytesIO(outboard))
     return output.getvalue()
 
 
 def bao_decode_slice(slice_bytes, hash, slice_start, slice_len):
     hashbytes = unhexlify(hash)
     output = io.BytesIO()
-    bao.bao_decode_slice(
-        io.BytesIO(slice_bytes), output, hashbytes, slice_start, slice_len)
+    bao.bao_decode_slice(io.BytesIO(slice_bytes), output, hashbytes,
+                         slice_start, slice_len)
     return output.getvalue()
 
 
@@ -147,7 +145,7 @@ def blake2s(b):
 def assert_decode_failure(f, *args):
     try:
         f(*args)
-    except AssertionError:
+    except (AssertionError, IOError):
         pass
     else:
         raise AssertionError("failure expected, but no exception raised")
@@ -297,13 +295,12 @@ def test_outboard_cli():
 
     # Make sure decoding with the wrong hash fails.
     wrong_hash = "0" * len(expected_bao_hash)
-    output = bao_cli(
-        "decode",
-        wrong_hash,
-        input_file.name,
-        "--outboard",
-        outboard_file.name,
-        should_fail=True)
+    output = bao_cli("decode",
+                     wrong_hash,
+                     input_file.name,
+                     "--outboard",
+                     outboard_file.name,
+                     should_fail=True)
 
 
 def test_slices():
@@ -392,20 +389,18 @@ def test_slices_cli():
     # slicing a byte array in Python allows indices past the end of the
     # array, and sort of silently caps them.
     input_slice = input_bytes[slice_start:][:slice_len]
-    output = bao_cli(
-        "decode-slice",
-        expected_bao_hash,
-        str(slice_start),
-        str(slice_len),
-        input=slice_bytes)
+    output = bao_cli("decode-slice",
+                     expected_bao_hash,
+                     str(slice_start),
+                     str(slice_len),
+                     input=slice_bytes)
     assert input_slice == output
 
     # Make sure decoding with the wrong hash fails.
     wrong_hash = "0" * len(expected_bao_hash)
-    bao_cli(
-        "decode-slice",
-        wrong_hash,
-        str(slice_start),
-        str(slice_len),
-        input=slice_bytes,
-        should_fail=True)
+    bao_cli("decode-slice",
+            wrong_hash,
+            str(slice_start),
+            str(slice_len),
+            input=slice_bytes,
+            should_fail=True)

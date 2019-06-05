@@ -63,21 +63,29 @@ PARENT_SIZE = 2 * HASH_SIZE
 HEADER_SIZE = 8
 
 
+# The standard read() function is allowed to return fewer bytes than requested
+# for a number of different reasons, including but not limited to EOF. To
+# guarantee we get the bytes we need, we have to call it in a loop.
+def read_exact(stream, n):
+    out = bytearray(n)  # initialized to n zeros
+    mv = memoryview(out)
+    while mv:
+        n = stream.readinto(mv)  # read into `out` without an extra copy
+        if n == 0:
+            raise IOError("unexpected EOF")
+        mv = mv[n:]  # move the memoryview forward
+    return out
+
+
 def encode_len(content_len):
     return content_len.to_bytes(HEADER_SIZE, "little")
 
 
-# Python is very permissive with reads and slices, and can silently return
-# fewer bytes than requested, so we explicitly check the expected length here.
-# Parsing a header that's shorter than HEADER_SIZE could trick us into
-# accepting an invalid encoding, which would lead to a "reverse collision" (two
-# different hashes that decode to the same input).
 def decode_len(len_bytes):
-    assert len(len_bytes) == HEADER_SIZE, "not enough bytes"
     return int.from_bytes(len_bytes, "little")
 
 
-# The root node (whether it's a chunk or a parent) is hashed with the Blake2
+# The root node (whether it's a chunk or a parent) is hashed with the BLAKE2
 # "last node" flag set, and with the total content length as a suffix. In that
 # case, the finalization parameter is the content length as an integer. All
 # interior nodes set finalization=None.
@@ -106,22 +114,18 @@ def hash_parent(parent_bytes, finalization):
     return hash_node(parent_bytes, False, finalization)
 
 
-def verify_node(buf, node_size, is_chunk, finalization, expected_hash):
-    # As in decode_len, it's crucial to be strict with lengths, to prevent a
-    # "reverse collision".
-    assert node_size <= len(buf), "not enough bytes"
-    node_bytes = buf[:node_size]
+def verify_node(node_bytes, is_chunk, finalization, expected_hash):
     found_hash = hash_node(node_bytes, is_chunk, finalization)
     # Compare digests in constant time. It might matter to some callers.
     assert hmac.compare_digest(expected_hash, found_hash), "hash mismatch"
 
 
-def verify_chunk(buf, node_size, finalization, expected_hash):
-    verify_node(buf, node_size, True, finalization, expected_hash)
+def verify_chunk(chunk_bytes, finalization, expected_hash):
+    verify_node(chunk_bytes, True, finalization, expected_hash)
 
 
-def verify_parent(buf, node_size, finalization, expected_hash):
-    verify_node(buf, node_size, False, finalization, expected_hash)
+def verify_parent(parent_bytes, finalization, expected_hash):
+    verify_node(parent_bytes, False, finalization, expected_hash)
 
 
 # Left subtrees contain the largest possible power of two chunks, with at least
@@ -156,12 +160,12 @@ def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
 
     def decode_recurse(hash_, content_len, finalization):
         if content_len <= CHUNK_SIZE:
-            chunk = input_stream.read(content_len)
-            verify_chunk(chunk, content_len, finalization, hash_)
+            chunk = read_exact(input_stream, content_len)
+            verify_chunk(chunk, finalization, hash_)
             output_stream.write(chunk)
         else:
-            parent = tree_stream.read(PARENT_SIZE)
-            verify_parent(parent, PARENT_SIZE, finalization, hash_)
+            parent = read_exact(tree_stream, PARENT_SIZE)
+            verify_parent(parent, finalization, hash_)
             left_hash, right_hash = parent[:HASH_SIZE], parent[HASH_SIZE:]
             llen = left_len(content_len)
             # Interior nodes have no len suffix.
@@ -169,7 +173,7 @@ def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
             decode_recurse(right_hash, content_len - llen, None)
 
     # The first HEADER_SIZE bytes are the encoded content len.
-    content_len = decode_len(tree_stream.read(HEADER_SIZE))
+    content_len = decode_len(read_exact(tree_stream, HEADER_SIZE))
     decode_recurse(hash_, content_len, content_len)
 
 
@@ -184,15 +188,16 @@ def bao_hash(input_stream):
         # have, and pass the finalization flag for hashing the root node.
         if not read:
             if chunks == 0:
+                # This is the only chunk and therefore the root.
                 return hash_chunk(buf, len(buf))
             new_subtree = hash_chunk(buf, None)
             while len(subtrees) > 1:
                 new_subtree = hash_parent(subtrees.pop() + new_subtree, None)
             content_len = chunks * CHUNK_SIZE + len(buf)
             return hash_parent(subtrees[0] + new_subtree, content_len)
-        # Hash a chunk and merge subtrees before adding in bytes from the last
-        # read. That way we know we haven't hit EOF, and these nodes definitely
-        # aren't the root.
+        # If we already had a full chunk buffered, hash it and merge subtrees
+        # before adding in bytes we just read into the buffer. This order or
+        # operations means we know the finalization is non-root.
         if len(buf) >= CHUNK_SIZE:
             chunks += 1
             new_subtree = hash_chunk(buf[:CHUNK_SIZE], None)
@@ -207,13 +212,13 @@ def bao_hash(input_stream):
 
 def bao_hash_encoded(input_stream, outboard_stream=None):
     tree_stream = outboard_stream or input_stream
-    content_len = decode_len(tree_stream.read(HEADER_SIZE))
+    content_len = decode_len(read_exact(tree_stream, HEADER_SIZE))
     if content_len > CHUNK_SIZE:
-        root_node = tree_stream.read(PARENT_SIZE)
+        root_node = read_exact(tree_stream, PARENT_SIZE)
         assert len(root_node) == PARENT_SIZE
         return hash_parent(root_node, content_len)
     else:
-        root_node = input_stream.read(content_len)
+        root_node = read_exact(input_stream, content_len)
         assert len(root_node) == content_len
         return hash_chunk(root_node, content_len)
 
@@ -247,8 +252,8 @@ def bao_slice(input_stream,
         subtree_end = subtree_start + subtree_len
         if subtree_end <= slice_start and not is_root:
             # Seek past the current subtree.
-            parent_nodes_size = encoded_subtree_size(
-                subtree_len, outboard=True)
+            parent_nodes_size = encoded_subtree_size(subtree_len,
+                                                     outboard=True)
             # `1` here means seek from the current position.
             tree_stream.seek(parent_nodes_size, 1)
             input_stream.seek(subtree_len, 1)
@@ -259,18 +264,18 @@ def bao_slice(input_stream,
             # The current subtree is just a chunk. Read the whole thing. The
             # recipient will need the whole thing to verify its hash,
             # regardless of whether it overlaps slice_end.
-            chunk = input_stream.read(subtree_len)
+            chunk = read_exact(input_stream, subtree_len)
             output_stream.write(chunk)
         else:
             # We need to read a parent node and recurse into the current
             # subtree. Note that is_root is always False after this point.
-            parent = tree_stream.read(PARENT_SIZE)
+            parent = read_exact(tree_stream, PARENT_SIZE)
             output_stream.write(parent)
             llen = left_len(subtree_len)
             slice_recurse(subtree_start, llen, False)
             slice_recurse(subtree_start + llen, subtree_len - llen, False)
 
-    content_len_bytes = tree_stream.read(HEADER_SIZE)
+    content_len_bytes = read_exact(tree_stream, HEADER_SIZE)
     output_stream.write(content_len_bytes)
     content_len = decode_len(content_len_bytes)
     slice_recurse(0, content_len, True)
@@ -297,8 +302,8 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
         elif subtree_len <= CHUNK_SIZE:
             # The current subtree is just a chunk. Verify the whole thing, and
             # then output however many bytes we need.
-            chunk = input_stream.read(subtree_len)
-            verify_chunk(chunk, subtree_len, finalization, subtree_hash)
+            chunk = read_exact(input_stream, subtree_len)
+            verify_chunk(chunk, finalization, subtree_hash)
             chunk_start = max(0, min(subtree_len, slice_start - subtree_start))
             chunk_end = max(0, min(subtree_len, slice_end - subtree_start))
             output_stream.write(chunk[chunk_start:chunk_end])
@@ -306,15 +311,15 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
             # We need to read a parent node and recurse into the current
             # subtree. Note that the finalization is always None after this
             # point.
-            parent = input_stream.read(PARENT_SIZE)
-            verify_parent(parent, PARENT_SIZE, finalization, subtree_hash)
+            parent = read_exact(input_stream, PARENT_SIZE)
+            verify_parent(parent, finalization, subtree_hash)
             left_hash, right_hash = parent[:HASH_SIZE], parent[HASH_SIZE:]
             llen = left_len(subtree_len)
             decode_slice_recurse(subtree_start, llen, left_hash, None)
             decode_slice_recurse(subtree_start + llen, subtree_len - llen,
                                  right_hash, None)
 
-    content_len_bytes = input_stream.read(HEADER_SIZE)
+    content_len_bytes = read_exact(input_stream, HEADER_SIZE)
     content_len = decode_len(content_len_bytes)
     decode_slice_recurse(0, content_len, hash_, content_len)
 
@@ -347,8 +352,10 @@ def main():
         outboard_stream = None
         if args["--outboard"] is not None:
             outboard_stream = open_input(args["--outboard"])
-        bao_decode(
-            in_stream, out_stream, hash_, outboard_stream=outboard_stream)
+        bao_decode(in_stream,
+                   out_stream,
+                   hash_,
+                   outboard_stream=outboard_stream)
     elif args["hash"]:
         if len(args["<inputs>"]) > 0:
             # This loop opens the first input a second time, and it doesn't
