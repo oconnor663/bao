@@ -560,7 +560,12 @@ parent nodes, is a security requirement. For hash functions without associated
 data parameters, you can achieve domain separation with a small amount of
 overhead by appending some bits to every node. See for example the [Sakura
 coding](https://keccak.team/files/Sakura.pdf), also designed by the
-Keccak/SHA-3 team.
+Keccak/SHA-3 team. Note that the chunk-parent distinguisher may be an
+initialization parameter (as `node_depth` is), but the root-non-root
+distinguisher needs to be a finalization parameter (as `last_node` is) or an
+input suffix. Making the root-non-root distinguisher part of initialization
+would force the implementation to either buffer the first chunk or to hash it
+both ways.
 
 As noted above, there's no "high security" variant of Bao. However, in some
 future world with large quantum computers, it could theoretically make sense to
