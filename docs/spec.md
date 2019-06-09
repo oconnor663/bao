@@ -560,10 +560,10 @@ parent nodes, is a security requirement. For hash functions without associated
 data parameters, you can achieve domain separation with a small amount of
 overhead by appending some bits to every node. See for example the [Sakura
 coding](https://keccak.team/files/Sakura.pdf), also designed by the
-Keccak/SHA-3 team. Note that the chunk-parent distinguisher may be an
-initialization parameter (as `node_depth` is), but the root-non-root
+Keccak/SHA-3 team. Note that the chunk/parent distinguisher may be an
+initialization parameter (as `node_depth` is), but the root/non-root
 distinguisher needs to be a finalization parameter (as `last_node` is) or an
-input suffix. Making the root-non-root distinguisher part of initialization
+input suffix. Making the root/non-root distinguisher part of initialization
 would force the implementation to either buffer the first chunk or to hash it
 both ways.
 
