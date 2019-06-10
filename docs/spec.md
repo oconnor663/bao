@@ -143,37 +143,54 @@ makes it possible to start hashing the first chunk before knowing whether its
 the root. Encoding *prepends* the length, because it's the first thing that the
 decoder needs to know.
 
-The decoder first reads the 8-byte length from the front. The length indicates
-whether the first node is a chunk (<=4096) or a parent (>4096), and it verifies
-the hash of root node with the length as associated data. The rest of the tree
-structure is completely determined by the length, and the decoder can stream
-the whole tree or seek around as needed by the caller. But note that all
-decoding operations *must* verify the root. In particular, if the caller asks
-to seek to byte 5000 of a 4096-byte encoding, the decoder *must not* skip
-verifying the first (only) chunk, because its the root. This ensures that a
-decoder will always return an error when the encoded length doesn't match the
-root hash
+## Decoder
 
-Because of the prepended length, the encoding format is self-delimiting. Most
-decoders won't read an encoded file all the way to EOF, and so it's generally
-allowed to append extra garbage bytes to a valid encoded file. Trailing garbage
-has no effect on the content, but it's worth clarifying what is and isn't
-guaranteed by the encoding format:
+After parsing the length from the first eight bytes of an encoding, the decoder
+traverses the tree by reading parent nodes and chunk nodes. The decoder
+verifies the hash of each node as it's read, and it may return the contents of
+each valid chunk to the caller immediately. The length itself is considered
+validated _when and only when_ the decoder validates the final chunk, either by
+validating the entire encoding or by seeking to the end and validating only the
+right edge of the tree. The decoder _must not_ expose the length to the caller
+in any way before the final chunk is validated. There are a number of ways the
+decoder might expose the length, some of which are less obvious than others:
 
-- There is only one input (if any) for a given hash. If the Bao hash of a given
-  input is used in decoding, it will never successfully decode anything other
-  than exactly that input. Corruptions in the encoding might lead to partial
-  output followed by an error, but any partial output will always be a prefix
-  of the original input.
-- There is only one hash for a given input. There is at most one hash that can
-  decode any content, even partial content followed by an error, from a given
-  encoding. If the decoding is complete, that hash is always the Bao hash of
-  the decoded content. If two decoding hashes are different, then any content
-  they successfully and completely decode is always different.
-- However, multiple "different" encoded files can decode using the same hash,
-  if they differ only in their trailing garbage. So while there's a unique hash
-  for any given input, there's not a unique valid encoded file, and comparing
-  encoded files with each other is probably a mistake.
+- An explicit `.length()` method. The reference implementation doesn't include
+  one, because it would be required to seek internally. Callers who need the
+  length in advance will usually do better to store it separately along with
+  the hash.
+- Reading the empty encoding. Any read of the empty encoding reports EOF,
+  thereby exposing the length (zero). The decoder must verify that the final
+  chunk (that is, the empty chunk) matches the root hash. Most implementations
+  will naturally satisfy this requirement for non-empty encodings as part of
+  reading chunk bytes, but it's easy to forget it in the empty case if you
+  write code like "current position equals content length therefore EOF."
+- Seeking past the end. If I seek to an offset greater than or equal to the
+  content length, the next read will return EOF, exposing the length. That
+  means either the seek itself or the following read must have validated the
+  final chunk.
+- Seeking relative to the end. Most seek implementations support something akin to
+  [`SeekFrom::End`](https://doc.rust-lang.org/std/io/enum.SeekFrom.html#variant.End).
+  That exposes the length through the absolute offset returned by the seek,
+  which means the seek itself must validate the final chunk.
+
+For decoders that don't expose a `.length()` method and don't support seeking,
+the security requirements can be simplified to "verify the hash of every node
+you read, and don't skip the empty chunk." But decoders that do support seeking
+need to consider the final chunk requirement very carefully. The decoder is
+expected to maintain these guarantees:
+
+- Any byte returned to the caller matches the corresponding byte of the
+  original input.
+- If EOF is indicated to the caller in any way, either through a read or
+  through a seek, it matches the length of the original input.
+- If the decoder returns a complete input, the decoding hash must be the unique
+  hash of that input.
+
+Note one non-guarantee in particular: The encoding itself may be mutable.
+Multiple "different" encodings may decode to the same input, under the same
+hash. For example, appending extra bytes to a valid encoding may have no effect
+on decoding.
 
 ## Outboard Encoding Format
 
@@ -571,6 +588,133 @@ As noted above, there's no "high security" variant of Bao. However, in some
 future world with large quantum computers, it could theoretically make sense to
 define a new hash function targetting a 256-bit security level. We could
 achieve that by replacing BLAKE2s with BLAKE2b with very few other changes.
+
+### Would hashing the length as associated data improve the security of the decoder?
+
+**No, not for a correct decoder.** An attacker modifying the length bytes can't
+produce any observable result, other than the errors that are also possible by
+modifying or truncating the rest of the encoding. The story is more complicated
+if we consider "sloppy" implementations that accept some invalid encodings, in
+which case hashing the length could mitigate some attacks but would also create
+some new ones. An earlier version of the Bao design did hash the length bytes,
+but the current design doesn't.
+
+Let's start by considering a correct decoder. What happens if a
+man-in-the-middle attacker tweaks the length header in between encoding and
+decoding? Small tweaks change the expected length of the final chunk. For
+example, if you subtract one from the length, the final chunk might go from
+4096 bytes to 4095 bytes. Assuming the collision resistance of BLAKE2, the 4095
+byte chunk will necessarily have a different hash, and validating it will lead
+to a hash mismatch error. Adding one to the length would be similar. Either no
+additional bytes are available at the end to supply the read, leading or an IO
+error, or an extra byte is available somehow, leading to a hash mismatch.
+Larger tweaks have a bigger effect on the expected structure of the tree.
+Growing the tree leads to chunk hashes being reinterpreted as parent hashes,
+and shrinking the tree leads to parent hashes being reinterpreted as chunk
+hashes. Since chunks and parents are domain separated from each other, this
+also leads to hash mismatch errors in the tree, in particular always including
+some node along the right edge.
+
+Those observations are the reason behind the "final chunk requirement" for
+decoders. That is, a decoder must always validate the final chunk before
+exposing the length to the caller in any way. Because an attacker tweaking the
+length will always invalidate the final chunk, this guarantees that the
+modified length value will never be observed outside of the decoder. Length
+tweaks might or might not invalidate earlier chunks before the final one, and
+decoding some chunks might succeed before the caller eventually hits an error,
+but that's indistinguishable from simple corruption or truncation at the same
+point in the tree.
+
+So, what happens if the decoder gets sloppy? Of course the implementation could
+neglect to check any hashes at all, providing no security. Assuming the
+implementation does check hashes, there are couple other subtle mistakes that
+can still come up in practice (insofar as I made them myself in early versions
+of the reference implementation).
+
+The first one, we just mentioned: failure to uphold the "final chunk
+requirement". As a special case, recall that the empty tree consists of a
+single empty chunk; if the decoder neglects to validate that empty chunk and
+skips right to its EOF state, then the empty encoding wouldn't actually
+validate anything at all, making it appear valid under _any_ root hash. More
+generally, if the decoder seeks past EOF or relative to EOF without validating
+the final chunk first, an attacker could effectively truncate encodings without
+detection by shortening the length, or change the target offset of EOF-relative
+seeks.
+
+The other likely mistake is "short reads". The IO interfaces in most languages
+are based on a `read` function which _usually_ returns as many bytes as you ask
+it to but which _may_ return fewer for any reason. Implementations need to
+either call such functions in a loop until they get the bytes they need, or use
+some higher level wrapper that does the same. Implementations that neglect to
+call `read` in a loop will often appear to work in tests, but will be prone to
+spurious failures in less common IO settings like reading from a pipe or a
+socket. This mistake also opens up a class of attacks. An attacker might modify
+the length header of an encoding, for example creating an encoding with 9
+content bytes but a length header of 10. In this case, a correct decoder would
+fail with an unexpected-end-of-file error, but an incorrect decoder might
+"short read" just the 9 bytes without noticing the discrepancy and then
+successfully validate them. That exposes the caller to inconsistencies that the
+attacker can control: The length of all the bytes read (9) doesn't match the
+offset returned by seeking to EOF (10), and like the "final chunk requirement"
+issue above, an attacker can again change the target offset of EOF-relative
+seeks.
+
+With those two classes of attacks in mind, we can come back to the original
+question: Would hashing the length as associated data (probably as a suffix to
+the root node) mitigate any of the attacks above for sloppy implementations?
+The answer is some yes and some no.
+
+The most egregious "final chunk requirement" vulnerability above -- validating
+nothing at all in the case of an empty encoding -- remains a pitfall regardless
+of associated data. Seek-past-EOF also remains a pitfall but in a slightly
+modified form: the implementation might detect the modified length if it
+validates the root node before seeking, but forgetting to validate the root
+node would be the same class of mistake as forgetting to validate the final
+chunk. However, the decoder would do better in any scenario where you actually
+tried to read chunk data; getting to a chunk means validating the root node on
+your way down the tree, and bad associated data would fail validation at that
+point.
+
+The "short reads" vulnerabilities above would also be partially mitigated. In a
+scenario where the attacker corrupts a "legitimate" encoding by changing its
+length header after the fact, hashing the length as associated data would
+detect the corruption and prevent the attack. But in a scenario where the
+attacker constructs both the encoding and the hash used to decode it, the
+attacker may craft an "illegitimate" root hash that _expects_ an inconsistent
+length header. (A typical encoder doesn't expose any way for the caller to put
+an arbitrary value in the length header, but there's nothing stopping an
+attacker from doing it.) In this case the inconsistent length pitfall would
+remain: the root node would validate with the bad length as associated data,
+the final chunk would validate with a short read, and once again the length of
+all the bytes read wouldn't match the offset returned by seeking to EOF.
+
+If that were the whole story -- that hashing the length as associated data
+mitigated some attacks on sloppy implementations -- that would be some
+motivation to do it. However, that last scenario above actually leads to a new
+class of attacks, by violating Bao's "no decoding collisions" guarantee. That
+is, no input should ever decode (successfully, to completion) under more than
+one hash. (And naturally the one hash an input does decode under must be the
+hash of itself.) The illegitimate encoding above and its exotic root hash
+constitute a "decoding collision" with the legitimate encoding they're derived
+from. To put yourself in the shoes of a caller who might care about this
+property, imagine you have a dictionary containing Bao encodings indexed by the
+hashes that decode them. If you find that a given string's hash isn't present
+as a key in your dictionary, is it safe for you to assume that no encoding in
+your dictionary will decode to that string? Bao says yes, you may assume that.
+And maybe equally importantly, callers in that scenario _will_ assume that
+without bothering to read the spec. In this sense, including the length as
+associated data would actually make sloppy implementations _less_ secure, by
+giving attackers a way to create decoding collisions.
+
+Earlier versions of Bao did append the length to the root node, instead of
+using a chunk/parent distinguisher. A proper distinguisher (the `node_depth`
+initialization parameter) was added later, both to better fit the [*Sufficient
+conditions*](https://eprint.iacr.org/2009/210.pdf) framework and to avoid
+issues around integer overflow. At that point the length suffix was redundant,
+and it also incurred some performance overhead in the short message case, where
+a one-block message would require two blocks of hashing. It was dropped mainly
+for that performance reason, since the sloppy implementation concerns above
+aren't decisive in either direction.
 
 ## Other Related Work
 
