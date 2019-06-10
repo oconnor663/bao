@@ -54,14 +54,10 @@ Hashing nodes is done with BLAKE2s, using the following parameters:
 - **Node depth** is 0 for all chunks and 1 for all parent nodes.
 - **Inner hash length** is 32.
 
-In addition, the root node -- whether it's a chunk or a parent -- is hashed
-with two extra steps:
-
-- The total input byte length, encoded as an 8-byte little-endian integer, is
-  appended to the root node.
-- The **last node** BLAKE2 finalization flag is set to true. Note that BLAKE2
-  supports setting the last node flag at any time, so hashing the first chunk
-  can begin without knowing whether it's the root.
+In addition, the root node -- whether it's a chunk or a parent -- has the
+**last node** finalization flag set to true. Note that BLAKE2 supports setting
+the last node flag at any time, so hashing the first chunk can begin without
+knowing whether it's the root.
 
 That root node hash is the output of Bao. Here's an example tree, with 8193
 bytes of input that are all zero:
