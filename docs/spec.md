@@ -133,12 +133,6 @@ input length    |root parent node  |left parent node  |first chunk|second chunk|
 0120000000000000|1926c3...f330e9...|7fbd4a...7fbd4a...|000000...  |000000...   |00
 ```
 
-Note carefully that the first two sections are the reverse of how the root node
-is hashed. Hashing the root node *appends* the length as associated data, which
-makes it possible to start hashing the first chunk before knowing whether its
-the root. Encoding *prepends* the length, because it's the first thing that the
-decoder needs to know.
-
 ## Decoder
 
 After parsing the length from the first eight bytes of an encoding, the decoder
@@ -266,29 +260,8 @@ adding children to a chunk is always invalid. That, coupled with the fact that
 parent nodes are always full and never have room for more children, means that
 adding nodes to a valid tree is always invalid.
 
-Note that we could have established tree decodability without relying on domain
-separation, by referring to the length counter appended to the root node. Since
-the layout of the tree is entirely determined by the input length, adding
-children without changing the length can never be valid. However, this approach
-raises troubling questions about what would happen if the length counter
-overflowed. It's easy to say in theory that such trees would be invalid, but
-implementations in the real world might tend to produce them rather than
-aborting, and that could lead to collisions in practice. Although the 8-byte
-counter is large enough that overflowing it is unrealistic for most
-implementations, it's within reach of powerful distributed systems like the one
-Google Research used to break SHA-1. A clever sparse file application could
-also exploit symmetry in the interior of the tree to hash an astronomically
-large file of mostly zeros (more discussion of sparse files in the Design
-Rationales below). Domain separation avoids all of these problems, and in
-BLAKE2 it has no performance cost.
-
 **Message completeness** is of course a basic design requirement of the
-encoding format, and all the bits of the format are included in the tree. (The
-format swaps the position of the length counter to the front, which makes it
-possible to reconstruct the tree from a flat file, but it doesn't include any
-extra bits.) Message completeness would hold even without appending the input
-length to the root node, because the input would be the concatenation of all
-the leaves.
+encoding format, and all the bits of the format are included in the tree.
 
 We ensure **final-node separability** by domain-separating the root node from
 the rest of the tree with the **final node flag**. BLAKE2's final node flag is
@@ -296,8 +269,7 @@ similar to its other parameters, except that it's an input to the last call to
 the compression function rather than a tweak to the IVs. In practice, that
 allows an implementation to start hashing the first chunk immediately rather
 than buffering it, and to set the final node flag at the end if the first chunk
-turns out to be the only chunk and therefore the root. This is also why hashing
-appends the length counter to the root rather than prepending it.
+turns out to be the only chunk and therefore the root.
 
 ## Storage Requirements
 
@@ -714,9 +686,9 @@ initialization parameter) was added later, both to better fit the [*Sufficient
 conditions*](https://eprint.iacr.org/2009/210.pdf) framework and to avoid
 issues around integer overflow. At that point the length suffix was redundant,
 and it also incurred some performance overhead in the short message case, where
-a one-block message would require two blocks of hashing. It was dropped mainly
-for that performance reason, since the sloppy implementation concerns above
-aren't decisive in either direction.
+a one-block message would require two blocks of compression. It was dropped
+mainly for that performance reason, since the sloppy implementation concerns
+above aren't decisive either way.
 
 ## Other Related Work
 
