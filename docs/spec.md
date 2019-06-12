@@ -459,7 +459,7 @@ followed by a number of bytes equal to (at most) the maximal leaf length." That
 remark actually leaves the trickiest detail unsaid, which is that while only
 the leaf nodes hash the key bytes, _all_ nodes include the key length as
 associated data. This is behavior is visible in the BLAKE2sp [reference
-implementation](https://github.com/BLAKE2/BLAKE2/blob/a90684ab3fe788b2ca45076cf9b38335de289f58/ref/blake2sp-ref.c#L65)
+implementation](https://github.com/BLAKE2/BLAKE2/blob/a90684ab3fe788b2ca45076cf9b38335de289f58/ref/blake2sp-ref.c#L64)
 and confirmed by its test vectors. Unfortunately, this behavior is actually
 impossible to implement with Python's `hashlib.blake2s` API, which ties the key
 length and key bytes together. An approach that applied the key bytes to every
