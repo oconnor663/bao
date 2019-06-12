@@ -473,9 +473,7 @@ output length is the hash length parameter, and the leaf nodes' output length
 is the inner hash length parameter, with those two parameters set the same way
 for all nodes. That's again impossible in the Python API, where the output
 length and the hash length parameter are always set together. Bao has the same
-problem, because the interior subtree hashes are always 32 bytes. Also, a
-64-byte Bao output would have the same effective security as the 32-byte
-output, so it might be misleading to even offer the longer version.
+problem, because the interior subtree hashes are always 32 bytes.
 
 ### Should we stick closer to the BLAKE2 spec when setting node offset and node depth?
 
