@@ -428,6 +428,14 @@ applications are likely to have different priorities around this tradeoff, and
 we won't be able to settle this question without more experiments. See [issue
 17](https://github.com/oconnor663/bao/issues/17).
 
+Another consideration might be how much buffer space a streaming implementation
+needs to allocate to take full advantage of SIMD. The widest SIMD instruction
+set available on x86 today is AVX-512, which can run 16 BLAKE2s hashes in
+parallel. With a chunk size of 4096 bytes, a 16-chunk buffer is 64 KiB, which
+is already e.g. the [default maximum stack buffer size under musl
+libc](https://wiki.musl-libc.org/functional-differences-from-glibc.html#Thread_stack_size).
+That's a small motivation not to use chunks larger than 4096 bytes.
+
 ### Does Bao have a "high security" variant?
 
 **No.** A 256-bit digest with its 128-bit security level is enough for
