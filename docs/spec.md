@@ -690,6 +690,15 @@ a one-block message would require two blocks of compression. It was dropped
 mainly for that performance reason, since the sloppy implementation concerns
 above aren't decisive either way.
 
+### Would it be more efficient to use an arity larger than 2?
+
+[Open question, there are memory footprint concerns, but also a workaround with
+state words is possible.]
+
+### Should Bao use the node offset parameter to prevent caching?
+
+[Open question.]
+
 ## Other Related Work
 
 - The [Tree Hash
