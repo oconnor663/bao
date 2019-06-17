@@ -42,8 +42,8 @@ use blake2s_simd;
 use copy_in_place::copy_in_place;
 use core::cmp;
 use core::fmt;
-use hash::Finalization::{self, NotRoot, Root};
-use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
+use crate::hash::Finalization::{self, NotRoot, Root};
+use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
 #[cfg(feature = "std")]
 use rayon;
 #[cfg(feature = "std")]
@@ -1245,7 +1245,7 @@ mod test {
     extern crate tempfile;
 
     use super::*;
-    use decode::make_test_input;
+    use crate::decode::make_test_input;
     use std::io::Cursor;
 
     #[test]

@@ -43,10 +43,10 @@ use copy_in_place::copy_in_place;
 #[cfg(feature = "std")]
 use rayon;
 
-use encode;
-use encode::parse_state::{LenNext, StateNext};
-use hash::Finalization::{self, NotRoot, Root};
-use hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
+use crate::encode;
+use crate::encode::parse_state::{LenNext, StateNext};
+use crate::hash::Finalization::{self, NotRoot, Root};
+use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 
 use core::cmp;
 use core::fmt;
@@ -1057,8 +1057,8 @@ mod test {
     use std::io::Cursor;
 
     use super::*;
-    use encode;
-    use hash;
+    use crate::encode;
+    use crate::hash;
 
     #[test]
     fn test_decoders() {
