@@ -723,7 +723,10 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
             self.inner.write(&buf[..take])?
         };
         self.chunk_state.update(&buf[..written]);
-        self.total_len += written as u64;
+        self.total_len = self
+            .total_len
+            .checked_add(written as u64)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "length overflow"))?;
         Ok(written)
     }
 
