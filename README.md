@@ -1,4 +1,4 @@
-# Bao [![Build Status](https://travis-ci.org/oconnor663/bao.svg?branch=master)](https://travis-ci.org/oconnor663/bao) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao)
+# Bao [![Build Status](https://travis-ci.org/oconnor663/bao.svg?branch=master)](https://travis-ci.org/oconnor663/bao) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao) [![crates.io](https://img.shields.io/crates/v/bao.svg)](https://crates.io/crates/bao)
 
 [Spec](docs/spec.md) —
 [Rust Crate](https://crates.io/crates/bao) —
