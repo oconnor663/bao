@@ -253,7 +253,7 @@ fn root_subtree(content_len: usize, hash: &Hash) -> Subtree {
         offset: HEADER_SIZE,
         content_len,
         hash: *hash,
-        finalization: Root(content_len as u64),
+        finalization: Root,
     }
 }
 
@@ -365,11 +365,11 @@ where
         let mut chunk_buf = [0; CHUNK_SIZE];
         let chunk = &mut chunk_buf[..content_len as usize];
         read_exact_fn(chunk)?;
-        Ok(hash::hash_chunk(chunk, Root(content_len)))
+        Ok(hash::hash_chunk(chunk, Root))
     } else {
         let mut parent = [0; PARENT_SIZE];
         read_exact_fn(&mut parent)?;
-        Ok(hash::hash_parent(&parent, Root(content_len)))
+        Ok(hash::hash_parent(&parent, Root))
     }
 }
 
@@ -416,11 +416,11 @@ where
         let mut chunk_buf = [0; CHUNK_SIZE];
         let chunk = &mut chunk_buf[..content_len as usize];
         content_read_exact_fn(chunk)?;
-        Ok(hash::hash_chunk(chunk, Root(content_len)))
+        Ok(hash::hash_chunk(chunk, Root))
     } else {
         let mut parent = [0; PARENT_SIZE];
         outboard_read_exact_fn(&mut parent)?;
-        Ok(hash::hash_parent(&parent, Root(content_len)))
+        Ok(hash::hash_parent(&parent, Root))
     }
 }
 
@@ -1469,12 +1469,12 @@ mod test {
 
     #[test]
     fn test_corrupted_slice() {
-        let input = make_test_input(20000);
-        let slice_start = 5000;
-        let slice_len = 15000;
+        let input = make_test_input(20_000);
+        let slice_start = 5_000;
+        let slice_len = 10_000;
         let (hash, encoded) = encode::encode_to_vec(&input);
 
-        // Slice out the middle 5000 bytes;
+        // Slice out the middle 10_000 bytes;
         let mut slice = Vec::new();
         {
             let mut extractor = encode::SliceExtractor::new(
@@ -1506,13 +1506,18 @@ mod test {
             assert_eq!(slice, slice_from_outboard);
         }
 
-        // Now confirm that flipping bits anywhere in the slice will corrupt it.
-        let mut i = 0;
+        // Now confirm that flipping bits anywhere in the slice other than the
+        // length header will corrupt it. Tweaking the length header doesn't
+        // always break slice decoding, because the only thing its guaranteed
+        // to break is the final chunk, and this slice doesn't include the
+        // final chunk.
+        let mut i = HEADER_SIZE;
         while i < slice.len() {
             let mut slice_clone = slice.clone();
             slice_clone[i] ^= 1;
             let mut reader =
                 SliceReader::new(&*slice_clone, &hash, slice_start as u64, slice_len as u64);
+            output.clear();
             let err = reader.read_to_end(&mut output).unwrap_err();
             assert_eq!(io::ErrorKind::InvalidData, err.kind());
             i += 32;

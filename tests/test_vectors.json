@@ -3,62 +3,62 @@
     "hash": [
         {
             "input_len": 0,
-            "bao_hash": "33de85a40ed58957a2a3c5507ced99e8966b55b92dc72ab2d46b9560a3ca5a91"
+            "bao_hash": "99fa3a0ee4b435ff17157e205f091cac3938e82335e9684446e513ea1c3b698a"
         },
         {
             "input_len": 1,
-            "bao_hash": "d509bc7642b0b66a4c3d930f861f9bd8a8211b4c75882e37c154aef7be87cc2c"
+            "bao_hash": "ff2a7eb02daa4a7c3572d1be16139a16635807ce965933d7f299f1aecc8a9f06"
         },
         {
             "input_len": 4095,
-            "bao_hash": "370150bd7223f5a1e72bd0c53ee6fca6d4d349cd1329a42667fd00c0a25fca41"
+            "bao_hash": "0f6037204f6007d5606121f6e6ed2fdb9cdafe9802757e77be0c61372e6e041a"
         },
         {
             "input_len": 4096,
-            "bao_hash": "6fd9cb9e12a828d92b31ce8aa0bbb13498cbd2d63da2673d2fcc8f16dfcbd359"
+            "bao_hash": "eff9200ba0a0e534f9e1ba7e984e27550dafc91aafb1ffc62b107cb5ec5792f1"
         },
         {
             "input_len": 4097,
-            "bao_hash": "98f0ebf79f150d1e2b2beb5808de9700ae6ddffdabda448d288f867379f4dc33"
+            "bao_hash": "6c3e00be947bed19e2664567fc61ace95be0ed45818bdfd65970034a76827b43"
         },
         {
             "input_len": 8191,
-            "bao_hash": "faecd12f22cf17cad511fd38eac930437dd6ee81ff9b582865d523fa7517f480"
+            "bao_hash": "db54ff342d3c3341a2529a8748789eda5f1311c7c79454bbfa0136747e0a4db0"
         },
         {
             "input_len": 8192,
-            "bao_hash": "08ccad3fdd6a14ca6ce2393a5871dfe0d10cc6deb6f1c639d661524ff1ef22ce"
+            "bao_hash": "31e14926394414e23d0d84c7905bf88186a2b780b7ea20ce433d5cd3d80804d3"
         },
         {
             "input_len": 8193,
-            "bao_hash": "a5c9f89c71d6a9b84f145b667fa504371186d377c010ac38f919e4fcaa0a5d9a"
+            "bao_hash": "b19339c2b3bcd8f698f0bd5751701cab5faefc7dbfcb54982d79e00a1eb07b07"
         },
         {
             "input_len": 12287,
-            "bao_hash": "164c93576119a7400de5f7242d39eaa830e10c0d86d8965d119fe6297719177b"
+            "bao_hash": "a91f8b8b813f12e497733bd786ace14da22019d16a18028df148b59dc25a7996"
         },
         {
             "input_len": 12288,
-            "bao_hash": "71ec6e247cca6305d493405799215e8647dd92617eca2b84f7fdc613f6a0d61c"
+            "bao_hash": "929fda17585fc76d121f298fdf4a88b67fc9755a21d5c0b6d3292dec899212d6"
         },
         {
             "input_len": 12289,
-            "bao_hash": "4c1a666884bf84af9bd6d4194454f2a8eeca2806716500e3cab128809e16ef9d"
+            "bao_hash": "46ac1281aad8b9e0a3635a63d9e4fcd43455c8e26174cc02b7fbe1f1c48ae202"
         },
         {
             "input_len": 45056,
-            "bao_hash": "b2c44eb57e41c2ede5e28a9409dea9342a07b2106b02cc62596035687cb9981f"
+            "bao_hash": "7f1e58c74865440fce596d1a005618f2b1a969275e5379c2edf9f7f487312176"
         },
         {
             "input_len": 53248,
-            "bao_hash": "205b3657da2d85ab78dab0efeb7d3e441aff182d02dd1d1c72821eb77cf34648"
+            "bao_hash": "0b86a13b719ee5c4b52cc2983dde5d92738578d618d00ff13397152f3ce7f526"
         }
     ],
     "encode": [
         {
             "input_len": 0,
             "output_len": 8,
-            "bao_hash": "33de85a40ed58957a2a3c5507ced99e8966b55b92dc72ab2d46b9560a3ca5a91",
+            "bao_hash": "99fa3a0ee4b435ff17157e205f091cac3938e82335e9684446e513ea1c3b698a",
             "encoded_blake2s": "d566dfb39f20d549d1c0684e94949c71",
             "corruptions": [
                 0
@@ -67,7 +67,7 @@
         {
             "input_len": 1,
             "output_len": 9,
-            "bao_hash": "d509bc7642b0b66a4c3d930f861f9bd8a8211b4c75882e37c154aef7be87cc2c",
+            "bao_hash": "ff2a7eb02daa4a7c3572d1be16139a16635807ce965933d7f299f1aecc8a9f06",
             "encoded_blake2s": "d481578851d3c1a6505d20ec8c0db563",
             "corruptions": [
                 0,
@@ -77,7 +77,7 @@
         {
             "input_len": 4095,
             "output_len": 4103,
-            "bao_hash": "370150bd7223f5a1e72bd0c53ee6fca6d4d349cd1329a42667fd00c0a25fca41",
+            "bao_hash": "0f6037204f6007d5606121f6e6ed2fdb9cdafe9802757e77be0c61372e6e041a",
             "encoded_blake2s": "ad4d1b8ff4072d534042c54cc93cbc63",
             "corruptions": [
                 0,
@@ -87,7 +87,7 @@
         {
             "input_len": 4096,
             "output_len": 4104,
-            "bao_hash": "6fd9cb9e12a828d92b31ce8aa0bbb13498cbd2d63da2673d2fcc8f16dfcbd359",
+            "bao_hash": "eff9200ba0a0e534f9e1ba7e984e27550dafc91aafb1ffc62b107cb5ec5792f1",
             "encoded_blake2s": "53dc051d327e84497e83e032d10b3552",
             "corruptions": [
                 0,
@@ -97,7 +97,7 @@
         {
             "input_len": 4097,
             "output_len": 4169,
-            "bao_hash": "98f0ebf79f150d1e2b2beb5808de9700ae6ddffdabda448d288f867379f4dc33",
+            "bao_hash": "6c3e00be947bed19e2664567fc61ace95be0ed45818bdfd65970034a76827b43",
             "encoded_blake2s": "5f02930c1b08c48575b92a945162bae5",
             "corruptions": [
                 0,
@@ -109,7 +109,7 @@
         {
             "input_len": 8191,
             "output_len": 8263,
-            "bao_hash": "faecd12f22cf17cad511fd38eac930437dd6ee81ff9b582865d523fa7517f480",
+            "bao_hash": "db54ff342d3c3341a2529a8748789eda5f1311c7c79454bbfa0136747e0a4db0",
             "encoded_blake2s": "f714aeb31c227a1ad029241bf57b0b2c",
             "corruptions": [
                 0,
@@ -121,7 +121,7 @@
         {
             "input_len": 8192,
             "output_len": 8264,
-            "bao_hash": "08ccad3fdd6a14ca6ce2393a5871dfe0d10cc6deb6f1c639d661524ff1ef22ce",
+            "bao_hash": "31e14926394414e23d0d84c7905bf88186a2b780b7ea20ce433d5cd3d80804d3",
             "encoded_blake2s": "898307aabd3f7fbee2890ccaeb1eb426",
             "corruptions": [
                 0,
@@ -133,7 +133,7 @@
         {
             "input_len": 8193,
             "output_len": 8329,
-            "bao_hash": "a5c9f89c71d6a9b84f145b667fa504371186d377c010ac38f919e4fcaa0a5d9a",
+            "bao_hash": "b19339c2b3bcd8f698f0bd5751701cab5faefc7dbfcb54982d79e00a1eb07b07",
             "encoded_blake2s": "807496ffef46e5110a76abde4bb7c324",
             "corruptions": [
                 0,
@@ -147,7 +147,7 @@
         {
             "input_len": 12287,
             "output_len": 12423,
-            "bao_hash": "164c93576119a7400de5f7242d39eaa830e10c0d86d8965d119fe6297719177b",
+            "bao_hash": "a91f8b8b813f12e497733bd786ace14da22019d16a18028df148b59dc25a7996",
             "encoded_blake2s": "40651942a87534ceb2fd1d411572a0d0",
             "corruptions": [
                 0,
@@ -161,7 +161,7 @@
         {
             "input_len": 12288,
             "output_len": 12424,
-            "bao_hash": "71ec6e247cca6305d493405799215e8647dd92617eca2b84f7fdc613f6a0d61c",
+            "bao_hash": "929fda17585fc76d121f298fdf4a88b67fc9755a21d5c0b6d3292dec899212d6",
             "encoded_blake2s": "2066f3cc95532823e9ce9211711529a0",
             "corruptions": [
                 0,
@@ -175,7 +175,7 @@
         {
             "input_len": 12289,
             "output_len": 12489,
-            "bao_hash": "4c1a666884bf84af9bd6d4194454f2a8eeca2806716500e3cab128809e16ef9d",
+            "bao_hash": "46ac1281aad8b9e0a3635a63d9e4fcd43455c8e26174cc02b7fbe1f1c48ae202",
             "encoded_blake2s": "8b74e85a46ecdd3be5d7a7cda904471d",
             "corruptions": [
                 0,
@@ -191,7 +191,7 @@
         {
             "input_len": 45056,
             "output_len": 45704,
-            "bao_hash": "b2c44eb57e41c2ede5e28a9409dea9342a07b2106b02cc62596035687cb9981f",
+            "bao_hash": "7f1e58c74865440fce596d1a005618f2b1a969275e5379c2edf9f7f487312176",
             "encoded_blake2s": "2c4fb7458f9cb4fe27088111217af82c",
             "corruptions": [
                 0,
@@ -221,7 +221,7 @@
         {
             "input_len": 53248,
             "output_len": 54024,
-            "bao_hash": "205b3657da2d85ab78dab0efeb7d3e441aff182d02dd1d1c72821eb77cf34648",
+            "bao_hash": "0b86a13b719ee5c4b52cc2983dde5d92738578d618d00ff13397152f3ce7f526",
             "encoded_blake2s": "75972ddbe9a8ac91a1d913e75838746c",
             "corruptions": [
                 0,
@@ -257,7 +257,7 @@
         {
             "input_len": 0,
             "output_len": 8,
-            "bao_hash": "33de85a40ed58957a2a3c5507ced99e8966b55b92dc72ab2d46b9560a3ca5a91",
+            "bao_hash": "99fa3a0ee4b435ff17157e205f091cac3938e82335e9684446e513ea1c3b698a",
             "encoded_blake2s": "d566dfb39f20d549d1c0684e94949c71",
             "outboard_corruptions": [
                 0
@@ -267,7 +267,7 @@
         {
             "input_len": 1,
             "output_len": 8,
-            "bao_hash": "d509bc7642b0b66a4c3d930f861f9bd8a8211b4c75882e37c154aef7be87cc2c",
+            "bao_hash": "ff2a7eb02daa4a7c3572d1be16139a16635807ce965933d7f299f1aecc8a9f06",
             "encoded_blake2s": "9148f8e7aea097bef77feee9e31a3526",
             "outboard_corruptions": [
                 0
@@ -279,7 +279,7 @@
         {
             "input_len": 4095,
             "output_len": 8,
-            "bao_hash": "370150bd7223f5a1e72bd0c53ee6fca6d4d349cd1329a42667fd00c0a25fca41",
+            "bao_hash": "0f6037204f6007d5606121f6e6ed2fdb9cdafe9802757e77be0c61372e6e041a",
             "encoded_blake2s": "7c50c6286be4ea41a6e82b7107cff5a4",
             "outboard_corruptions": [
                 0
@@ -291,7 +291,7 @@
         {
             "input_len": 4096,
             "output_len": 8,
-            "bao_hash": "6fd9cb9e12a828d92b31ce8aa0bbb13498cbd2d63da2673d2fcc8f16dfcbd359",
+            "bao_hash": "eff9200ba0a0e534f9e1ba7e984e27550dafc91aafb1ffc62b107cb5ec5792f1",
             "encoded_blake2s": "eb3720cb61ea99377ac446e9fa835542",
             "outboard_corruptions": [
                 0
@@ -303,7 +303,7 @@
         {
             "input_len": 4097,
             "output_len": 72,
-            "bao_hash": "98f0ebf79f150d1e2b2beb5808de9700ae6ddffdabda448d288f867379f4dc33",
+            "bao_hash": "6c3e00be947bed19e2664567fc61ace95be0ed45818bdfd65970034a76827b43",
             "encoded_blake2s": "56351133a3b259565bd1d8c60e1ce27d",
             "outboard_corruptions": [
                 0,
@@ -317,7 +317,7 @@
         {
             "input_len": 8191,
             "output_len": 72,
-            "bao_hash": "faecd12f22cf17cad511fd38eac930437dd6ee81ff9b582865d523fa7517f480",
+            "bao_hash": "db54ff342d3c3341a2529a8748789eda5f1311c7c79454bbfa0136747e0a4db0",
             "encoded_blake2s": "c690f17fd84e3f5b352fd9db8d14e867",
             "outboard_corruptions": [
                 0,
@@ -331,7 +331,7 @@
         {
             "input_len": 8192,
             "output_len": 72,
-            "bao_hash": "08ccad3fdd6a14ca6ce2393a5871dfe0d10cc6deb6f1c639d661524ff1ef22ce",
+            "bao_hash": "31e14926394414e23d0d84c7905bf88186a2b780b7ea20ce433d5cd3d80804d3",
             "encoded_blake2s": "d2652cc921cfbc1bcabb998be9643307",
             "outboard_corruptions": [
                 0,
@@ -345,7 +345,7 @@
         {
             "input_len": 8193,
             "output_len": 136,
-            "bao_hash": "a5c9f89c71d6a9b84f145b667fa504371186d377c010ac38f919e4fcaa0a5d9a",
+            "bao_hash": "b19339c2b3bcd8f698f0bd5751701cab5faefc7dbfcb54982d79e00a1eb07b07",
             "encoded_blake2s": "e915880e39a7a2f36ee40cbfc3335f48",
             "outboard_corruptions": [
                 0,
@@ -361,7 +361,7 @@
         {
             "input_len": 12287,
             "output_len": 136,
-            "bao_hash": "164c93576119a7400de5f7242d39eaa830e10c0d86d8965d119fe6297719177b",
+            "bao_hash": "a91f8b8b813f12e497733bd786ace14da22019d16a18028df148b59dc25a7996",
             "encoded_blake2s": "ace20dc643bb31eb46cdbd40fbb906bc",
             "outboard_corruptions": [
                 0,
@@ -377,7 +377,7 @@
         {
             "input_len": 12288,
             "output_len": 136,
-            "bao_hash": "71ec6e247cca6305d493405799215e8647dd92617eca2b84f7fdc613f6a0d61c",
+            "bao_hash": "929fda17585fc76d121f298fdf4a88b67fc9755a21d5c0b6d3292dec899212d6",
             "encoded_blake2s": "c472e69d7004d8bdf0d96a0ef982111e",
             "outboard_corruptions": [
                 0,
@@ -393,7 +393,7 @@
         {
             "input_len": 12289,
             "output_len": 200,
-            "bao_hash": "4c1a666884bf84af9bd6d4194454f2a8eeca2806716500e3cab128809e16ef9d",
+            "bao_hash": "46ac1281aad8b9e0a3635a63d9e4fcd43455c8e26174cc02b7fbe1f1c48ae202",
             "encoded_blake2s": "e69bd64f9597706b2cbdacef34aef23a",
             "outboard_corruptions": [
                 0,
@@ -411,7 +411,7 @@
         {
             "input_len": 45056,
             "output_len": 648,
-            "bao_hash": "b2c44eb57e41c2ede5e28a9409dea9342a07b2106b02cc62596035687cb9981f",
+            "bao_hash": "7f1e58c74865440fce596d1a005618f2b1a969275e5379c2edf9f7f487312176",
             "encoded_blake2s": "f9cab4a4bdf02e707fa0d5c27b14ed11",
             "outboard_corruptions": [
                 0,
@@ -443,7 +443,7 @@
         {
             "input_len": 53248,
             "output_len": 776,
-            "bao_hash": "205b3657da2d85ab78dab0efeb7d3e441aff182d02dd1d1c72821eb77cf34648",
+            "bao_hash": "0b86a13b719ee5c4b52cc2983dde5d92738578d618d00ff13397152f3ce7f526",
             "encoded_blake2s": "a8faed0dab172a49fc40986c19558c1f",
             "outboard_corruptions": [
                 0,
@@ -658,7 +658,7 @@
     "slice": [
         {
             "input_len": 0,
-            "bao_hash": "33de85a40ed58957a2a3c5507ced99e8966b55b92dc72ab2d46b9560a3ca5a91",
+            "bao_hash": "99fa3a0ee4b435ff17157e205f091cac3938e82335e9684446e513ea1c3b698a",
             "slices": [
                 {
                     "start": 0,
@@ -666,7 +666,7 @@
                     "output_len": 8,
                     "output_blake2s": "d566dfb39f20d549d1c0684e94949c71",
                     "corruptions": [
-                        0
+                        7
                     ]
                 },
                 {
@@ -675,14 +675,14 @@
                     "output_len": 8,
                     "output_blake2s": "d566dfb39f20d549d1c0684e94949c71",
                     "corruptions": [
-                        0
+                        7
                     ]
                 }
             ]
         },
         {
             "input_len": 1,
-            "bao_hash": "d509bc7642b0b66a4c3d930f861f9bd8a8211b4c75882e37c154aef7be87cc2c",
+            "bao_hash": "ff2a7eb02daa4a7c3572d1be16139a16635807ce965933d7f299f1aecc8a9f06",
             "slices": [
                 {
                     "start": 0,
@@ -690,7 +690,7 @@
                     "output_len": 9,
                     "output_blake2s": "d481578851d3c1a6505d20ec8c0db563",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -700,7 +700,7 @@
                     "output_len": 9,
                     "output_blake2s": "d481578851d3c1a6505d20ec8c0db563",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -710,7 +710,7 @@
                     "output_len": 9,
                     "output_blake2s": "d481578851d3c1a6505d20ec8c0db563",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }
@@ -718,7 +718,7 @@
         },
         {
             "input_len": 4095,
-            "bao_hash": "370150bd7223f5a1e72bd0c53ee6fca6d4d349cd1329a42667fd00c0a25fca41",
+            "bao_hash": "0f6037204f6007d5606121f6e6ed2fdb9cdafe9802757e77be0c61372e6e041a",
             "slices": [
                 {
                     "start": 0,
@@ -726,7 +726,7 @@
                     "output_len": 4103,
                     "output_blake2s": "ad4d1b8ff4072d534042c54cc93cbc63",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -736,7 +736,7 @@
                     "output_len": 4103,
                     "output_blake2s": "ad4d1b8ff4072d534042c54cc93cbc63",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -746,7 +746,7 @@
                     "output_len": 4103,
                     "output_blake2s": "ad4d1b8ff4072d534042c54cc93cbc63",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -756,7 +756,7 @@
                     "output_len": 4103,
                     "output_blake2s": "ad4d1b8ff4072d534042c54cc93cbc63",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }
@@ -764,7 +764,7 @@
         },
         {
             "input_len": 4096,
-            "bao_hash": "6fd9cb9e12a828d92b31ce8aa0bbb13498cbd2d63da2673d2fcc8f16dfcbd359",
+            "bao_hash": "eff9200ba0a0e534f9e1ba7e984e27550dafc91aafb1ffc62b107cb5ec5792f1",
             "slices": [
                 {
                     "start": 0,
@@ -772,7 +772,7 @@
                     "output_len": 4104,
                     "output_blake2s": "53dc051d327e84497e83e032d10b3552",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -782,7 +782,7 @@
                     "output_len": 4104,
                     "output_blake2s": "53dc051d327e84497e83e032d10b3552",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -792,7 +792,7 @@
                     "output_len": 4104,
                     "output_blake2s": "53dc051d327e84497e83e032d10b3552",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -802,7 +802,7 @@
                     "output_len": 4104,
                     "output_blake2s": "53dc051d327e84497e83e032d10b3552",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }
@@ -810,7 +810,7 @@
         },
         {
             "input_len": 4097,
-            "bao_hash": "98f0ebf79f150d1e2b2beb5808de9700ae6ddffdabda448d288f867379f4dc33",
+            "bao_hash": "6c3e00be947bed19e2664567fc61ace95be0ed45818bdfd65970034a76827b43",
             "slices": [
                 {
                     "start": 0,
@@ -818,7 +818,7 @@
                     "output_len": 4169,
                     "output_blake2s": "5f02930c1b08c48575b92a945162bae5",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         4168
@@ -830,7 +830,7 @@
                     "output_len": 73,
                     "output_blake2s": "ccaff3792e7e89ef59e9b758ba8d5cb3",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72
                     ]
@@ -841,7 +841,7 @@
                     "output_len": 73,
                     "output_blake2s": "ccaff3792e7e89ef59e9b758ba8d5cb3",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -851,7 +851,7 @@
                     "output_len": 73,
                     "output_blake2s": "ccaff3792e7e89ef59e9b758ba8d5cb3",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }
@@ -859,7 +859,7 @@
         },
         {
             "input_len": 8191,
-            "bao_hash": "faecd12f22cf17cad511fd38eac930437dd6ee81ff9b582865d523fa7517f480",
+            "bao_hash": "db54ff342d3c3341a2529a8748789eda5f1311c7c79454bbfa0136747e0a4db0",
             "slices": [
                 {
                     "start": 0,
@@ -867,7 +867,7 @@
                     "output_len": 8263,
                     "output_blake2s": "f714aeb31c227a1ad029241bf57b0b2c",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         4168
@@ -879,7 +879,7 @@
                     "output_len": 8263,
                     "output_blake2s": "f714aeb31c227a1ad029241bf57b0b2c",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         4168
@@ -891,7 +891,7 @@
                     "output_len": 4167,
                     "output_blake2s": "73dce3457dfb565c974d3397fe3909a6",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72
                     ]
@@ -902,7 +902,7 @@
                     "output_len": 4167,
                     "output_blake2s": "73dce3457dfb565c974d3397fe3909a6",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72
                     ]
@@ -913,7 +913,7 @@
                     "output_len": 4167,
                     "output_blake2s": "73dce3457dfb565c974d3397fe3909a6",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -923,7 +923,7 @@
                     "output_len": 4167,
                     "output_blake2s": "73dce3457dfb565c974d3397fe3909a6",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }
@@ -931,7 +931,7 @@
         },
         {
             "input_len": 8192,
-            "bao_hash": "08ccad3fdd6a14ca6ce2393a5871dfe0d10cc6deb6f1c639d661524ff1ef22ce",
+            "bao_hash": "31e14926394414e23d0d84c7905bf88186a2b780b7ea20ce433d5cd3d80804d3",
             "slices": [
                 {
                     "start": 0,
@@ -939,7 +939,7 @@
                     "output_len": 8264,
                     "output_blake2s": "898307aabd3f7fbee2890ccaeb1eb426",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         4168
@@ -951,7 +951,7 @@
                     "output_len": 8264,
                     "output_blake2s": "898307aabd3f7fbee2890ccaeb1eb426",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         4168
@@ -963,7 +963,7 @@
                     "output_len": 4168,
                     "output_blake2s": "1eb848adc3fa1771f17a0c8d420e7a30",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72
                     ]
@@ -974,7 +974,7 @@
                     "output_len": 4168,
                     "output_blake2s": "1eb848adc3fa1771f17a0c8d420e7a30",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72
                     ]
@@ -985,7 +985,7 @@
                     "output_len": 4168,
                     "output_blake2s": "1eb848adc3fa1771f17a0c8d420e7a30",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -995,7 +995,7 @@
                     "output_len": 4168,
                     "output_blake2s": "1eb848adc3fa1771f17a0c8d420e7a30",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }
@@ -1003,7 +1003,7 @@
         },
         {
             "input_len": 8193,
-            "bao_hash": "a5c9f89c71d6a9b84f145b667fa504371186d377c010ac38f919e4fcaa0a5d9a",
+            "bao_hash": "b19339c2b3bcd8f698f0bd5751701cab5faefc7dbfcb54982d79e00a1eb07b07",
             "slices": [
                 {
                     "start": 0,
@@ -1011,7 +1011,7 @@
                     "output_len": 8328,
                     "output_blake2s": "5ca3624387d8e4abe0d4b9a0254d6dd6",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1024,7 +1024,7 @@
                     "output_len": 8329,
                     "output_blake2s": "807496ffef46e5110a76abde4bb7c324",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1038,7 +1038,7 @@
                     "output_len": 4233,
                     "output_blake2s": "4d6585338f58a3c6209a03d4a25bc902",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1051,7 +1051,7 @@
                     "output_len": 73,
                     "output_blake2s": "2eaf7cf5627d4b2dcb2b00e4ce607dcb",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72
                     ]
@@ -1062,7 +1062,7 @@
                     "output_len": 73,
                     "output_blake2s": "2eaf7cf5627d4b2dcb2b00e4ce607dcb",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -1072,7 +1072,7 @@
                     "output_len": 73,
                     "output_blake2s": "2eaf7cf5627d4b2dcb2b00e4ce607dcb",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }
@@ -1080,7 +1080,7 @@
         },
         {
             "input_len": 12287,
-            "bao_hash": "164c93576119a7400de5f7242d39eaa830e10c0d86d8965d119fe6297719177b",
+            "bao_hash": "a91f8b8b813f12e497733bd786ace14da22019d16a18028df148b59dc25a7996",
             "slices": [
                 {
                     "start": 0,
@@ -1088,7 +1088,7 @@
                     "output_len": 8328,
                     "output_blake2s": "2c2c9d1934503ea916b4f6fc544976b1",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1101,7 +1101,7 @@
                     "output_len": 12423,
                     "output_blake2s": "40651942a87534ceb2fd1d411572a0d0",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1115,7 +1115,7 @@
                     "output_len": 8327,
                     "output_blake2s": "6b71b7d7256ced1cb7989ec12fb4d0b6",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1128,7 +1128,7 @@
                     "output_len": 8327,
                     "output_blake2s": "6b71b7d7256ced1cb7989ec12fb4d0b6",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1141,7 +1141,7 @@
                     "output_len": 4167,
                     "output_blake2s": "9cf289b51bf3a6e6f4de18beca013550",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72
                     ]
@@ -1152,7 +1152,7 @@
                     "output_len": 4167,
                     "output_blake2s": "9cf289b51bf3a6e6f4de18beca013550",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72
                     ]
@@ -1163,7 +1163,7 @@
                     "output_len": 4167,
                     "output_blake2s": "9cf289b51bf3a6e6f4de18beca013550",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -1173,7 +1173,7 @@
                     "output_len": 4167,
                     "output_blake2s": "9cf289b51bf3a6e6f4de18beca013550",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }
@@ -1181,7 +1181,7 @@
         },
         {
             "input_len": 12288,
-            "bao_hash": "71ec6e247cca6305d493405799215e8647dd92617eca2b84f7fdc613f6a0d61c",
+            "bao_hash": "929fda17585fc76d121f298fdf4a88b67fc9755a21d5c0b6d3292dec899212d6",
             "slices": [
                 {
                     "start": 0,
@@ -1189,7 +1189,7 @@
                     "output_len": 8328,
                     "output_blake2s": "d2cc5a20408c8bb4ce522b26fcca2a6e",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1202,7 +1202,7 @@
                     "output_len": 12424,
                     "output_blake2s": "2066f3cc95532823e9ce9211711529a0",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1216,7 +1216,7 @@
                     "output_len": 8328,
                     "output_blake2s": "f0b60e2b3c468ede7eb6d63bdfca61d2",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1229,7 +1229,7 @@
                     "output_len": 8328,
                     "output_blake2s": "f0b60e2b3c468ede7eb6d63bdfca61d2",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1242,7 +1242,7 @@
                     "output_len": 4168,
                     "output_blake2s": "467c8f6d83d3557d410fe65ec02ae879",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72
                     ]
@@ -1253,7 +1253,7 @@
                     "output_len": 4168,
                     "output_blake2s": "467c8f6d83d3557d410fe65ec02ae879",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72
                     ]
@@ -1264,7 +1264,7 @@
                     "output_len": 4168,
                     "output_blake2s": "467c8f6d83d3557d410fe65ec02ae879",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -1274,7 +1274,7 @@
                     "output_len": 4168,
                     "output_blake2s": "467c8f6d83d3557d410fe65ec02ae879",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }
@@ -1282,7 +1282,7 @@
         },
         {
             "input_len": 12289,
-            "bao_hash": "4c1a666884bf84af9bd6d4194454f2a8eeca2806716500e3cab128809e16ef9d",
+            "bao_hash": "46ac1281aad8b9e0a3635a63d9e4fcd43455c8e26174cc02b7fbe1f1c48ae202",
             "slices": [
                 {
                     "start": 0,
@@ -1290,7 +1290,7 @@
                     "output_len": 8328,
                     "output_blake2s": "5c5b6a2e89cbe6d670ebd1ef7b730b53",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1303,7 +1303,7 @@
                     "output_len": 12488,
                     "output_blake2s": "4c721db4d76ead317f20c8026b2264a8",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1318,7 +1318,7 @@
                     "output_len": 8392,
                     "output_blake2s": "ba936d7b9ece4f3770fd29ea59508632",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1332,7 +1332,7 @@
                     "output_len": 8393,
                     "output_blake2s": "41d13eedc1e066840fbe3c7068534a76",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1347,7 +1347,7 @@
                     "output_len": 4233,
                     "output_blake2s": "7ac06e24a2ee7a7770b7f1e1d37a6e5b",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1360,7 +1360,7 @@
                     "output_len": 137,
                     "output_blake2s": "46fd5022e7a73a3bf987eb97289ccf77",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136
@@ -1372,7 +1372,7 @@
                     "output_len": 137,
                     "output_blake2s": "46fd5022e7a73a3bf987eb97289ccf77",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -1382,7 +1382,7 @@
                     "output_len": 137,
                     "output_blake2s": "46fd5022e7a73a3bf987eb97289ccf77",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }
@@ -1390,7 +1390,7 @@
         },
         {
             "input_len": 45056,
-            "bao_hash": "b2c44eb57e41c2ede5e28a9409dea9342a07b2106b02cc62596035687cb9981f",
+            "bao_hash": "7f1e58c74865440fce596d1a005618f2b1a969275e5379c2edf9f7f487312176",
             "slices": [
                 {
                     "start": 0,
@@ -1398,7 +1398,7 @@
                     "output_len": 8456,
                     "output_blake2s": "7f4060870837ff0d6f5b6f33f92e25ff",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1413,7 +1413,7 @@
                     "output_len": 12616,
                     "output_blake2s": "9845745e3bcda2bffff2e99cfa0ffbe6",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1430,7 +1430,7 @@
                     "output_len": 8520,
                     "output_blake2s": "6541da2cb814b71c99d4e0c6ba6842b1",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1446,7 +1446,7 @@
                     "output_len": 12616,
                     "output_blake2s": "52380f1617059bf5f1f531f4a6fa664e",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1463,7 +1463,7 @@
                     "output_len": 8456,
                     "output_blake2s": "b87364ef8a3a6a318e5e6e5c15ae09ed",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1478,7 +1478,7 @@
                     "output_len": 12680,
                     "output_blake2s": "e626f6d9f8a97e5a2ae9ba3ba5c8fc85",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1496,7 +1496,7 @@
                     "output_len": 8584,
                     "output_blake2s": "00c1497a6918303c07ee94d27b0380ce",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1513,7 +1513,7 @@
                     "output_len": 12680,
                     "output_blake2s": "ac142800cd9c2b7472610cee80924b7f",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1531,7 +1531,7 @@
                     "output_len": 8456,
                     "output_blake2s": "434a88ebdc3b22dd134d35918d57b4d1",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1546,7 +1546,7 @@
                     "output_len": 12616,
                     "output_blake2s": "4ecaa7479acd48152daca1bac04782cd",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1563,7 +1563,7 @@
                     "output_len": 8520,
                     "output_blake2s": "492bc16830b4dfe1b3d4d2cbbfb753c2",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1579,7 +1579,7 @@
                     "output_len": 12616,
                     "output_blake2s": "ab8cbbda98e6cca3caaa16406ba2c3bd",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1596,7 +1596,7 @@
                     "output_len": 8456,
                     "output_blake2s": "840f3da3fd8f704e6a805365faf238bc",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1611,7 +1611,7 @@
                     "output_len": 12680,
                     "output_blake2s": "af1c9c1080aa14c986237c8785d80356",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1629,7 +1629,7 @@
                     "output_len": 8584,
                     "output_blake2s": "330f7aa7b031170ac07948f78f262dd2",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1646,7 +1646,7 @@
                     "output_len": 12680,
                     "output_blake2s": "dea76b9e34e15e9a51d9fe7aadafe4d8",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1664,7 +1664,7 @@
                     "output_len": 8392,
                     "output_blake2s": "6fefa0032cbdce78c263f4eec4b876d8",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1678,7 +1678,7 @@
                     "output_len": 12488,
                     "output_blake2s": "fb1f7ca5d0abe3fcab16b21f1870689d",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1693,7 +1693,7 @@
                     "output_len": 8392,
                     "output_blake2s": "4c7d404e05c2323e2d5c9b2d8aa68036",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1707,7 +1707,7 @@
                     "output_len": 8392,
                     "output_blake2s": "4c7d404e05c2323e2d5c9b2d8aa68036",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1721,7 +1721,7 @@
                     "output_len": 4232,
                     "output_blake2s": "ae5eaf1f4230617096f287800dd4b440",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136
@@ -1733,7 +1733,7 @@
                     "output_len": 4232,
                     "output_blake2s": "ae5eaf1f4230617096f287800dd4b440",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136
@@ -1745,7 +1745,7 @@
                     "output_len": 4232,
                     "output_blake2s": "ae5eaf1f4230617096f287800dd4b440",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -1755,7 +1755,7 @@
                     "output_len": 4232,
                     "output_blake2s": "ae5eaf1f4230617096f287800dd4b440",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }
@@ -1763,7 +1763,7 @@
         },
         {
             "input_len": 53248,
-            "bao_hash": "205b3657da2d85ab78dab0efeb7d3e441aff182d02dd1d1c72821eb77cf34648",
+            "bao_hash": "0b86a13b719ee5c4b52cc2983dde5d92738578d618d00ff13397152f3ce7f526",
             "slices": [
                 {
                     "start": 0,
@@ -1771,7 +1771,7 @@
                     "output_len": 8456,
                     "output_blake2s": "4d42438c96271e0dda90357804aaa5ed",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1786,7 +1786,7 @@
                     "output_len": 12616,
                     "output_blake2s": "34ed238722bbdc00b3082d072d5039ea",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1803,7 +1803,7 @@
                     "output_len": 8520,
                     "output_blake2s": "e8bb01c72ae150c638cb560b3786c65b",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1819,7 +1819,7 @@
                     "output_len": 12616,
                     "output_blake2s": "dd085041d8769e9fa3047bd8bd88eab7",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1836,7 +1836,7 @@
                     "output_len": 8456,
                     "output_blake2s": "55834fb5861c1631a10a9d0a75caa6c0",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1851,7 +1851,7 @@
                     "output_len": 12680,
                     "output_blake2s": "2b72cdf0efc4a88eae38c7fd60525272",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1869,7 +1869,7 @@
                     "output_len": 8584,
                     "output_blake2s": "ca76e7dba4015e2b1a7bcd93991fc5d2",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1886,7 +1886,7 @@
                     "output_len": 12680,
                     "output_blake2s": "e58906c155c371897a7cdf396f41ed77",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1904,7 +1904,7 @@
                     "output_len": 8456,
                     "output_blake2s": "b1ded206de501926cc3889a656b51fdd",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1919,7 +1919,7 @@
                     "output_len": 12616,
                     "output_blake2s": "613cda75f54f180aeaa2850b9eee34d0",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1936,7 +1936,7 @@
                     "output_len": 8520,
                     "output_blake2s": "1901670eeb353e751d075b0d249a031e",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1952,7 +1952,7 @@
                     "output_len": 12616,
                     "output_blake2s": "6d5a9613f01a4d6b60505ab754a0c5b0",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1969,7 +1969,7 @@
                     "output_len": 8456,
                     "output_blake2s": "25406e6140489c2d77c523f0d68f538c",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -1984,7 +1984,7 @@
                     "output_len": 12744,
                     "output_blake2s": "2253a6ef75e492b128e5403143eaf271",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -2003,7 +2003,7 @@
                     "output_len": 8648,
                     "output_blake2s": "01b72ec054f048fce16d518843bc26b1",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -2021,7 +2021,7 @@
                     "output_len": 12744,
                     "output_blake2s": "4593a99e99ee2e57991de99a8cec4b41",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -2040,7 +2040,7 @@
                     "output_len": 8456,
                     "output_blake2s": "8fbd164525786632fbbf618d87676e23",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -2055,7 +2055,7 @@
                     "output_len": 12616,
                     "output_blake2s": "618301bd81c786bdcddd757d3a91ea1e",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -2072,7 +2072,7 @@
                     "output_len": 8520,
                     "output_blake2s": "94921fa9249403fcdb12fb5ba18cca59",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -2088,7 +2088,7 @@
                     "output_len": 12616,
                     "output_blake2s": "451c398ba4aac6fd0525f81b242901f7",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -2105,7 +2105,7 @@
                     "output_len": 8456,
                     "output_blake2s": "25b7d1e23818107b9c7c196d40245686",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -2120,7 +2120,7 @@
                     "output_len": 12552,
                     "output_blake2s": "7176f7e4cdc25bd99ded19702470cd37",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -2136,7 +2136,7 @@
                     "output_len": 8456,
                     "output_blake2s": "ca51aaebc57579402da55539941c7d65",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -2151,7 +2151,7 @@
                     "output_len": 8456,
                     "output_blake2s": "ca51aaebc57579402da55539941c7d65",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136,
@@ -2166,7 +2166,7 @@
                     "output_len": 4232,
                     "output_blake2s": "c4fdc939e0f8965bcbdfb891c2cea70c",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136
@@ -2178,7 +2178,7 @@
                     "output_len": 4232,
                     "output_blake2s": "c4fdc939e0f8965bcbdfb891c2cea70c",
                     "corruptions": [
-                        0,
+                        7,
                         8,
                         72,
                         136
@@ -2190,7 +2190,7 @@
                     "output_len": 4232,
                     "output_blake2s": "c4fdc939e0f8965bcbdfb891c2cea70c",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 },
@@ -2200,7 +2200,7 @@
                     "output_len": 4232,
                     "output_blake2s": "c4fdc939e0f8965bcbdfb891c2cea70c",
                     "corruptions": [
-                        0,
+                        7,
                         8
                     ]
                 }

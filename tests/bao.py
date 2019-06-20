@@ -62,6 +62,10 @@ HASH_SIZE = 32
 PARENT_SIZE = 2 * HASH_SIZE
 HEADER_SIZE = 8
 
+# finalization flags
+ROOT = object()
+NOT_ROOT = object()
+
 
 # The standard read() function is allowed to return fewer bytes than requested
 # for a number of different reasons, including but not limited to EOF. To
@@ -98,11 +102,9 @@ def hash_node(node_bytes, is_chunk, finalization):
         node_offset=0,
         node_depth=0 if is_chunk else 1,
         inner_size=HASH_SIZE,
-        last_node=(finalization is not None),
+        last_node=finalization is ROOT,
     )
     state.update(node_bytes)
-    if finalization is not None:
-        state.update(encode_len(finalization))
     return state.digest()
 
 
@@ -142,17 +144,16 @@ def bao_encode(buf, *, outboard=False):
             return hash_chunk(buf, finalization), b"" if outboard else buf
         llen = left_len(len(buf))
         # Interior nodes have no len suffix.
-        left_hash, left_encoded = encode_recurse(buf[:llen], None)
-        right_hash, right_encoded = encode_recurse(buf[llen:], None)
+        left_hash, left_encoded = encode_recurse(buf[:llen], NOT_ROOT)
+        right_hash, right_encoded = encode_recurse(buf[llen:], NOT_ROOT)
         node = left_hash + right_hash
         encoded = node + left_encoded + right_encoded
         return hash_parent(node, finalization), encoded
 
     # Only this topmost call sets a non-None finalization.
-    finalization = len(buf)
-    hash_, encoded = encode_recurse(buf, finalization)
+    hash_, encoded = encode_recurse(buf, ROOT)
     # The final output prefixes the encoded length.
-    return encode_len(finalization) + encoded
+    return encode_len(len(buf)) + encoded
 
 
 def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
@@ -169,12 +170,12 @@ def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
             left_hash, right_hash = parent[:HASH_SIZE], parent[HASH_SIZE:]
             llen = left_len(content_len)
             # Interior nodes have no len suffix.
-            decode_recurse(left_hash, llen, None)
-            decode_recurse(right_hash, content_len - llen, None)
+            decode_recurse(left_hash, llen, NOT_ROOT)
+            decode_recurse(right_hash, content_len - llen, NOT_ROOT)
 
     # The first HEADER_SIZE bytes are the encoded content len.
     content_len = decode_len(read_exact(tree_stream, HEADER_SIZE))
-    decode_recurse(hash_, content_len, content_len)
+    decode_recurse(hash_, content_len, ROOT)
 
 
 def bao_hash(input_stream):
@@ -189,22 +190,23 @@ def bao_hash(input_stream):
         if not read:
             if chunks == 0:
                 # This is the only chunk and therefore the root.
-                return hash_chunk(buf, len(buf))
-            new_subtree = hash_chunk(buf, None)
+                return hash_chunk(buf, ROOT)
+            new_subtree = hash_chunk(buf, NOT_ROOT)
             while len(subtrees) > 1:
-                new_subtree = hash_parent(subtrees.pop() + new_subtree, None)
-            content_len = chunks * CHUNK_SIZE + len(buf)
-            return hash_parent(subtrees[0] + new_subtree, content_len)
+                parent = subtrees.pop() + new_subtree
+                new_subtree = hash_parent(parent, NOT_ROOT)
+            return hash_parent(subtrees[0] + new_subtree, ROOT)
         # If we already had a full chunk buffered, hash it and merge subtrees
         # before adding in bytes we just read into the buffer. This order or
         # operations means we know the finalization is non-root.
         if len(buf) >= CHUNK_SIZE:
             chunks += 1
-            new_subtree = hash_chunk(buf[:CHUNK_SIZE], None)
+            new_subtree = hash_chunk(buf[:CHUNK_SIZE], NOT_ROOT)
             # This is the very cute trick described at the top.
             total_after_merging = bin(chunks).count('1')
             while len(subtrees) + 1 > total_after_merging:
-                new_subtree = hash_parent(subtrees.pop() + new_subtree, None)
+                parent = subtrees.pop() + new_subtree
+                new_subtree = hash_parent(parent, NOT_ROOT)
             subtrees.append(new_subtree)
             buf = buf[CHUNK_SIZE:]
         buf = buf + read
@@ -216,11 +218,11 @@ def bao_hash_encoded(input_stream, outboard_stream=None):
     if content_len > CHUNK_SIZE:
         root_node = read_exact(tree_stream, PARENT_SIZE)
         assert len(root_node) == PARENT_SIZE
-        return hash_parent(root_node, content_len)
+        return hash_parent(root_node, ROOT)
     else:
         root_node = read_exact(input_stream, content_len)
         assert len(root_node) == content_len
-        return hash_chunk(root_node, content_len)
+        return hash_chunk(root_node, ROOT)
 
 
 # Round up to the next full chunk, and remember that the empty tree still
@@ -323,17 +325,17 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
                 output_stream.write(chunk[chunk_start:chunk_end])
         else:
             # We need to read a parent node and recurse into the current
-            # subtree. Note that the finalization is always None after this
+            # subtree. Note that the finalization is always NOT_ROOT after this
             # point.
             parent = read_exact(input_stream, PARENT_SIZE)
             verify_parent(parent, finalization, subtree_hash)
             left_hash, right_hash = parent[:HASH_SIZE], parent[HASH_SIZE:]
             llen = left_len(subtree_len)
-            decode_slice_recurse(subtree_start, llen, left_hash, None)
+            decode_slice_recurse(subtree_start, llen, left_hash, NOT_ROOT)
             decode_slice_recurse(subtree_start + llen, subtree_len - llen,
-                                 right_hash, None)
+                                 right_hash, NOT_ROOT)
 
-    decode_slice_recurse(0, content_len, hash_, content_len)
+    decode_slice_recurse(0, content_len, hash_, ROOT)
 
 
 def open_input(maybe_path):

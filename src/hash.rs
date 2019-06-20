@@ -143,7 +143,7 @@ pub(crate) fn new_parent_state() -> blake2s_simd::State {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Finalization {
     NotRoot,
-    Root(u64),
+    Root,
 }
 use self::Finalization::{NotRoot, Root};
 
@@ -152,8 +152,7 @@ pub(crate) fn finalize_hash(state: &mut blake2s_simd::State, finalization: Final
     // Blake2 last node flag. One of the reasons for this design is that we
     // don't need to know a given node is the root until the very end, so we
     // don't always need a chunk buffer.
-    if let Root(root_len) = finalization {
-        state.update(&encode_len(root_len));
+    if let Root = finalization {
         state.set_last_node(true);
     }
     let blake_digest = state.finalize();
@@ -314,14 +313,14 @@ pub fn hash(input: &[u8]) -> Hash {
     #[cfg(feature = "std")]
     {
         if input.len() <= MAX_SINGLE_THREADED {
-            hash_recurse(input, Root(input.len() as u64))
+            hash_recurse(input, Root)
         } else {
-            hash_recurse_rayon(input, Root(input.len() as u64))
+            hash_recurse_rayon(input, Root)
         }
     }
     #[cfg(not(feature = "std"))]
     {
-        hash_recurse(input, Root(input.len() as u64))
+        hash_recurse(input, Root)
     }
 }
 
@@ -447,8 +446,7 @@ impl State {
         if self.subtrees.len() > 2 {
             StateFinish::Parent(self.merge_inner(NotRoot))
         } else if self.subtrees.len() == 2 {
-            let root_finalization = Root(self.total_len); // Appease borrowck.
-            StateFinish::Parent(self.merge_inner(root_finalization))
+            StateFinish::Parent(self.merge_inner(Root))
         } else {
             StateFinish::Root(self.subtrees[0])
         }
@@ -516,7 +514,7 @@ impl Writer {
     /// Finish computing the root hash. The writer cannot be used after this.
     pub fn finish(&mut self) -> Hash {
         let finalization = if self.state.count() == 0 {
-            Root(self.chunk.count() as u64)
+            Root
         } else {
             NotRoot
         };
@@ -669,7 +667,7 @@ impl ParallelWriter {
     /// Finish computing the root hash. The writer cannot be used after this.
     pub fn finish(&mut self) -> Hash {
         let finalization = if self.receivers.is_empty() && self.state.count() == 0 {
-            Root(self.next_job.buffer.len() as u64)
+            Root
         } else {
             NotRoot
         };
@@ -775,8 +773,8 @@ mod test {
         for &case in TEST_CASES {
             println!("case {}", case);
             let input = vec![0x42; case];
-            let hash_serial = hash_recurse(&input, Root(case as u64));
-            let hash_parallel = hash_recurse_rayon(&input, Root(case as u64));
+            let hash_serial = hash_recurse(&input, Root);
+            let hash_parallel = hash_recurse_rayon(&input, Root);
             let hash_highlevel = hash(&input);
             assert_eq!(hash_serial, hash_parallel, "hashes don't match");
             assert_eq!(hash_serial, hash_highlevel, "hashes don't match");
@@ -786,7 +784,7 @@ mod test {
     fn drive_state(mut input: &[u8]) -> Hash {
         let mut state = State::new();
         let finalization = if input.len() <= CHUNK_SIZE {
-            Root(input.len() as u64)
+            Root
         } else {
             NotRoot
         };

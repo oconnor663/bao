@@ -85,14 +85,14 @@ pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
     #[cfg(feature = "std")]
     {
         if input.len() <= hash::MAX_SINGLE_THREADED {
-            encode_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
+            encode_recurse(input, &mut output[HEADER_SIZE..], Root)
         } else {
-            encode_recurse_rayon(input, &mut output[HEADER_SIZE..], Root(content_len))
+            encode_recurse_rayon(input, &mut output[HEADER_SIZE..], Root)
         }
     }
     #[cfg(not(feature = "std"))]
     {
-        encode_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
+        encode_recurse(input, &mut output[HEADER_SIZE..], Root)
     }
 }
 
@@ -131,14 +131,14 @@ pub fn encode_in_place(buf: &mut [u8], content_len: usize) -> Hash {
     #[cfg(feature = "std")]
     {
         if content_len <= hash::MAX_SINGLE_THREADED {
-            write_parents_in_place(rest, content_len, Root(content_len as u64))
+            write_parents_in_place(rest, content_len, Root)
         } else {
-            write_parents_in_place_rayon(rest, content_len, Root(content_len as u64))
+            write_parents_in_place_rayon(rest, content_len, Root)
         }
     }
     #[cfg(not(feature = "std"))]
     {
-        write_parents_in_place(rest, content_len, Root(content_len as u64))
+        write_parents_in_place(rest, content_len, Root)
     }
 }
 
@@ -172,14 +172,14 @@ pub fn encode_outboard(input: &[u8], output: &mut [u8]) -> Hash {
     #[cfg(feature = "std")]
     {
         if input.len() <= hash::MAX_SINGLE_THREADED {
-            encode_outboard_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
+            encode_outboard_recurse(input, &mut output[HEADER_SIZE..], Root)
         } else {
-            encode_outboard_recurse_rayon(input, &mut output[HEADER_SIZE..], Root(content_len))
+            encode_outboard_recurse_rayon(input, &mut output[HEADER_SIZE..], Root)
         }
     }
     #[cfg(not(feature = "std"))]
     {
-        encode_outboard_recurse(input, &mut output[HEADER_SIZE..], Root(content_len))
+        encode_outboard_recurse(input, &mut output[HEADER_SIZE..], Root)
     }
 }
 
@@ -631,7 +631,7 @@ impl<T: Read + Write + Seek> Writer<T> {
         // First finish the post-order encoding.
         let root_hash;
         if self.total_len <= CHUNK_SIZE as u64 {
-            root_hash = hash::finalize_hash(&mut self.chunk_state, Root(self.total_len));
+            root_hash = hash::finalize_hash(&mut self.chunk_state, Root);
         } else {
             let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
             self.tree_state
@@ -812,9 +812,8 @@ impl ParseState {
     }
 
     pub fn finalization(&self) -> Finalization {
-        let content_len = self.content_len.expect("finalization before header");
         if self.at_root() {
-            Root(content_len)
+            Root
         } else {
             NotRoot
         }
@@ -1381,13 +1380,12 @@ mod test {
             assert_eq!(expected_hash, to_vec_hash);
 
             let mut serial_output = vec![0; encoded_subtree_size(case as u64) as usize];
-            let serial_hash = encode_recurse(&input, &mut serial_output, Root(case as u64));
+            let serial_hash = encode_recurse(&input, &mut serial_output, Root);
             assert_eq!(expected_hash, serial_hash);
             assert_eq!(&output[HEADER_SIZE..], &*serial_output);
 
             let mut parallel_output = vec![0; encoded_subtree_size(case as u64) as usize];
-            let parallel_hash =
-                encode_recurse_rayon(&input, &mut parallel_output, Root(case as u64));
+            let parallel_hash = encode_recurse_rayon(&input, &mut parallel_output, Root);
             assert_eq!(expected_hash, parallel_hash);
             assert_eq!(&output[HEADER_SIZE..], &*parallel_output);
 
@@ -1423,14 +1421,12 @@ mod test {
             assert_eq!(expected_hash, to_vec_hash);
 
             let mut serial_output = vec![0; outboard_subtree_size(case as u64) as usize];
-            let serial_hash =
-                encode_outboard_recurse(&input, &mut serial_output, Root(case as u64));
+            let serial_hash = encode_outboard_recurse(&input, &mut serial_output, Root);
             assert_eq!(expected_hash, serial_hash);
             assert_eq!(&outboard[HEADER_SIZE..], &*serial_output);
 
             let mut parallel_outboard = vec![0; outboard_subtree_size(case as u64) as usize];
-            let parallel_hash =
-                encode_outboard_recurse_rayon(&input, &mut parallel_outboard, Root(case as u64));
+            let parallel_hash = encode_outboard_recurse_rayon(&input, &mut parallel_outboard, Root);
             assert_eq!(expected_hash, parallel_hash);
             assert_eq!(&outboard[HEADER_SIZE..], &*parallel_outboard);
 

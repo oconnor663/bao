@@ -122,9 +122,14 @@ def seeks():
     return ret
 
 
-# Return the first byte of the header, of each parent, and of each chunk. This
-# function is very similar to bao_decode_slice, but it's not worth complicating
-# the decode implementation to avoid this duplication.
+# Return the first byte of each parent and of each chunk, as well as the last
+# byte of the header. We use the last byte of the header, because header
+# corruption isn't guaranteed to break slice decoding. A small change (i.e. in
+# the first byte) to the length header generally only breaks the final chunk,
+# and a slice might not include the final chunk. Changing the highest-order
+# byte in the header breaks all of our cases reliably. This function is very
+# similar to bao_decode_slice, but it's not worth complicating the decode
+# implementation to avoid this duplication.
 def slice_corruption_points(content_len, slice_start, slice_len):
     def recurse(subtree_start, subtree_len, is_root, offset, ret):
         slice_end = slice_start + slice_len
@@ -154,8 +159,8 @@ def slice_corruption_points(content_len, slice_start, slice_len):
                                  False, offset, ret)
             return PARENT_SIZE + left_size + right_size
 
-    # Start with just the first byte of the header.
-    ret = [0]
+    # Start with the last / highest-order byte of the header.
+    ret = [HEADER_SIZE - 1]
     recurse(0, content_len, True, HEADER_SIZE, ret)
     return ret
 
