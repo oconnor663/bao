@@ -63,15 +63,15 @@ That root node hash is the output of Bao. Here's an example tree, with 8193
 bytes of input that are all zero:
 
 ```
-                        root parent hash=bed2e4...
-                        <1926c3...f330e9...>
+                        root parent hash=5de180...
+                        <40561f...134118...>
                                 /   \
                                /     \
-            parent hash=1926c3...   chunk hash=f330e9...
-            <7fbd4a...7fbd4a...>    [\x00]
+            parent hash=40561f...   chunk hash=134118...
+            <8a2f91...8a2f91...>    [\x00]
                     /   \
                    /     \
-chunk hash: 7fbd4a...   chunk hash: 7fbd4a...
+chunk hash: 8a2f91...   chunk hash: 8a2f91...
 [\x00 * 4096]           [\x00 * 4096]
 ```
 
@@ -81,40 +81,37 @@ necessary flags (the coreutils `b2sum` doesn't expose all the BLAKE2
 parameters):
 
 ```bash
-# Define some aliases for hashing nodes. Note that --length and
-# --inner-hash-length are in bits, not bytes, for compatibility with coreutils.
-$ alias hash_node='b2sum --length=256 --fanout=2 --max-depth=64 --max-leaf-length=4096 --inner-hash-length=256'
+# Define some aliases for hashing nodes. Note that --inner-hash-length is in
+# bits, not bytes, for compatibility with --length and coreutils.
+$ alias hash_node='b2sum --blake2s --fanout=2 --max-depth=64 --max-leaf-length=4096 --inner-hash-length=256'
 $ alias hash_chunk='hash_node --node-depth=0'
 $ alias hash_parent='hash_node --node-depth=1'
 
 # Compute the hash of the first and second chunks, which are the same.
 $ head -c 4096 /dev/zero | hash_chunk
-7fbd4a4dce97d0ed509a76448227aac527cb31e20d03096ea360f974b53d8808  -
-$ big_chunk_hash=7fbd4a4dce97d0ed509a76448227aac527cb31e20d03096ea360f974b53d8808
+8a2f91d3a705da3efca550d55b2d48745cff30ed4f2a8e07306a5dcb00eac628  -
+$ big_chunk_hash=8a2f91d3a705da3efca550d55b2d48745cff30ed4f2a8e07306a5dcb00eac628
 
 # Compute the hash of the third chunk, which is different.
 $ head -c 1 /dev/zero | hash_chunk
-f330e9ad408a5f3ff2842b45948730c91a3f4d81f98526400ea7e9ba877dcdb3  -
-$ small_chunk_hash=f330e9ad408a5f3ff2842b45948730c91a3f4d81f98526400ea7e9ba877dcdb3
+134118ff80aa7fbbba5518655ac979d2be510cfc93a49ff1d407b252d117cdb6  -
+$ small_chunk_hash=134118ff80aa7fbbba5518655ac979d2be510cfc93a49ff1d407b252d117cdb6
 
 # Define an alias for parsing hex.
 $ alias unhex='python3 -c "import sys, binascii; sys.stdout.buffer.write(binascii.unhexlify(sys.argv[1]))"'
 
 # Compute the hash of the first two chunks' parent node.
 $ unhex $big_chunk_hash$big_chunk_hash | hash_parent
-1926c3048e0391cdac5a0b116bd63e03a307e2c10d745b25d24c558e8be2bec9  -
-$ left_parent_hash=1926c3048e0391cdac5a0b116bd63e03a307e2c10d745b25d24c558e8be2bec9
+40561fce18246576900fa6bb409a7849a6cb91ff6d80dfa90cdf4256140ed4aa  -
+$ left_parent_hash=40561fce18246576900fa6bb409a7849a6cb91ff6d80dfa90cdf4256140ed4aa
 
-# Define another alias converting the input length to 8-byte little-endian hex.
-$ alias hexint='python3 -c "import sys; print(int(sys.argv[1]).to_bytes(8, \"little\").hex())"'
-
-# Compute the hash of the root node, with the length suffix and last node flag.
-$ unhex $left_parent_hash$small_chunk_hash$(hexint 8193) | hash_parent --last-node
-bed2e488d2644ce514036824dd5486c0ad16bd1d4b9ee8e9940f810d8c40284e  -
+# Compute the hash of the root node, with the last node flag.
+$ unhex $left_parent_hash$small_chunk_hash | hash_parent --last-node
+5de180b83f6b46d54badf4feccb8c52268ad63d15b79f28a2c0419a0f39d0585  -
 
 # Verify that this matches the Bao hash of the same input.
 $ head -c 8193 /dev/zero | bao hash
-bed2e488d2644ce514036824dd5486c0ad16bd1d4b9ee8e9940f810d8c40284e
+5de180b83f6b46d54badf4feccb8c52268ad63d15b79f28a2c0419a0f39d0585
 ```
 
 ## Combined Encoding Format
