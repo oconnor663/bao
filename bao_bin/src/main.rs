@@ -415,10 +415,12 @@ fn parse_hash(args: &Args) -> Result<bao::hash::Hash, Error> {
 fn allow_broken_pipe<T>(result: io::Result<T>) -> io::Result<()> {
     match result {
         Ok(_) => Ok(()),
-        Err(e) => if e.kind() == io::ErrorKind::BrokenPipe {
-            Ok(())
-        } else {
-            Err(e)
-        },
+        Err(e) => {
+            if e.kind() == io::ErrorKind::BrokenPipe {
+                Ok(())
+            } else {
+                Err(e)
+            }
+        }
     }
 }

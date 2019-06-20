@@ -94,7 +94,8 @@ fn test_encode_decode_combined() {
         &input_hash,
         &encoded_path,
         &decoded_path
-    ).run()
+    )
+    .run()
     .unwrap();
     assert_eq!(input_bytes, &*decoded_bytes);
 
@@ -106,7 +107,8 @@ fn test_encode_decode_combined() {
         &encoded_path,
         "--start=1",
         "--count=1"
-    ).stdout_capture()
+    )
+    .stdout_capture()
     .run()
     .unwrap()
     .stdout;
@@ -126,7 +128,8 @@ fn test_encode_decode_outboard() {
         &input_path,
         "--outboard",
         &outboard_path
-    ).run()
+    )
+    .run()
     .unwrap();
 
     // Test hash --outboard.
@@ -143,7 +146,8 @@ fn test_encode_decode_outboard() {
         &input_hash,
         "--outboard",
         &outboard_path
-    ).input(input_bytes)
+    )
+    .input(input_bytes)
     .stdout_capture()
     .run()
     .unwrap()
@@ -161,7 +165,8 @@ fn test_encode_decode_outboard() {
         &outboard_path,
         "--start=1",
         "--count=1"
-    ).stdout_capture()
+    )
+    .stdout_capture()
     .run()
     .unwrap()
     .stdout;
@@ -204,7 +209,8 @@ fn test_slice() {
         slice_len.to_string(),
         &encoded_path,
         &slice_path
-    ).run()
+    )
+    .run()
     .unwrap();
     let slice_bytes = fs::read(&slice_path).unwrap();
 
@@ -215,7 +221,8 @@ fn test_slice() {
         slice_start.to_string(),
         slice_len.to_string(),
         &encoded_path
-    ).stdout_capture()
+    )
+    .stdout_capture()
     .run()
     .unwrap()
     .stdout;
