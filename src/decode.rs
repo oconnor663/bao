@@ -1092,21 +1092,19 @@ pub mod benchmarks {
 
 #[cfg(test)]
 pub(crate) fn make_test_input(len: usize) -> Vec<u8> {
-    use byteorder::{BigEndian, WriteBytesExt};
-
     // Fill the input with incrementing bytes, so that reads from different sections are very
     // unlikely to accidentally match.
     let mut ret = Vec::new();
     let mut counter = 0u64;
     while ret.len() < len {
         if counter < u8::max_value() as u64 {
-            ret.write_u8(counter as u8).unwrap();
+            ret.push(counter as u8);
         } else if counter < u16::max_value() as u64 {
-            ret.write_u16::<BigEndian>(counter as u16).unwrap();
+            ret.extend_from_slice(&(counter as u16).to_be_bytes());
         } else if counter < u32::max_value() as u64 {
-            ret.write_u32::<BigEndian>(counter as u32).unwrap();
+            ret.extend_from_slice(&(counter as u32).to_be_bytes());
         } else {
-            ret.write_u64::<BigEndian>(counter).unwrap();
+            ret.extend_from_slice(&(counter as u64).to_be_bytes());
         }
         counter += 1;
     }

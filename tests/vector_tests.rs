@@ -1,7 +1,6 @@
 //! The tests in this file run bao against the standard set of test vectors.
 
 use bao::hash::Hash;
-use byteorder::{ByteOrder, LittleEndian};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::cmp;
@@ -74,8 +73,7 @@ fn make_input(len: usize) -> Vec<u8> {
     let mut counter: u32 = 1;
     let mut output = Vec::with_capacity(len);
     while output.len() < len {
-        let mut bytes = [0; 4];
-        LittleEndian::write_u32(&mut bytes, counter);
+        let bytes = counter.to_le_bytes();
         let take = cmp::min(4, len - output.len());
         output.extend_from_slice(&bytes[..take]);
         counter += 1;

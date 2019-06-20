@@ -9,12 +9,11 @@ edition = "2018"
 
 [features]
 default = ["std"]
-std = ["byteorder/std", "blake2s_simd/std", "crossbeam-channel", "num_cpus", "rayon"]
+std = ["blake2s_simd/std", "crossbeam-channel", "num_cpus", "rayon"]
 
 [dependencies]
 arrayref = "0.3.4"
 arrayvec = { version = "0.4.7", default-features = false, features = ["use_union"] }
-byteorder = { version = "1.2.4", default-features = false }
 blake2s_simd = "0.5.1"
 constant_time_eq = "0.1.3"
 copy_in_place = "0.2.0"

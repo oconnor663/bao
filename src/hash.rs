@@ -17,7 +17,6 @@
 use arrayref::array_ref;
 use arrayvec::{ArrayString, ArrayVec};
 use blake2s_simd;
-use byteorder::{ByteOrder, LittleEndian};
 use constant_time_eq::constant_time_eq;
 use core::cmp;
 use core::fmt;
@@ -96,13 +95,11 @@ impl fmt::Debug for Hash {
 
 pub(crate) fn encode_len(len: u64) -> [u8; HEADER_SIZE] {
     debug_assert_eq!(mem::size_of_val(&len), HEADER_SIZE);
-    let mut len_bytes = [0; HEADER_SIZE];
-    LittleEndian::write_u64(&mut len_bytes, len);
-    len_bytes
+    len.to_le_bytes()
 }
 
 pub(crate) fn decode_len(bytes: &[u8; HEADER_SIZE]) -> u64 {
-    LittleEndian::read_u64(bytes)
+    u64::from_le_bytes(*bytes)
 }
 
 fn common_params() -> blake2s_simd::Params {
