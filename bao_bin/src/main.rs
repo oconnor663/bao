@@ -1,14 +1,6 @@
-#[macro_use]
-extern crate arrayref;
-extern crate bao;
-extern crate docopt;
-extern crate failure;
-extern crate hex;
-#[macro_use]
-extern crate serde_derive;
-extern crate memmap;
-
+use arrayref::array_ref;
 use failure::{err_msg, Error};
+use serde::Deserialize;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::prelude::*;

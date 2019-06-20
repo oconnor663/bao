@@ -1,17 +1,9 @@
 //! The tests in this file run bao against the standard set of test vectors.
 
-extern crate bao;
-extern crate blake2s_simd;
-extern crate byteorder;
-#[macro_use]
-extern crate lazy_static;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-
 use bao::hash::Hash;
 use byteorder::{ByteOrder, LittleEndian};
+use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 use std::cmp;
 use std::io;
 use std::io::prelude::*;

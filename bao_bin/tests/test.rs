@@ -1,9 +1,4 @@
-extern crate bao;
-#[macro_use]
-extern crate duct;
-extern crate rand;
-extern crate tempfile;
-
+use duct::cmd;
 use rand::RngCore;
 use std::env::consts::EXE_EXTENSION;
 use std::fs;

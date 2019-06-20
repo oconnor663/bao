@@ -41,6 +41,7 @@
 
 use crate::hash::Finalization::{self, NotRoot, Root};
 use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
+use arrayref::array_mut_ref;
 use arrayvec::ArrayVec;
 use blake2s_simd;
 use copy_in_place::copy_in_place;
@@ -1350,8 +1351,6 @@ pub(crate) fn cast_offset(offset: u128) -> io::Result<u64> {
 
 #[cfg(test)]
 mod test {
-    extern crate tempfile;
-
     use super::*;
     use crate::decode::make_test_input;
     use std::io::Cursor;

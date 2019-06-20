@@ -14,6 +14,7 @@
 //! assert_eq!(hash_at_once, hash_incremental);
 //! ```
 
+use arrayref::array_ref;
 use arrayvec::{ArrayString, ArrayVec};
 use blake2s_simd;
 use byteorder::{ByteOrder, LittleEndian};

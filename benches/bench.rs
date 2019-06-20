@@ -1,9 +1,5 @@
 #![feature(test)]
 
-extern crate bao;
-extern crate blake2s_simd;
-extern crate rand;
-extern crate tempfile;
 extern crate test;
 
 use bao::*;

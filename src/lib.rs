@@ -24,23 +24,6 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(feature = "std")]
-extern crate core;
-
-#[macro_use]
-extern crate arrayref;
-extern crate arrayvec;
-extern crate blake2s_simd;
-extern crate byteorder;
-extern crate constant_time_eq;
-extern crate copy_in_place;
-#[cfg(feature = "std")]
-extern crate crossbeam_channel;
-#[cfg(feature = "std")]
-extern crate num_cpus;
-#[cfg(feature = "std")]
-extern crate rayon;
-
 pub mod decode;
 pub mod encode;
 pub mod hash;

@@ -38,6 +38,7 @@
 //! # }
 //! ```
 
+use arrayref::{array_ref, array_refs};
 use arrayvec::ArrayVec;
 use copy_in_place::copy_in_place;
 #[cfg(feature = "std")]
@@ -1091,7 +1092,6 @@ pub mod benchmarks {
 
 #[cfg(test)]
 pub(crate) fn make_test_input(len: usize) -> Vec<u8> {
-    extern crate byteorder;
     use byteorder::{BigEndian, WriteBytesExt};
 
     // Fill the input with incrementing bytes, so that reads from different sections are very
@@ -1116,9 +1116,7 @@ pub(crate) fn make_test_input(len: usize) -> Vec<u8> {
 
 #[cfg(test)]
 mod test {
-    extern crate rand;
-
-    use self::rand::{prng::chacha::ChaChaRng, Rng, SeedableRng};
+    use rand::{prng::chacha::ChaChaRng, Rng, SeedableRng};
     use std::io;
     use std::io::prelude::*;
     use std::io::Cursor;
