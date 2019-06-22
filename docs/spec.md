@@ -75,35 +75,37 @@ chunk hash: 8a2f91...   chunk hash: 8a2f91...
 [\x00 * 4096]           [\x00 * 4096]
 ```
 
-We can verify those values on the command line using the `b2sum` utility from
+We can verify those values on the command line using the `blake2` utility from
 [blake2_simd](https://github.com/oconnor663/blake2_simd), which supports the
 necessary flags (the coreutils `b2sum` doesn't expose all the BLAKE2
 parameters):
 
 ```bash
-# Define some aliases for hashing nodes. Note that --inner-hash-length is in
-# bits, not bytes, for compatibility with --length and coreutils.
-$ alias hash_node='b2sum --blake2s --fanout=2 --max-depth=64 --max-leaf-length=4096 --inner-hash-length=256'
-$ alias hash_chunk='hash_node --node-depth=0'
-$ alias hash_parent='hash_node --node-depth=1'
+# Install the blake2 utility. Make sure your Cargo bin dir is in your $PATH.
+$ cargo install blake2_bin
+
+# Define some aliases for hashing nodes.
+$ alias hash_node="blake2 -s --fanout=2 --max-depth=64 --max-leaf-length=4096 --inner-hash-length=32"
+$ alias hash_chunk="hash_node --node-depth=0"
+$ alias hash_parent="hash_node --node-depth=1"
 
 # Compute the hash of the first and second chunks, which are the same.
-$ head -c 4096 /dev/zero | hash_chunk
-8a2f91d3a705da3efca550d55b2d48745cff30ed4f2a8e07306a5dcb00eac628  -
-$ big_chunk_hash=8a2f91d3a705da3efca550d55b2d48745cff30ed4f2a8e07306a5dcb00eac628
+$ big_chunk_hash=`head -c 4096 /dev/zero | hash_chunk`
+$ echo $big_chunk_hash
+8a2f91d3a705da3efca550d55b2d48745cff30ed4f2a8e07306a5dcb00eac628
 
 # Compute the hash of the third chunk, which is different.
-$ head -c 1 /dev/zero | hash_chunk
-134118ff80aa7fbbba5518655ac979d2be510cfc93a49ff1d407b252d117cdb6  -
-$ small_chunk_hash=134118ff80aa7fbbba5518655ac979d2be510cfc93a49ff1d407b252d117cdb6
+$ small_chunk_hash=`head -c 1 /dev/zero | hash_chunk`
+$ echo $small_chunk_hash
+134118ff80aa7fbbba5518655ac979d2be510cfc93a49ff1d407b252d117cdb6
 
 # Define an alias for parsing hex.
 $ alias unhex='python3 -c "import sys, binascii; sys.stdout.buffer.write(binascii.unhexlify(sys.argv[1]))"'
 
 # Compute the hash of the first two chunks' parent node.
-$ unhex $big_chunk_hash$big_chunk_hash | hash_parent
-40561fce18246576900fa6bb409a7849a6cb91ff6d80dfa90cdf4256140ed4aa  -
-$ left_parent_hash=40561fce18246576900fa6bb409a7849a6cb91ff6d80dfa90cdf4256140ed4aa
+$ left_parent_hash=`unhex $big_chunk_hash$big_chunk_hash | hash_parent`
+$ echo $left_parent_hash
+40561fce18246576900fa6bb409a7849a6cb91ff6d80dfa90cdf4256140ed4aa
 
 # Compute the hash of the root node, with the last node flag.
 $ unhex $left_parent_hash$small_chunk_hash | hash_parent --last-node
