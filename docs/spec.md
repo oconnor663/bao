@@ -129,7 +129,7 @@ as an encoded file:
 
 ```
 input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
-0120000000000000|1926c3...f330e9...|7fbd4a...7fbd4a...|000000...  |000000...   |00
+0120000000000000|40561f...134118...|8a2f91...8a2f91...|000000...  |000000...   |00
 ```
 
 ## Decoder
@@ -200,7 +200,7 @@ resulting slice will be this:
 
 ```
 input length    |root parent node  |left parent node  |second chunk
-0120000000000000|1926c3...f330e9...|7fbd4a...7fbd4a...|000000...
+0120000000000000|40561f...134118...|8a2f91...8a2f91...|000000...
 ```
 
 Although slices can be extracted from either a combined encoding or an outboard
