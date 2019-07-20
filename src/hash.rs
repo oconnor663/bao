@@ -106,7 +106,7 @@ fn common_params() -> blake2s_simd::Params {
     params
         .hash_length(HASH_SIZE)
         .fanout(2)
-        .max_depth(64)
+        .max_depth(255)
         .max_leaf_length(CHUNK_SIZE as u32)
         .node_offset(0)
         .inner_hash_length(HASH_SIZE);

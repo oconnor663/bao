@@ -48,11 +48,11 @@ Hashing nodes is done with BLAKE2s, using the following parameters:
 
 - **Hash length** is 32.
 - **Fanout** is 2.
-- **Max depth** is 64.
+- **Max depth** is 255.
 - **Max leaf length** is 4096.
+- **Inner hash length** is 32.
 - **Node offset** is always 0 (the default).
 - **Node depth** is 0 for all chunks and 1 for all parent nodes.
-- **Inner hash length** is 32.
 
 In addition, the root node -- whether it's a chunk or a parent -- has the
 **last node** finalization flag set to true. Note that BLAKE2 supports setting
@@ -85,19 +85,19 @@ parameters):
 $ cargo install blake2_bin
 
 # Define some aliases for hashing nodes.
-$ alias hash_node="blake2 -s --fanout=2 --max-depth=64 --max-leaf-length=4096 --inner-hash-length=32"
+$ alias hash_node="blake2 -s --fanout=2 --max-depth=255 --max-leaf-length=4096 --inner-hash-length=32"
 $ alias hash_chunk="hash_node --node-depth=0"
 $ alias hash_parent="hash_node --node-depth=1"
 
 # Compute the hash of the first and second chunks, which are the same.
 $ big_chunk_hash=`head -c 4096 /dev/zero | hash_chunk`
 $ echo $big_chunk_hash
-8a2f91d3a705da3efca550d55b2d48745cff30ed4f2a8e07306a5dcb00eac628
+1f889cb45b1901ce01bba35537ede436e5b84e00327eced603a46a9b2b029506
 
 # Compute the hash of the third chunk, which is different.
 $ small_chunk_hash=`head -c 1 /dev/zero | hash_chunk`
 $ echo $small_chunk_hash
-134118ff80aa7fbbba5518655ac979d2be510cfc93a49ff1d407b252d117cdb6
+2f7dbf8f3a34d18b3f0dc65613b2e98452522327e8545607ead70eb5824c7bf1
 
 # Define an alias for parsing hex.
 $ alias unhex='python3 -c "import sys, binascii; sys.stdout.buffer.write(binascii.unhexlify(sys.argv[1]))"'
@@ -105,15 +105,15 @@ $ alias unhex='python3 -c "import sys, binascii; sys.stdout.buffer.write(binasci
 # Compute the hash of the first two chunks' parent node.
 $ left_parent_hash=`unhex $big_chunk_hash$big_chunk_hash | hash_parent`
 $ echo $left_parent_hash
-40561fce18246576900fa6bb409a7849a6cb91ff6d80dfa90cdf4256140ed4aa
+41009392bac4b7aae4039a4586fddd194fe0b8dae1480d05b7d258ac003e0a1d
 
 # Compute the hash of the root node, with the last node flag.
 $ unhex $left_parent_hash$small_chunk_hash | hash_parent --last-node
-5de180b83f6b46d54badf4feccb8c52268ad63d15b79f28a2c0419a0f39d0585  -
+12ea5e2e91c21f4a4658fcaa08cc5aa6d2126aa72ca05742784aa718493e720f
 
 # Verify that this matches the Bao hash of the same input.
 $ head -c 8193 /dev/zero | bao hash
-5de180b83f6b46d54badf4feccb8c52268ad63d15b79f28a2c0419a0f39d0585
+12ea5e2e91c21f4a4658fcaa08cc5aa6d2126aa72ca05742784aa718493e720f
 ```
 
 ## Combined Encoding Format

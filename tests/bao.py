@@ -97,7 +97,7 @@ def hash_node(node_bytes, is_chunk, finalization):
     state = hashlib.blake2s(
         digest_size=HASH_SIZE,
         fanout=2,
-        depth=64,
+        depth=255,
         leaf_size=4096,
         node_offset=0,
         node_depth=0 if is_chunk else 1,
