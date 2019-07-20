@@ -399,13 +399,34 @@ applications are likely to have different priorities around this tradeoff, and
 we won't be able to settle this question without more experiments. See [issue
 17](https://github.com/oconnor663/bao/issues/17).
 
+Here are [throughput measurements](https://github.com/oconnor663/bao_experiments/blob/72a13726a1dfb5ed67d41fdea1932a8b0b0dfc0b/benches/libtest.rs#L18-L23)
+for hashing a 2^24 byte (16.8 MB) input at different chunk sizes on my laptop
+(Intel Core i5-8250U, 4 physical / 8 logical cores, AVX2, with TurboBoost
+disabled):
+
+|chunk size (bytes)|throughput (MB/s)|% of max|
+|------------------|-----------------|--------|
+|65536             |4584             |100     |
+|32768             |4571             |99.7    |
+|16384             |4563             |99.5    |
+|8192              |4513             |98.5    |
+|4096              |4439             |96.8    |
+|2048              |4122             |89.9    |
+|1024              |3782             |82.5    |
+|512               |3272             |71.4    |
+|256               |2596             |56.6    |
+
+In these measurements, increasing the chunk size has a big impact on throughput
+up to 4096 bytes. Going from 2048 bytes to 4096 bytes increase throughput by
+about 7%. But further increases in the chunk size are less impactful, below 2%.
+
 Another consideration might be how much buffer space a streaming implementation
 needs to allocate to take full advantage of SIMD. The widest SIMD instruction
 set available on x86 today is AVX-512, which can run 16 BLAKE2s hashes in
 parallel. With a chunk size of 4096 bytes, a 16-chunk buffer is 64 KiB, which
 is already e.g. the [default maximum stack buffer size under musl
 libc](https://wiki.musl-libc.org/functional-differences-from-glibc.html#Thread_stack_size).
-That's a small motivation not to use chunks larger than 4096 bytes.
+That's another small motivation not to use chunks larger than 4096 bytes.
 
 ### Does Bao have a "high security" variant?
 

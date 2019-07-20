@@ -17,7 +17,6 @@
 use arrayref::array_ref;
 use arrayvec::{ArrayString, ArrayVec};
 use blake2s_simd;
-use constant_time_eq::constant_time_eq;
 use core::cmp;
 use core::fmt;
 use core::mem;
@@ -74,14 +73,14 @@ impl Hash {
 /// This implementation is constant time.
 impl PartialEq for Hash {
     fn eq(&self, other: &Hash) -> bool {
-        constant_time_eq(&self.bytes[..], &other.bytes[..])
+        constant_time_eq::constant_time_eq(&self.bytes[..], &other.bytes[..])
     }
 }
 
 /// This implementation is constant time, if the slice length is `HASH_SIZE`.
 impl PartialEq<[u8]> for Hash {
     fn eq(&self, other: &[u8]) -> bool {
-        constant_time_eq(&self.bytes[..], other)
+        constant_time_eq::constant_time_eq(&self.bytes[..], other)
     }
 }
 
