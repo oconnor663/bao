@@ -417,7 +417,7 @@ disabled):
 |256               |2596             |56.6    |
 
 In these measurements, increasing the chunk size has a big impact on throughput
-up to 4096 bytes. Going from 2048 bytes to 4096 bytes increase throughput by
+up to 4096 bytes. Going from 2048 bytes to 4096 bytes raises throughput by
 about 7%. But further increases in the chunk size are less impactful, below 2%.
 
 Another consideration might be how much buffer space a streaming implementation
@@ -536,7 +536,7 @@ memory requirements. However, one of Bao's main benefits is parallelism over
 huge files, and falling back to serial hashing would conflict with that. It
 would also complicate encoding and decoding.
 
-### Is 64 bits large enough for the length counter?
+### Is 64 bits large enough for the encoded length?
 
 **Yes.** Every filesystem in use today has a maximum file size of
 2<sup>64</sup> bytes or less. It's possible that some trickery with sparse
@@ -585,13 +585,13 @@ achieve that by replacing BLAKE2s with BLAKE2b with very few other changes.
 
 ### Would hashing the length as associated data improve the security of the decoder?
 
-**No, not for a correct decoder.** An attacker modifying the length bytes can't
-produce any observable result, other than the errors that are also possible by
-modifying or truncating the rest of the encoding. The story is more complicated
-if we consider "sloppy" implementations that accept some invalid encodings, in
-which case hashing the length could mitigate some attacks but would also create
-some new ones. An earlier version of the Bao design did hash the length bytes,
-but the current design doesn't.
+**No, not for a correct implementation.** An attacker modifying the length
+bytes can't produce any observable result, other than the errors that are also
+possible by modifying or truncating the rest of the encoding. The story is more
+complicated if we consider "sloppy" implementations that accept some invalid
+encodings, in which case hashing the length could mitigate some attacks but
+would also create some new ones. An earlier version of the Bao design did hash
+the length bytes, but the current design doesn't.
 
 Let's start by considering a correct decoder. What happens if a
 man-in-the-middle attacker tweaks the length header in between encoding and
@@ -710,14 +710,69 @@ a one-block message would require two blocks of compression. It was dropped
 mainly for that performance reason, since the sloppy implementation concerns
 above aren't decisive either way.
 
-### Would it be more efficient to use an arity larger than 2?
+### Would it be more efficient to use a fanout larger than 2?
 
-[Open question, there are memory footprint concerns, but also a workaround with
-state words is possible.]
+**Only a little, not enough to justify the added complexity.** Parent nodes in
+the binary tree exactly fit a BLAKE2s input block, so there's no free
+throughput to be had by making the parents larger. Rather, a larger fanout
+could help by reducing the number of levels in the tree. At most (with
+unlimtied fanout, like KangarooTwelve) the total number of parent bytes hashed
+can be reduced by 50%. However, the parent bytes are already a small fraction
+of the input bytes by design, so the potential gain here is small.
 
-### Should Bao use the node offset parameter to prevent caching?
+In my [throughput measurements](https://github.com/oconnor663/bao_experiments/blob/72a13726a1dfb5ed67d41fdea1932a8b0b0dfc0b/benches/libtest.rs#L32-L37),
+the largest efficiency gain seems to come at fanout 8, where the throughput for
+4096-byte blocks is about the same as it is with fanout 2 and 8192-byte blocks.
+As noted above, this is a small difference, less than 2%. At the same time,
+using a fanout greater than 2 brings in a lot of new complexity:
 
-[Open question.]
+- Parent nodes along the right edge of the tree may have fewer children,
+  meaning that parent nodes are of variable size.
+- The SIMD degree supported by the CPU is no longer necessarily a multiple of
+  the fanout, so the implementation needs to do more bookkeeping to maintain
+  enough separate inputs for good SIMD performance.
+- There's more ambiguity in the tree layout. For example with 6 chunks and
+  fanout 4, you could plausibly lay out the tree in the following two ways.
+
+  ```
+          root             root
+         /  \ \          /      \
+    parent   * *      parent   parent
+   / / \ \           / / \ \    / \
+  * *   * *         * *   * *  *   *
+  ```
+
+These sorts of issues -- considered across hashing, encoding, and decoding --
+would be an implementation and testing burden that's not worth the small
+performance gain.
+
+On the other hand, there's also the question of whether a larger fanout could
+reduce the space requirement, which might matter for small embedded
+implementations. At first glance, it's not clear that a larger fanout helps
+here. For example, at fanout 4 the maximum depth of the subtree stack is
+halved, but the implementation needs to store up to 3 subtree hashes at each
+level instead of 1, so the overall storage requirement is actually 50% larger.
+
+However, the implementation might instead store the incremental state of a
+parent hash at each level rather than a complete list of subtree hashes. The
+words in an incremental state are 32 bytes, and the implementation would
+probably need to buffer a full 64 byte block along with the words to account
+for finalization. That's no space benefit for an fanout of 4 (the 3 subtree
+hashes per level described above were also 96 bytes), but it's independent of
+the fanout, so larger fanouts could benefit from reduced stack depth without
+increasing the storage per level any further. Conceptually at infinite fanout,
+there would be no stack at all, just the single incremental state of the root
+node.
+
+Ultimately this space optimization is too niche to justify shaping the entire
+Bao design around it. Without a specific platform in mind, it's hard to say how
+much space savings is needed. And applications with extremely tight storage
+requirements already have the option of constraining the maximum input size, as
+noted above.
+
+### Should Bao use the node offset parameter to forbid memoizing subtrees?
+
+**Open question.**
 
 ## Other Related Work
 
