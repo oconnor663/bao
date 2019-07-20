@@ -63,15 +63,15 @@ That root node hash is the output of Bao. Here's an example tree, with 8193
 bytes of input that are all zero:
 
 ```
-                        root parent hash=5de180...
-                        <40561f...134118...>
+                        root parent hash=12ea5e...
+                        <410093...2f7dbf...>
                                 /   \
                                /     \
-            parent hash=40561f...   chunk hash=134118...
-            <8a2f91...8a2f91...>    [\x00]
+            parent hash=410093...   chunk hash=2f7dbf...
+            <1f889c...1f889c...>    [\x00]
                     /   \
                    /     \
-chunk hash: 8a2f91...   chunk hash: 8a2f91...
+chunk hash: 1f889c...   chunk hash: 1f889c...
 [\x00 * 4096]           [\x00 * 4096]
 ```
 
@@ -129,7 +129,7 @@ as an encoded file:
 
 ```
 input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
-0120000000000000|40561f...134118...|8a2f91...8a2f91...|000000...  |000000...   |00
+0120000000000000|410093...2f7dbf...|1f889c...1f889c...|000000...  |000000...   |00
 ```
 
 ## Decoder
@@ -200,7 +200,7 @@ resulting slice will be this:
 
 ```
 input length    |root parent node  |left parent node  |second chunk
-0120000000000000|40561f...134118...|8a2f91...8a2f91...|000000...
+0120000000000000|410093...2f7dbf...|1f889c...1f889c...|000000...
 ```
 
 Although slices can be extracted from either a combined encoding or an outboard
