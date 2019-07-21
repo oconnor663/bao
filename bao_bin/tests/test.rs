@@ -1,5 +1,5 @@
 use duct::cmd;
-use rand::RngCore;
+use rand::prelude::*;
 use std::env::consts::EXE_EXTENSION;
 use std::fs;
 use std::path::{Path, PathBuf};

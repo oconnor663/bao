@@ -1114,7 +1114,8 @@ pub(crate) fn make_test_input(len: usize) -> Vec<u8> {
 
 #[cfg(test)]
 mod test {
-    use rand::{prng::chacha::ChaChaRng, Rng, SeedableRng};
+    use rand::prelude::*;
+    use rand_chacha::ChaChaRng;
     use std::io;
     use std::io::prelude::*;
     use std::io::Cursor;

@@ -647,7 +647,7 @@ impl ParallelWriter {
                 rayon::spawn(move || {
                     let hash = next_job.compute_hash(NotRoot);
                     let sender = next_job.sender.clone();
-                    sender.send((next_job, hash));
+                    sender.send((next_job, hash)).unwrap();
                 });
             }
 

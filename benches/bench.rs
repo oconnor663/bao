@@ -439,7 +439,7 @@ fn bench_bao_decode_reader_outboard_long(b: &mut Bencher) {
 fn bench_bao_seek_memory(b: &mut Bencher) {
     let input = vec![0; LONG];
     let (hash, encoded) = encode::encode_to_vec(&input);
-    let mut rng = rand::XorShiftRng::from_seed(Default::default());
+    let mut rng = rand_xorshift::XorShiftRng::from_seed(Default::default());
     let mut reader = decode::Reader::new(Cursor::new(&encoded), &hash);
     b.iter(|| {
         let seek_offset = rng.gen_range(0, input.len() as u64);
@@ -457,7 +457,7 @@ fn bench_bao_seek_file(b: &mut Bencher) {
     file.flush().expect("file flush error");
     file.seek(Start(0)).expect("file seek error");
 
-    let mut rng = rand::XorShiftRng::from_seed(Default::default());
+    let mut rng = rand_xorshift::XorShiftRng::from_seed(Default::default());
     let mut reader = decode::Reader::new(file, &hash);
     b.iter(|| {
         let seek_offset = rng.gen_range(0, input.len() as u64);
