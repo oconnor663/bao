@@ -15,7 +15,7 @@ const SHORT: usize = blake2s_simd::BLOCKBYTES - hash::benchmarks::HEADER_SIZE;
 // Same as short, but for a single chunk of input.
 const MEDIUM: usize = hash::benchmarks::CHUNK_SIZE - hash::benchmarks::HEADER_SIZE;
 
-const LONG: usize = 10_000_000;
+const LONG: usize = 1 << 24; // about 17 MB
 
 // This struct randomizes two things:
 // 1. The actual bytes of input.
