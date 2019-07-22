@@ -95,7 +95,7 @@ enum Verified {
 
 fn split_parent(parent: &hash::ParentNode) -> (Hash, Hash) {
     let (left, right) = array_refs!(parent, HASH_SIZE, HASH_SIZE);
-    (Hash::new(*left), Hash::new(*right))
+    (Hash::new(left), Hash::new(right))
 }
 
 // Check that the top level of a subtree (which could be a single chunk) has a valid hash. This is
@@ -1377,7 +1377,7 @@ mod test {
             let (hash, encoded) = encode::encode_to_vec(&input);
             let mut bad_bytes = *hash.as_bytes();
             bad_bytes[0] ^= 1;
-            let bad_hash = Hash::new(bad_bytes);
+            let bad_hash = Hash::new(&bad_bytes);
 
             // Seeking past the end of a tree should succeed with the right hash.
             let mut output = Vec::new();

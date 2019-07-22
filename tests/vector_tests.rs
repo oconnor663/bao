@@ -148,7 +148,7 @@ fn all_decode_implementations(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>, ba
 fn corrupt_hash(hash: &Hash) -> Hash {
     let mut bad_bytes = *hash.as_bytes();
     bad_bytes[0] ^= 1;
-    Hash::new(bad_bytes)
+    Hash::new(&bad_bytes)
 }
 
 #[test]

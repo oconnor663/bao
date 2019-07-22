@@ -14,9 +14,10 @@
 //! assert_eq!(hash_at_once, hash_incremental);
 //! ```
 
-use arrayref::array_ref;
+use arrayref::{array_mut_ref, array_ref};
 use arrayvec::{ArrayString, ArrayVec};
 use blake2s_simd;
+use blake2s_simd::many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE};
 use core::cmp;
 use core::fmt;
 use core::mem;
@@ -47,8 +48,8 @@ pub struct Hash {
 
 impl Hash {
     /// Create a new `Hash` from an array of bytes.
-    pub fn new(bytes: [u8; HASH_SIZE]) -> Self {
-        Self { bytes }
+    pub fn new(bytes: &[u8; HASH_SIZE]) -> Self {
+        Self { bytes: *bytes }
     }
 
     /// Convert the `Hash` to a byte array. Note that the array type doesn't provide constant time
@@ -108,29 +109,28 @@ fn common_params() -> blake2s_simd::Params {
         .fanout(2)
         .max_depth(255)
         .max_leaf_length(CHUNK_SIZE as u32)
-        .node_offset(0)
         .inner_hash_length(HASH_SIZE);
     params
 }
 
-fn chunk_params() -> blake2s_simd::Params {
+fn chunk_params_old() -> blake2s_simd::Params {
     let mut params = common_params();
     params.node_depth(0);
     params
 }
 
-fn node_params() -> blake2s_simd::Params {
+fn parent_params_old() -> blake2s_simd::Params {
     let mut params = common_params();
     params.node_depth(1);
     params
 }
 
 pub(crate) fn new_chunk_state() -> blake2s_simd::State {
-    chunk_params().to_state()
+    chunk_params_old().to_state()
 }
 
 pub(crate) fn new_parent_state() -> blake2s_simd::State {
-    node_params().to_state()
+    parent_params_old().to_state()
 }
 
 // The root node is hashed differently from interior nodes. It gets suffixed
@@ -179,54 +179,6 @@ pub(crate) fn parent_hash(left_hash: &Hash, right_hash: &Hash, finalization: Fin
     finalize_hash(&mut state, finalization)
 }
 
-fn hash_eight_chunk_subtree(
-    chunk0: &[u8; CHUNK_SIZE],
-    chunk1: &[u8; CHUNK_SIZE],
-    chunk2: &[u8; CHUNK_SIZE],
-    chunk3: &[u8; CHUNK_SIZE],
-    chunk4: &[u8; CHUNK_SIZE],
-    chunk5: &[u8; CHUNK_SIZE],
-    chunk6: &[u8; CHUNK_SIZE],
-    chunk7: &[u8; CHUNK_SIZE],
-    finalization: Finalization,
-) -> Hash {
-    // This relies on the fact that finalize_hash does nothing for non-root nodes.
-    let params = chunk_params();
-    let mut chunk_jobs = [
-        blake2s_simd::many::HashManyJob::new(&params, chunk0),
-        blake2s_simd::many::HashManyJob::new(&params, chunk1),
-        blake2s_simd::many::HashManyJob::new(&params, chunk2),
-        blake2s_simd::many::HashManyJob::new(&params, chunk3),
-        blake2s_simd::many::HashManyJob::new(&params, chunk4),
-        blake2s_simd::many::HashManyJob::new(&params, chunk5),
-        blake2s_simd::many::HashManyJob::new(&params, chunk6),
-        blake2s_simd::many::HashManyJob::new(&params, chunk7),
-    ];
-    blake2s_simd::many::hash_many(chunk_jobs.iter_mut());
-    let mut subtree0 = new_parent_state();
-    subtree0.update(chunk_jobs[0].to_hash().as_bytes());
-    subtree0.update(chunk_jobs[1].to_hash().as_bytes());
-    let mut subtree1 = new_parent_state();
-    subtree1.update(chunk_jobs[2].to_hash().as_bytes());
-    subtree1.update(chunk_jobs[3].to_hash().as_bytes());
-    let mut subtree2 = new_parent_state();
-    subtree2.update(chunk_jobs[4].to_hash().as_bytes());
-    subtree2.update(chunk_jobs[5].to_hash().as_bytes());
-    let mut subtree3 = new_parent_state();
-    subtree3.update(chunk_jobs[6].to_hash().as_bytes());
-    subtree3.update(chunk_jobs[7].to_hash().as_bytes());
-    let mut left_subtree = new_parent_state();
-    left_subtree.update(subtree0.finalize().as_bytes());
-    left_subtree.update(subtree1.finalize().as_bytes());
-    let mut right_subtree = new_parent_state();
-    right_subtree.update(subtree2.finalize().as_bytes());
-    right_subtree.update(subtree3.finalize().as_bytes());
-    let mut parent_state = new_parent_state();
-    parent_state.update(left_subtree.finalize().as_bytes());
-    parent_state.update(right_subtree.finalize().as_bytes());
-    finalize_hash(&mut parent_state, finalization)
-}
-
 // Find the largest power of two that's less than or equal to `n`. We use this
 // for computing subtree sizes below.
 pub(crate) fn largest_power_of_two_leq(n: u64) -> u64 {
@@ -242,60 +194,135 @@ pub(crate) fn left_len(content_len: u64) -> u64 {
     largest_power_of_two_leq(full_chunks) * CHUNK_SIZE as u64
 }
 
-fn hash_recurse(input: &[u8], finalization: Finalization) -> Hash {
-    if input.len() <= CHUNK_SIZE {
-        return hash_chunk(input, finalization);
+fn chunk_params(finalization: Finalization) -> blake2s_simd::Params {
+    let mut params = common_params();
+    if let Root = finalization {
+        params.last_node(true);
     }
-    // Special case: If the input is exactly four chunks, hashing those four chunks in parallel
-    // with SIMD is more efficient than going one by one.
-    if input.len() == 8 * CHUNK_SIZE {
-        return hash_eight_chunk_subtree(
-            array_ref!(input, 0 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 1 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 2 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 3 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 4 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 5 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 6 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 7 * CHUNK_SIZE, CHUNK_SIZE),
-            finalization,
-        );
+    params
+}
+
+fn parent_params(finalization: Finalization) -> blake2s_simd::Params {
+    let mut params = common_params();
+    params.node_depth(1);
+    if let Root = finalization {
+        params.last_node(true);
     }
-    // We have more than one chunk of input, so recursively hash the left and right sides. The
-    // left_len() function determines the shape of the tree.
-    let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
-    // Child nodes are never the root.
-    let left_hash = hash_recurse(left, NotRoot);
-    let right_hash = hash_recurse(right, NotRoot);
-    parent_hash(&left_hash, &right_hash, finalization)
+    params
+}
+
+// Hash a single layer of child hashes into parents. If there's an unpaired
+// child left over, append it to the outputs. Return the number of outputs
+// written to `out` (including the unpaired child if any). Rather than
+// returning a single subtree hash, return a set of simd_degree hashes (if
+// there's enough children). That lets each level of the tree take full
+// advantage of SIMD parallelism.
+fn hash_parents_simd(children: &[u8], finalization: Finalization, out: &mut [u8]) -> usize {
+    debug_assert_eq!(children.len() % HASH_SIZE, 0);
+    // finalization=Root means that the current set of children will form the
+    // top of the tree, but we can't actually apply Root finalization until we
+    // get to the very top node.
+    let actual_finalization = if children.len() == 2 * HASH_SIZE {
+        finalization
+    } else {
+        NotRoot
+    };
+    let params = parent_params(actual_finalization);
+    let mut jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = ArrayVec::new();
+    let mut pairs = children.chunks_exact(2 * HASH_SIZE);
+    for pair in &mut pairs {
+        let push_result = jobs.try_push(HashManyJob::new(&params, pair));
+        debug_assert!(push_result.is_ok(), "too many pushes");
+    }
+    blake2s_simd::many::hash_many(&mut jobs);
+    let mut out_hashes = out.chunks_exact_mut(HASH_SIZE);
+    let mut outputs = 0;
+    for (job, out_hash) in jobs.iter().zip(&mut out_hashes) {
+        *array_mut_ref!(out_hash, 0, HASH_SIZE) = *job.to_hash().as_array();
+        outputs += 1;
+    }
+    // The leftover child case.
+    let leftover = pairs.remainder();
+    if leftover.len() == HASH_SIZE {
+        if let Some(out_hash) = out_hashes.next() {
+            *array_mut_ref!(out_hash, 0, HASH_SIZE) = *array_ref!(leftover, 0, HASH_SIZE);
+            outputs += 1;
+        }
+    }
+    outputs
 }
 
 #[cfg(feature = "std")]
-fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
-    if input.len() <= CHUNK_SIZE {
-        return hash_chunk(input, finalization);
+fn join<T: Send>(f1: impl Send + FnOnce() -> T, f2: impl Send + FnOnce() -> T) -> (T, T) {
+    rayon::join(f1, f2)
+}
+
+#[cfg(not(feature = "std"))]
+fn join<T: Send>(f1: impl Send + FnOnce() -> T, f2: impl Send + FnOnce() -> T) -> (T, T) {
+    (f1(), f2())
+}
+
+// Recursively split the input, combining child hashes into parent hashes at
+// each level. Rather than returning a single subtree hash, return a set of
+// simd_degree hashes (if there's enough children). That lets each level of the
+// tree take full advantage of SIMD parallelism.
+fn hash_recurse(
+    input: &[u8],
+    finalization: Finalization,
+    simd_degree: usize,
+    out: &mut [u8],
+) -> usize {
+    // The top level handles the one chunk case.
+    debug_assert!(input.len() > 0);
+
+    if input.len() <= simd_degree * CHUNK_SIZE {
+        // Because the top level handles the one chunk case, chunk hashing is
+        // never Root.
+        let chunk_params = chunk_params(NotRoot);
+        let mut jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = ArrayVec::new();
+        for chunk in input.chunks(CHUNK_SIZE) {
+            let push_result = jobs.try_push(HashManyJob::new(&chunk_params, chunk));
+            debug_assert!(push_result.is_ok(), "too many pushes");
+        }
+        blake2s_simd::many::hash_many(jobs.iter_mut());
+        for (job, dest) in jobs.iter_mut().zip(out.chunks_exact_mut(HASH_SIZE)) {
+            *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
+        }
+        return jobs.len();
     }
-    // Special case: If the input is exactly four chunks, hashing those four chunks in parallel
-    // with SIMD is more efficient than going one by one.
-    if input.len() == 8 * CHUNK_SIZE {
-        return hash_eight_chunk_subtree(
-            array_ref!(input, 0 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 1 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 2 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 3 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 4 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 5 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 6 * CHUNK_SIZE, CHUNK_SIZE),
-            array_ref!(input, 7 * CHUNK_SIZE, CHUNK_SIZE),
-            finalization,
-        );
-    }
-    let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
-    let (left_hash, right_hash) = rayon::join(
-        || hash_recurse_rayon(left, NotRoot),
-        || hash_recurse_rayon(right, NotRoot),
+
+    let (left_input, right_input) = input.split_at(left_len(input.len() as u64) as usize);
+    let mut child_out_array = [0; 2 * MAX_SIMD_DEGREE * HASH_SIZE];
+    let (left_out, right_out) = child_out_array.split_at_mut(simd_degree * HASH_SIZE);
+    let (left_n, right_n) = join(
+        || hash_recurse(left_input, NotRoot, simd_degree, left_out),
+        || hash_recurse(right_input, NotRoot, simd_degree, right_out),
     );
-    parent_hash(&left_hash, &right_hash, finalization)
+    // Do one level of parent hashing and give the resulting parent hashes to
+    // the caller. We can assert that the left_out slice was filled, which
+    // means all the child hashes are laid out contiguously. Note that if the
+    // input was less than simd_degree chunks long, recursion will bottom out
+    // immediately at the chunks branch above, and we will never get here.
+    debug_assert_eq!(simd_degree, left_n, "left subtree always full");
+    let num_children = left_n + right_n;
+    let children_slice = &child_out_array[..num_children * HASH_SIZE];
+    hash_parents_simd(children_slice, finalization, out)
+}
+
+// Combine all the children into a single subtree hash, which may be the root.
+fn condense_parents(mut children: &mut [u8], finalization: Finalization) -> Hash {
+    debug_assert_eq!(children.len() % HASH_SIZE, 0);
+    let mut out_array = [0; MAX_SIMD_DEGREE * HASH_SIZE / 2];
+    loop {
+        if children.len() == HASH_SIZE {
+            return Hash {
+                bytes: *array_ref!(children, 0, HASH_SIZE),
+            };
+        }
+        let out_n = hash_parents_simd(children, finalization, &mut out_array);
+        children[..out_n * HASH_SIZE].copy_from_slice(&out_array[..out_n * HASH_SIZE]);
+        children = &mut children[..out_n * HASH_SIZE];
+    }
 }
 
 /// Hash a slice of input bytes all at once. If the `std` feature is enabled, as it is by default,
@@ -307,18 +334,22 @@ fn hash_recurse_rayon(input: &[u8], finalization: Finalization) -> Hash {
 /// let hash_at_once = bao::hash::hash(b"input bytes");
 /// ```
 pub fn hash(input: &[u8]) -> Hash {
-    #[cfg(feature = "std")]
-    {
-        if input.len() <= MAX_SINGLE_THREADED {
-            hash_recurse(input, Root)
-        } else {
-            hash_recurse_rayon(input, Root)
-        }
+    // Handle the single chunk case explicitly.
+    if input.len() <= CHUNK_SIZE {
+        return Hash::new(chunk_params(Root).hash(input).as_array());
     }
-    #[cfg(not(feature = "std"))]
-    {
-        hash_recurse(input, Root)
+    let simd_degree = blake2s_simd::many::degree();
+    let mut children_array = [0; MAX_SIMD_DEGREE * HASH_SIZE];
+
+    let num_children = hash_recurse(input, Root, simd_degree, &mut children_array);
+
+    if simd_degree == 1 {
+        debug_assert_eq!(num_children, 1);
+    } else {
+        debug_assert!(num_children > 1);
     }
+
+    condense_parents(&mut children_array[..num_children * HASH_SIZE], Root)
 }
 
 pub(crate) enum StateFinish {
@@ -556,21 +587,19 @@ impl Job {
 
     fn compute_hash(&self, finalization: Finalization) -> Hash {
         debug_assert!(self.buffer.len() <= JOB_SIZE);
-        if self.buffer.len() == JOB_SIZE {
-            hash_eight_chunk_subtree(
-                array_ref!(self.buffer, 0 * CHUNK_SIZE, CHUNK_SIZE),
-                array_ref!(self.buffer, 1 * CHUNK_SIZE, CHUNK_SIZE),
-                array_ref!(self.buffer, 2 * CHUNK_SIZE, CHUNK_SIZE),
-                array_ref!(self.buffer, 3 * CHUNK_SIZE, CHUNK_SIZE),
-                array_ref!(self.buffer, 4 * CHUNK_SIZE, CHUNK_SIZE),
-                array_ref!(self.buffer, 5 * CHUNK_SIZE, CHUNK_SIZE),
-                array_ref!(self.buffer, 6 * CHUNK_SIZE, CHUNK_SIZE),
-                array_ref!(self.buffer, 7 * CHUNK_SIZE, CHUNK_SIZE),
-                finalization,
-            )
-        } else {
-            hash_recurse(&self.buffer, finalization)
+
+        if self.buffer.len() <= CHUNK_SIZE {
+            return hash_chunk(&self.buffer, finalization);
         }
+
+        let mut out = [0; MAX_SIMD_DEGREE * HASH_SIZE];
+        let n = hash_recurse(
+            &self.buffer,
+            finalization,
+            blake2s_simd::many::degree(),
+            &mut out,
+        );
+        condense_parents(&mut out[..n * HASH_SIZE], finalization)
     }
 }
 
@@ -762,19 +791,6 @@ mod test {
         for &(input, output) in input_output {
             println!("testing {} and {}", input, output);
             assert_eq!(left_len(input), output);
-        }
-    }
-
-    #[test]
-    fn test_serial_vs_parallel() {
-        for &case in TEST_CASES {
-            println!("case {}", case);
-            let input = vec![0x42; case];
-            let hash_serial = hash_recurse(&input, Root);
-            let hash_parallel = hash_recurse_rayon(&input, Root);
-            let hash_highlevel = hash(&input);
-            assert_eq!(hash_serial, hash_parallel, "hashes don't match");
-            assert_eq!(hash_serial, hash_highlevel, "hashes don't match");
         }
     }
 

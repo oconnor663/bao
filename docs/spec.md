@@ -760,9 +760,9 @@ probably need to buffer a full 64 byte block along with the words to account
 for finalization. That's no space benefit for an fanout of 4 (the 3 subtree
 hashes per level described above were also 96 bytes), but it's independent of
 the fanout, so larger fanouts could benefit from reduced stack depth without
-increasing the storage per level any further. Conceptually at infinite fanout,
-there would be no stack at all, just the single incremental state of the root
-node.
+increasing the storage per level any further. Conceptually at unlimited fanout
+(again like KangarooTwelve), there would be no stack at all, just the single
+incremental state of the root node.
 
 Ultimately this space optimization is too niche to justify shaping the entire
 Bao design around it. Without a specific platform in mind, it's hard to say how
