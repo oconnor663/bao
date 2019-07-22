@@ -393,7 +393,7 @@ fn parse_hash(args: &Args) -> Result<bao::hash::Hash, Error> {
     if hash_vec.len() != bao::hash::HASH_SIZE {
         return Err(err_msg("wrong length hash"));
     };
-    Ok(bao::hash::Hash::new(*array_ref!(
+    Ok(bao::hash::Hash::new(array_ref!(
         hash_vec,
         0,
         bao::hash::HASH_SIZE
