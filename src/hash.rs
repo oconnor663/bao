@@ -31,10 +31,12 @@ pub const HASH_SIZE: usize = 32;
 pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
 pub(crate) const HEADER_SIZE: usize = 8;
 pub(crate) const CHUNK_SIZE: usize = 4096;
-// NOTE: MAX_DEPTH should be 52, given the 4096 byte CHUNK_SIZE, using a larger value wastes some
-// space on the stack. It currently needs to match one of the implementations of arrayvec::Array,
-// but dropping that dependency could let us compute MAX_DEPTH from other parameters.
-pub(crate) const MAX_DEPTH: usize = 64;
+// NOTE: The max stack depth described in the spec is 52. However this
+// implementation pushes the final chunk hash onto the stack before running the
+// merge loop, so we need space for one more. That said, 2^52 bytes is already
+// an astronomical amount of input that will probably never come up in
+// practice.
+pub(crate) const MAX_DEPTH: usize = 53;
 pub(crate) const MAX_SINGLE_THREADED: usize = 8 * CHUNK_SIZE;
 
 /// An array of `HASH_SIZE` bytes. This will be a wrapper type in a future version.
