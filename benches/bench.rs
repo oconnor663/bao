@@ -8,12 +8,11 @@ use std::io::prelude::*;
 use std::io::{Cursor, SeekFrom::Start};
 use test::Bencher;
 
-// The tiniest relvant benchmark is one that fills a single BLAKE2s block. But if we don't account
-// for the header bytes, we'll actually fill two blocks, and the results will look awful.
-const SHORT: usize = blake2s_simd::BLOCKBYTES - hash::benchmarks::HEADER_SIZE;
+// 64 bytes, just enough input to fill a single BLAKE2s block.
+const SHORT: usize = blake2s_simd::BLOCKBYTES;
 
-// Same as short, but for a single chunk of input.
-const MEDIUM: usize = hash::benchmarks::CHUNK_SIZE - hash::benchmarks::HEADER_SIZE;
+// Just enough input to occupy SIMD on a single thread. Currently 32 KiB on x86.
+const MEDIUM: usize = hash::benchmarks::CHUNK_SIZE * blake2s_simd::many::MAX_DEGREE;
 
 const LONG: usize = 1 << 24; // about 17 MB
 

@@ -113,6 +113,7 @@ fn common_params() -> blake2s_simd::Params {
     params
 }
 
+// TODO: Clean up these helpers when there are fewer callers.
 fn chunk_params_old() -> blake2s_simd::Params {
     let mut params = common_params();
     params.node_depth(0);
@@ -145,10 +146,9 @@ pub(crate) enum Finalization {
 use self::Finalization::{NotRoot, Root};
 
 pub(crate) fn finalize_hash(state: &mut blake2s_simd::State, finalization: Finalization) -> Hash {
-    // For the root node, we hash in the length as a suffix, and we set the
-    // Blake2 last node flag. One of the reasons for this design is that we
-    // don't need to know a given node is the root until the very end, so we
-    // don't always need a chunk buffer.
+    // For the root node, we set the Blake2 last node flag. One of the reasons
+    // for this design is that we don't need to know a given node is the root
+    // until the very end, so we don't always need a chunk buffer.
     if let Root = finalization {
         state.set_last_node(true);
     }
@@ -499,6 +499,8 @@ impl fmt::Debug for State {
     }
 }
 
+pub const BUF_LEN: usize = MAX_SIMD_DEGREE * CHUNK_SIZE;
+
 /// An incremental hasher. This implementation is single-threaded.
 ///
 /// # Example
@@ -511,44 +513,96 @@ impl fmt::Debug for State {
 /// ```
 #[derive(Clone, Debug)]
 pub struct Writer {
-    chunk: blake2s_simd::State,
-    state: State,
+    chunk_state: blake2s_simd::State,
+    tree_state: State,
 }
 
 impl Writer {
     /// Create a new `Writer`.
     pub fn new() -> Self {
         Self {
-            chunk: new_chunk_state(),
-            state: State::new(),
+            chunk_state: new_chunk_state(),
+            tree_state: State::new(),
         }
     }
 
-    /// Add input. This is equivalent to `write`, except that it's also available with `no_std`.
+    /// Add input to the hash. This is equivalent to `write`, except that it's
+    /// also available with `no_std`. For best performance, use an input buffer
+    /// of size `BUF_LEN`, or some integer multiple of that.
     pub fn update(&mut self, mut input: &[u8]) {
-        while !input.is_empty() {
-            if self.chunk.count() as usize == CHUNK_SIZE {
-                let hash = finalize_hash(&mut self.chunk, NotRoot);
-                self.state.push_subtree(&hash, CHUNK_SIZE);
-                self.chunk = new_chunk_state();
-            }
-            let want = CHUNK_SIZE - self.chunk.count() as usize;
+        // In normal operation, we hash every chunk that comes in using SIMD
+        // and push those hashes into the tree state, only retaining a partial
+        // chunk in the chunk_state if there's uneven input left over. However,
+        // the first chunk is a special case: If we receive exactly one chunk
+        // on the first call, we have to retain it in the chunk_state, because
+        // we won't know how to finalize it until we get more input. (Receiving
+        // less than one chunk would retain it in any case, as uneven input
+        // left over.)
+        let maybe_root = self.tree_state.count() == 0 && input.len() <= CHUNK_SIZE;
+        let have_partial_chunk = self.chunk_state.count() > 0;
+        if maybe_root || have_partial_chunk {
+            let want = CHUNK_SIZE - self.chunk_state.count() as usize;
             let take = cmp::min(want, input.len());
-            self.chunk.update(&input[..take]);
+            self.chunk_state.update(&input[..take]);
             input = &input[take..];
+
+            // If there's more input coming, finish the chunk before we
+            // continue. Otherwise short circuit.
+            if !input.is_empty() {
+                let chunk_hash = finalize_hash(&mut self.chunk_state, NotRoot);
+                self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
+                self.chunk_state = new_chunk_state();
+            } else {
+                return;
+            }
         }
+
+        // Hash all the full chunks that we can, in parallel using SIMD, and
+        // incorporate those hashes into the tree state. At this point we know
+        // none of these can be the root. Here all the parent hash work is
+        // serial, so there's some overhead compared to the fully parallel (not
+        // to mention multithreaded) all-at-once hash() function.
+        let params = chunk_params(NotRoot);
+        let mut chunks = input.chunks_exact(CHUNK_SIZE);
+        let mut fused_chunks = chunks.by_ref().fuse();
+        loop {
+            let mut jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = fused_chunks
+                .by_ref()
+                .take(MAX_SIMD_DEGREE)
+                .map(|chunk| HashManyJob::new(&params, chunk))
+                .collect();
+            if jobs.is_empty() {
+                break;
+            }
+            blake2s_simd::many::hash_many(&mut jobs);
+            for job in &jobs {
+                let chunk_hash = Hash::new(job.to_hash().as_array());
+                self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
+            }
+        }
+
+        // Retain any remaining bytes in the chunk_state.
+        debug_assert!(chunks.remainder().len() < CHUNK_SIZE);
+        debug_assert_eq!(self.chunk_state.count(), 0);
+        self.chunk_state.update(chunks.remainder());
     }
 
     /// Finish computing the root hash. The writer cannot be used after this.
     pub fn finish(&mut self) -> Hash {
-        let finalization = if self.state.count() == 0 {
-            Root
-        } else {
-            NotRoot
-        };
-        let hash = finalize_hash(&mut self.chunk, finalization);
-        self.state.push_subtree(&hash, self.chunk.count() as usize);
-        self.state.finish()
+        // If the chunk_state contains any chunk data, we have to finalize it
+        // and incorporate it into the tree. Also, if there was never any data
+        // at all, we have to hash the empty chunk.
+        if self.chunk_state.count() > 0 || self.tree_state.count() == 0 {
+            let finalization = if self.tree_state.count() == 0 {
+                Root
+            } else {
+                NotRoot
+            };
+            let hash = finalize_hash(&mut self.chunk_state, finalization);
+            self.tree_state
+                .push_subtree(&hash, self.chunk_state.count() as usize);
+        }
+        self.tree_state.finish()
     }
 }
 
