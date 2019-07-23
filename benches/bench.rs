@@ -90,7 +90,6 @@ fn hash_chunks(mut len: usize) {
     }
     let mut chunk_state = blake2s_simd::State::new();
     chunk_state.update(&chunk[..len]);
-    chunk_state.update(&[0; hash::benchmarks::HEADER_SIZE]);
     test::black_box(chunk_state.finalize());
 }
 
@@ -155,36 +154,6 @@ fn bench_bao_hash_serial_writer_long(b: &mut Bencher) {
     let mut input = RandomInput::new(b, LONG);
     b.iter(|| {
         let mut writer = hash::Writer::new();
-        writer.write_all(input.get()).unwrap();
-        writer.finish()
-    });
-}
-
-#[bench]
-fn bench_bao_hash_parallel_writer_short(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, SHORT);
-    b.iter(|| {
-        let mut writer = hash::ParallelWriter::new();
-        writer.write_all(input.get()).unwrap();
-        writer.finish()
-    });
-}
-
-#[bench]
-fn bench_bao_hash_parallel_writer_medium(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, MEDIUM);
-    b.iter(|| {
-        let mut writer = hash::ParallelWriter::new();
-        writer.write_all(input.get()).unwrap();
-        writer.finish()
-    });
-}
-
-#[bench]
-fn bench_bao_hash_parallel_writer_long(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, LONG);
-    b.iter(|| {
-        let mut writer = hash::ParallelWriter::new();
         writer.write_all(input.get()).unwrap();
         writer.finish()
     });
