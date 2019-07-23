@@ -53,64 +53,6 @@ impl RandomInput {
     }
 }
 
-// Note that because of header byte overhead included above, these raw blake2s() benchmarks aren't
-// filling up a full BLOCKBYTES block, and so they appear worse than in the upstream crate. All the
-// other benchmarks below will pay the same overhead, so this is the correct comparison.
-#[bench]
-fn bench_blake2s_whole_short(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, SHORT);
-    b.iter(|| blake2s_simd::blake2s(input.get()));
-}
-
-#[bench]
-fn bench_blake2s_whole_medium(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, MEDIUM);
-    b.iter(|| blake2s_simd::blake2s(input.get()));
-}
-
-#[bench]
-fn bench_blake2s_whole_long(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, LONG);
-    b.iter(|| blake2s_simd::blake2s(input.get()));
-}
-
-fn hash_chunks(mut len: usize) {
-    // If there are N chunks, there are N-1 parent nodes. Also the last chunk has the header
-    // appended. This is all overhead that needs to be accounted for, when we want to see whether
-    // our state management is adding anything on top.
-    let chunk = [0; hash::benchmarks::CHUNK_SIZE];
-    while len > hash::benchmarks::CHUNK_SIZE {
-        let mut chunk_state = blake2s_simd::State::new();
-        chunk_state.update(&chunk);
-        test::black_box(chunk_state.finalize());
-        let mut parent_state = blake2s_simd::State::new();
-        parent_state.update(&[0; 2 * hash::HASH_SIZE]);
-        test::black_box(parent_state.finalize());
-        len -= chunk.len();
-    }
-    let mut chunk_state = blake2s_simd::State::new();
-    chunk_state.update(&chunk[..len]);
-    test::black_box(chunk_state.finalize());
-}
-
-#[bench]
-fn bench_blake2s_chunks_short(b: &mut Bencher) {
-    b.bytes = SHORT as u64;
-    b.iter(|| hash_chunks(SHORT));
-}
-
-#[bench]
-fn bench_blake2s_chunks_medium(b: &mut Bencher) {
-    b.bytes = MEDIUM as u64;
-    b.iter(|| hash_chunks(MEDIUM));
-}
-
-#[bench]
-fn bench_blake2s_chunks_long(b: &mut Bencher) {
-    b.bytes = LONG as u64;
-    b.iter(|| hash_chunks(LONG));
-}
-
 #[bench]
 fn bench_bao_hash_slice_short(b: &mut Bencher) {
     let mut input = RandomInput::new(b, SHORT);
