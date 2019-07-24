@@ -120,28 +120,10 @@ fn encode(args: &Args) -> Result<(), Error> {
         &args.arg_output
     };
     let output = open_output(out_maybe_path)?;
-    if let Some(in_map) = maybe_memmap_input(&input)? {
-        let target_len = if args.flag_outboard.is_some() {
-            bao::encode::outboard_size(in_map.len() as u64)
-        } else {
-            bao::encode::encoded_size(in_map.len() as u64)
-        };
-        if let Some(mut out_map) = maybe_memmap_output(&output, target_len)? {
-            if args.flag_outboard.is_some() {
-                bao::encode::encode_outboard(&in_map, &mut out_map);
-            } else {
-                bao::encode::encode(&in_map, &mut out_map);
-            }
-            return Ok(());
-        }
-    }
-    // If one or both of the files weren't mappable, fall back to the writer. First check that we
-    // have an actual file and not a pipe, because the writer requires seek.
-    let mut writer;
-    if args.flag_outboard.is_some() {
-        writer = bao::encode::Writer::new_outboard(output.require_file()?);
+    let mut writer = if args.flag_outboard.is_some() {
+        bao::encode::Writer::new_outboard(output.require_file()?)
     } else {
-        writer = bao::encode::Writer::new(output.require_file()?);
+        bao::encode::Writer::new(output.require_file()?)
     };
     io::copy(&mut input, &mut writer)?;
     writer.finish()?;
