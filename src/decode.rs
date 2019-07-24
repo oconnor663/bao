@@ -12,7 +12,7 @@
 //!
 //! // Encode some example bytes.
 //! let input = b"some input";
-//! let (hash, encoded) = bao::encode::encode_to_vec(input);
+//! let (encoded, hash) = bao::encode::encode(input);
 //!
 //! // Decode them with one of the all-at-once functions.
 //! let decoded_at_once = bao::decode::decode_to_vec(&encoded, &hash)?;
@@ -227,7 +227,7 @@ fn extract_in_place(
 ///
 /// ```
 /// let input = b"foobar";
-/// let (_, encoded) = bao::encode::encode_to_vec(input);
+/// let (encoded, hash) = bao::encode::encode(input);
 /// let content_len = bao::decode::parse_and_check_content_len(&encoded).unwrap();
 /// assert_eq!(input.len(), content_len);
 ///
@@ -268,7 +268,7 @@ fn root_subtree(content_len: usize, hash: &Hash) -> Subtree {
 ///
 /// ```
 /// let input = b"foobar";
-/// let (hash, encoded) = bao::encode::encode_to_vec(input);
+/// let (encoded, hash) = bao::encode::encode(input);
 /// // Note that if you're allocating a new Vec like this, decode_to_vec is more convenient.
 /// let mut output = vec![0; input.len()];
 /// let content_len = bao::decode::decode(&encoded, &mut output, &hash).unwrap();
@@ -303,7 +303,7 @@ pub fn decode(encoded: &[u8], output: &mut [u8], hash: &Hash) -> Result<usize> {
 ///
 /// ```
 /// let input = b"some bytes";
-/// let (hash, mut buffer) = bao::encode::encode_to_vec(input);
+/// let (mut buffer, hash) = bao::encode::encode(input);
 /// let content_len = bao::decode::decode_in_place(&mut buffer, &hash).unwrap();
 /// assert_eq!(input.len(), content_len);
 /// assert_eq!(input, &buffer[..content_len]);
@@ -345,7 +345,7 @@ pub fn decode_to_vec(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
 /// # Example
 ///
 /// ```
-/// let (hash1, encoded) = bao::encode::encode_to_vec(b"foobar");
+/// let (encoded, hash1) = bao::encode::encode(b"foobar");
 /// let mut reader = &*encoded;
 /// let hash2 = bao::decode::hash_from_encoded_nostd(|buf| {
 ///     let take = buf.len();
@@ -383,7 +383,7 @@ where
 ///
 /// ```
 /// let input = b"foobar";
-/// let (hash1, outboard) = bao::encode::encode_outboard_to_vec(input);
+/// let (outboard, hash1) = bao::encode::outboard(input);
 /// let mut content_reader = &input[..];
 /// let mut outboard_reader = &*outboard;
 /// let hash2 = bao::decode::hash_from_outboard_encoded_nostd(
@@ -431,7 +431,7 @@ where
 /// # Example
 ///
 /// ```
-/// let (hash1, encoded) = bao::encode::encode_to_vec(b"foobar");
+/// let (encoded, hash1) = bao::encode::encode(b"foobar");
 /// let hash2 = bao::decode::hash_from_encoded(&mut &*encoded).unwrap();
 /// assert_eq!(hash1, hash2);
 /// ```
@@ -447,7 +447,7 @@ pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
 ///
 /// ```
 /// let input = b"foobar";
-/// let (hash1, outboard) = bao::encode::encode_outboard_to_vec(input);
+/// let (outboard, hash1) = bao::encode::outboard(input);
 /// let hash2 = bao::decode::hash_from_outboard_encoded(&mut &input[..], &mut &*outboard).unwrap();
 /// assert_eq!(hash1, hash2);
 /// ```
@@ -794,8 +794,8 @@ impl<T: Read, O: Read> fmt::Debug for ReaderShared<T, O> {
 ///
 /// // Create both combined and outboard encodings.
 /// let input = b"some input";
-/// let (hash, encoded) = bao::encode::encode_to_vec(input);
-/// let (_, outboard) = bao::encode::encode_outboard_to_vec(input);
+/// let (encoded, hash) = bao::encode::encode(input);
+/// let (outboard, _) = bao::encode::outboard(input);
 ///
 /// // Decode the combined mode.
 /// let mut combined_output = Vec::new();
@@ -954,7 +954,7 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 ///
 /// // Start by encoding some input.
 /// let input = vec![0; 1_000_000];
-/// let (hash, encoded) = bao::encode::encode_to_vec(&input);
+/// let (encoded, hash) = bao::encode::encode(&input);
 ///
 /// // Slice the encoding. These parameters are multiples of the chunk size, which avoids
 /// // unnecessary overhead.
@@ -1129,7 +1129,7 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let (hash, encoded) = { encode::encode_to_vec(&input) };
+            let (encoded, hash) = { encode::encode(&input) };
 
             let mut output = vec![0; case];
             decode_recurse(&encoded, &root_subtree(input.len(), &hash), &mut output).unwrap();
@@ -1156,7 +1156,7 @@ mod test {
             decoder.read_to_end(&mut output).unwrap();
             assert_eq!(input, output);
 
-            let (outboard_hash, outboard) = { encode::encode_outboard_to_vec(&input) };
+            let (outboard, outboard_hash) = { encode::outboard(&input) };
             assert_eq!(hash, outboard_hash);
             let mut output = Vec::new();
             let mut decoder = Reader::new_outboard(&input[..], &outboard[..], &hash);
@@ -1177,7 +1177,7 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let (hash, encoded) = encode::encode_to_vec(&input);
+            let (encoded, hash) = encode::encode(&input);
             // Don't tweak the header in this test, because that usually causes a panic.
             let mut tweaks = Vec::new();
             if encoded.len() > HEADER_SIZE {
@@ -1232,7 +1232,7 @@ mod test {
             println!();
             println!("input_len {}", input_len);
             let input = make_test_input(input_len);
-            let (hash, encoded) = encode::encode_to_vec(&input);
+            let (encoded, hash) = encode::encode(&input);
             for &seek in hash::TEST_CASES {
                 println!("seek {}", seek);
                 // Test all three types of seeking.
@@ -1265,7 +1265,7 @@ mod test {
         println!("\n\ninput_len {}", input_len);
         let mut prng = ChaChaRng::from_seed([0; 32]);
         let input = make_test_input(input_len);
-        let (hash, encoded) = encode::encode_to_vec(&input);
+        let (encoded, hash) = encode::encode(&input);
         let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
         // Do a thousand random seeks and chunk-sized reads.
         for _ in 0..1000 {
@@ -1299,7 +1299,7 @@ mod test {
         // distinguish the state "just decoded the zero length" from the state "verified the hash
         // of the empty root node", and a decoder must not return EOF before the latter.
 
-        let (zero_hash, zero_encoded) = encode::encode_to_vec(b"");
+        let (zero_encoded, zero_hash) = encode::encode(b"");
         let one_hash = hash::hash(b"x");
 
         // Decoding the empty tree with the right hash should succeed.
@@ -1327,7 +1327,7 @@ mod test {
 
             println!("\ncase {}", case);
             let input = make_test_input(case);
-            let (hash, mut encoded) = encode::encode_to_vec(&input);
+            let (mut encoded, hash) = encode::encode(&input);
             println!("encoded len {}", encoded.len());
 
             // Tweak a bit at the start of a chunk about halfway through. Loop
@@ -1374,7 +1374,7 @@ mod test {
         // even if the caller attempts to seek past the end of the file before reading anything.
         for &case in hash::TEST_CASES {
             let input = make_test_input(case);
-            let (hash, encoded) = encode::encode_to_vec(&input);
+            let (encoded, hash) = encode::encode(&input);
             let mut bad_bytes = *hash.as_bytes();
             bad_bytes[0] ^= 1;
             let bad_hash = Hash::new(&bad_bytes);
@@ -1399,7 +1399,7 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let (hash, encoded) = encode::encode_to_vec(&input);
+            let (encoded, hash) = encode::encode(&input);
             let inferred_hash = hash_from_encoded(&mut Cursor::new(&*encoded)).unwrap();
             assert_eq!(hash, inferred_hash, "hashes don't match");
         }
@@ -1410,7 +1410,7 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let (hash, outboard) = encode::encode_outboard_to_vec(&input);
+            let (outboard, hash) = encode::outboard(&input);
             let inferred_hash =
                 hash_from_outboard_encoded(&mut Cursor::new(&input), &mut Cursor::new(&outboard))
                     .unwrap();
@@ -1422,9 +1422,9 @@ mod test {
     fn test_slices() {
         for &case in hash::TEST_CASES {
             let input = make_test_input(case);
-            let (hash, encoded) = encode::encode_to_vec(&input);
+            let (encoded, hash) = encode::encode(&input);
             // Also make an outboard encoding, to test that case.
-            let (outboard_hash, outboard) = encode::encode_outboard_to_vec(&input);
+            let (outboard, outboard_hash) = encode::outboard(&input);
             assert_eq!(hash, outboard_hash);
             for &slice_start in hash::TEST_CASES {
                 let expected_start = cmp::min(input.len(), slice_start);
@@ -1469,7 +1469,7 @@ mod test {
         let input = make_test_input(20_000);
         let slice_start = 5_000;
         let slice_len = 10_000;
-        let (hash, encoded) = encode::encode_to_vec(&input);
+        let (encoded, hash) = encode::encode(&input);
 
         // Slice out the middle 10_000 bytes;
         let mut slice = Vec::new();
@@ -1490,7 +1490,7 @@ mod test {
 
         // Also confirm that the outboard slice extractor gives the same slice.
         {
-            let (outboard_hash, outboard) = encode::encode_outboard_to_vec(&input);
+            let (outboard, outboard_hash) = encode::outboard(&input);
             assert_eq!(hash, outboard_hash);
             let mut slice_from_outboard = Vec::new();
             let mut extractor = encode::SliceExtractor::new_outboard(
@@ -1530,8 +1530,8 @@ mod test {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let (_, encoded) = encode::encode_to_vec(&input);
-            let (_, outboard) = encode::encode_outboard_to_vec(&input);
+            let (encoded, _) = encode::encode(&input);
+            let (outboard, _) = encode::outboard(&input);
             let mut slice = Vec::new();
             {
                 let mut extractor = encode::SliceExtractor::new_outboard(

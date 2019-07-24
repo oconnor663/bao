@@ -150,37 +150,11 @@ fn test_encode_vectors() {
     for case in &TEST_VECTORS.encode {
         println!("input_len {}", case.input_len);
         let input = make_input(case.input_len);
-        let encoded_size = bao::encode::encoded_size(case.input_len as u64) as usize;
-        let mut encoded = vec![0; encoded_size];
-        let hash = bao::encode::encode(&input, &mut encoded);
-
-        // Make sure the encoded hash is correct.
-        assert_eq!(case.bao_hash, hash.to_hex().to_string());
-
-        // Make sure the encoded output is correct.
+        let (encoded, hash) = bao::encode::encode(&input);
+        assert_eq!(&*case.bao_hash, &*hash.to_hex());
         assert_eq!(case.encoded_blake2s, blake2s(&encoded));
-
-        // Make sure all the other implementations of encode give the same answer.
-        {
-            let (to_vec_hash, to_vec) = bao::encode::encode_to_vec(&input);
-            assert_eq!(hash, to_vec_hash);
-            assert_eq!(encoded, to_vec);
-
-            let mut in_place = vec![0; encoded_size];
-            in_place[..case.input_len].copy_from_slice(&input);
-            let in_place_hash = bao::encode::encode_in_place(&mut in_place, case.input_len);
-            assert_eq!(hash, in_place_hash);
-            assert_eq!(encoded, in_place);
-
-            let mut output = Vec::new();
-            {
-                let mut writer = bao::encode::Writer::new(Cursor::new(&mut output));
-                writer.write_all(&input).unwrap();
-                let writer_hash = writer.finish().unwrap();
-                assert_eq!(hash, writer_hash);
-            }
-            assert_eq!(encoded, output);
-        }
+        let encoded_size = bao::encode::encoded_size(case.input_len as u64) as usize;
+        assert_eq!(encoded_size, encoded.len());
 
         // Test getting the hash from the encoding.
         let hash_encoded = bao::decode::hash_from_encoded(&mut &*encoded).unwrap();
@@ -219,31 +193,11 @@ fn test_outboard_vectors() {
     for case in &TEST_VECTORS.outboard {
         println!("input_len {}", case.input_len);
         let input = make_input(case.input_len);
-        let encoded_size = bao::encode::outboard_size(case.input_len as u64) as usize;
-        let mut outboard = vec![0; encoded_size];
-        let hash = bao::encode::encode_outboard(&input, &mut outboard);
-
-        // Make sure the encoded hash is correct.
-        assert_eq!(case.bao_hash, hash.to_hex().to_string());
-
-        // Make sure the outboard output is correct.
+        let (outboard, hash) = bao::encode::outboard(&input);
+        assert_eq!(&*case.bao_hash, &*hash.to_hex());
         assert_eq!(case.encoded_blake2s, blake2s(&outboard));
-
-        // Make sure all the other implementations of encode give the same answer.
-        {
-            let (to_vec_hash, to_vec) = bao::encode::encode_outboard_to_vec(&input);
-            assert_eq!(hash, to_vec_hash);
-            assert_eq!(outboard, to_vec);
-
-            let mut output = Vec::new();
-            {
-                let mut writer = bao::encode::Writer::new_outboard(Cursor::new(&mut output));
-                writer.write_all(&input).unwrap();
-                let writer_hash = writer.finish().unwrap();
-                assert_eq!(hash, writer_hash);
-            }
-            assert_eq!(outboard, output);
-        }
+        let outboard_size = bao::encode::outboard_size(case.input_len as u64) as usize;
+        assert_eq!(outboard_size, outboard.len());
 
         // Test getting the hash from the encoding.
         let hash_encoded =
@@ -285,12 +239,8 @@ fn test_seek_vectors() {
     for case in &TEST_VECTORS.seek {
         println!("\n\ninput_len {}", case.input_len);
         let input = make_input(case.input_len);
-        let encoded_size = bao::encode::encoded_size(case.input_len as u64) as usize;
-        let mut encoded = vec![0; encoded_size];
-        let hash = bao::encode::encode(&input, &mut encoded);
-        let outboard_size = bao::encode::outboard_size(case.input_len as u64) as usize;
-        let mut outboard = vec![0; outboard_size];
-        let outboard_hash = bao::encode::encode_outboard(&input, &mut outboard);
+        let (encoded, hash) = bao::encode::encode(&input);
+        let (outboard, outboard_hash) = bao::encode::outboard(&input);
         assert_eq!(hash, outboard_hash);
 
         // First, test all the different seek points using fresh readers.
@@ -376,12 +326,8 @@ fn test_slice_vectors() {
     for case in &TEST_VECTORS.slice {
         println!("\n\ninput_len {}", case.input_len);
         let input = make_input(case.input_len);
-        let encoded_size = bao::encode::encoded_size(case.input_len as u64) as usize;
-        let mut encoded = vec![0; encoded_size];
-        let hash = bao::encode::encode(&input, &mut encoded);
-        let outboard_size = bao::encode::outboard_size(case.input_len as u64) as usize;
-        let mut outboard = vec![0; outboard_size];
-        let outboard_hash = bao::encode::encode_outboard(&input, &mut outboard);
+        let (encoded, hash) = bao::encode::encode(&input);
+        let (outboard, outboard_hash) = bao::encode::outboard(&input);
         assert_eq!(hash, outboard_hash);
 
         for slice in &case.slices {

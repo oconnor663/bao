@@ -17,22 +17,19 @@
 //! ```
 //! # fn main() -> Result<(), Box<std::error::Error>> {
 //! use std::io::prelude::*;
+//! use std::io::Cursor;
 //!
 //! let input = b"some input";
 //! let expected_hash = bao::hash::hash(input);
 //!
-//! let (hash, encoded_at_once) = bao::encode::encode_to_vec(b"some input");
+//! let (encoded_at_once, hash) = bao::encode::encode(b"some input");
 //! assert_eq!(expected_hash, hash);
 //!
 //! let mut encoded_incrementally = Vec::new();
-//! {
-//!     // The inner block here limits the lifetime of this mutable borrow.
-//!     let encoded_cursor = std::io::Cursor::new(&mut encoded_incrementally);
-//!     let mut encoder = bao::encode::Writer::new(encoded_cursor);
-//!     encoder.write_all(b"some input")?;
-//!     let hash = encoder.finish()?;
-//!     assert_eq!(expected_hash, hash);
-//! }
+//! let mut encoder = bao::encode::Writer::new(Cursor::new(&mut encoded_incrementally));
+//! encoder.write_all(b"some input")?;
+//! let hash = encoder.finish()?;
+//! assert_eq!(expected_hash, hash);
 //!
 //! assert_eq!(encoded_at_once, encoded_incrementally);
 //! # Ok(())
@@ -40,11 +37,10 @@
 //! ```
 
 use crate::hash::Finalization::{self, NotRoot, Root};
-use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
+use crate::hash::{self, Hash, CHUNK_SIZE, HEADER_SIZE, PARENT_SIZE};
 use arrayref::{array_mut_ref, array_ref};
 use arrayvec::ArrayVec;
 use blake2s_simd::many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE};
-use copy_in_place::copy_in_place;
 use core::cmp;
 use core::fmt;
 #[cfg(feature = "std")]
@@ -54,307 +50,29 @@ use std::io::prelude::*;
 #[cfg(feature = "std")]
 use std::io::SeekFrom;
 
-/// Encode the input bytes in the combined mode. `output.len()` must be exactly
-/// `encoded_size(input.len())`.
+/// Encode an entire slice into a bytes vector in the default combined mode.
 ///
-/// If the `std` feature is enabled, as it is by default, this will use multiple threads via Rayon.
-///
-/// # Panics
-///
-/// Panics if the output slice is the wrong length.
-///
-/// # Example
-///
-/// ```
-/// let input = b"some bytes";
-/// let encoded_size = bao::encode::encoded_size(input.len() as u64);
-/// assert!(encoded_size <= usize::max_value() as u128);
-/// // Note that if you're allocating a new Vec like this, encode_to_vec is more convenient.
-/// let mut encoded = vec![0; encoded_size as usize];
-/// bao::encode::encode(input, &mut encoded);
-/// ```
-pub fn encode(input: &[u8], output: &mut [u8]) -> Hash {
-    let content_len = input.len() as u64;
-    assert_eq!(
-        output.len() as u128,
-        encoded_size(content_len),
-        "output is the wrong length"
-    );
-    output[..HEADER_SIZE].copy_from_slice(&hash::encode_len(content_len));
-    #[cfg(feature = "std")]
-    {
-        if input.len() <= hash::MAX_SINGLE_THREADED {
-            encode_recurse(input, &mut output[HEADER_SIZE..], Root)
-        } else {
-            encode_recurse_rayon(input, &mut output[HEADER_SIZE..], Root)
-        }
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        encode_recurse(input, &mut output[HEADER_SIZE..], Root)
-    }
+/// This is a convenience wrapper around `Writer::write_all`.
+pub fn encode(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
+    let bytes = input.as_ref();
+    let mut vec = Vec::with_capacity(encoded_size(bytes.len() as u64) as usize);
+    let mut writer = Writer::new(io::Cursor::new(&mut vec));
+    writer.write_all(bytes).unwrap();
+    let hash = writer.finish().unwrap();
+    (vec, hash)
 }
 
-/// Encode the first `content_len` bytes from the input buffer in the combined mode, overwriting
-/// the input buffer. `buf.len()` must be exactly `encoded_size(content_len as u64)`.
+/// Encode an entire slice into a bytes vector in the outboard mode.
 ///
-/// If the `std` feature is enabled, as it is by default, this will use multiple threads via Rayon.
-/// This function is slower than `encode`, however, because only the hashing can be parallelized;
-/// copying the input bytes around has to be done on a single thread.
-///
-/// # Panics
-///
-/// Panics if the buffer is the wrong length.
-///
-/// # Example
-///
-/// ```
-/// let input = b"some bytes";
-/// let encoded_size = bao::encode::encoded_size(input.len() as u64);
-/// assert!(encoded_size <= usize::max_value() as u128);
-/// let mut buffer = input.to_vec();
-/// buffer.resize(encoded_size as usize, 0);
-/// bao::encode::encode_in_place(&mut buffer, input.len());
-/// ```
-pub fn encode_in_place(buf: &mut [u8], content_len: usize) -> Hash {
-    // Note that if you change anything in this function, you should probably
-    // also update benchmarks::encode_in_place_fake.
-    assert_eq!(
-        buf.len() as u128,
-        encoded_size(content_len as u64),
-        "buf is the wrong length"
-    );
-    layout_chunks_in_place(buf, 0, HEADER_SIZE, content_len);
-    let (header, rest) = buf.split_at_mut(HEADER_SIZE);
-    header.copy_from_slice(&hash::encode_len(content_len as u64));
-    #[cfg(feature = "std")]
-    {
-        if content_len <= hash::MAX_SINGLE_THREADED {
-            write_parents_in_place(rest, content_len, Root)
-        } else {
-            write_parents_in_place_rayon(rest, content_len, Root)
-        }
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        write_parents_in_place(rest, content_len, Root)
-    }
-}
-
-/// Encode the input bytes in the outboard mode. `output.len()` must be exactly
-/// `outboard_size(input.len())`.
-///
-/// If the `std` feature is enabled, as it is by default, this will use multiple threads via Rayon.
-///
-/// # Panics
-///
-/// Panics if the output slice is the wrong length.
-///
-/// # Example
-///
-/// ```
-/// let input = b"some bytes";
-/// let outboard_size = bao::encode::outboard_size(input.len() as u64);
-/// assert!(outboard_size <= usize::max_value() as u128);
-/// // Note that if you're allocating a new Vec like this, encode_outboard_to_vec is more convenient.
-/// let mut outboard = vec![0; outboard_size as usize];
-/// bao::encode::encode_outboard(input, &mut outboard);
-/// ```
-pub fn encode_outboard(input: &[u8], output: &mut [u8]) -> Hash {
-    let content_len = input.len() as u64;
-    assert_eq!(
-        output.len() as u128,
-        outboard_size(content_len),
-        "output is the wrong length"
-    );
-    output[..HEADER_SIZE].copy_from_slice(&hash::encode_len(content_len));
-    #[cfg(feature = "std")]
-    {
-        if input.len() <= hash::MAX_SINGLE_THREADED {
-            encode_outboard_recurse(input, &mut output[HEADER_SIZE..], Root)
-        } else {
-            encode_outboard_recurse_rayon(input, &mut output[HEADER_SIZE..], Root)
-        }
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        encode_outboard_recurse(input, &mut output[HEADER_SIZE..], Root)
-    }
-}
-
-#[cfg(feature = "std")]
-/// A convenience wrapper around `encode`, which allocates a new `Vec` to hold the encoding.
-pub fn encode_to_vec(input: &[u8]) -> (Hash, Vec<u8>) {
-    let size = encoded_size(input.len() as u64) as usize;
-    // Unsafe code here could avoid the cost of initialization, but it's not much.
-    let mut output = vec![0; size];
-    let hash = encode(input, &mut output);
-    (hash, output)
-}
-
-#[cfg(feature = "std")]
-/// A convenience wrapper around `encode_outboard`, which allocates a new `Vec` to hold the
-/// encoding.
-pub fn encode_outboard_to_vec(input: &[u8]) -> (Hash, Vec<u8>) {
-    let size = outboard_size(input.len() as u64) as usize;
-    let mut output = vec![0; size];
-    let hash = encode_outboard(input, &mut output);
-    (hash, output)
-}
-
-fn encode_recurse(input: &[u8], output: &mut [u8], finalization: Finalization) -> Hash {
-    debug_assert_eq!(
-        output.len() as u128,
-        encoded_subtree_size(input.len() as u64)
-    );
-    if input.len() <= CHUNK_SIZE {
-        output.copy_from_slice(input);
-        return hash::hash_chunk(input, finalization);
-    }
-    let left_len = hash::left_len(input.len() as u64);
-    let (left_in, right_in) = input.split_at(left_len as usize);
-    let (parent_out, rest) = output.split_at_mut(PARENT_SIZE);
-    let (left_out, right_out) = rest.split_at_mut(encoded_subtree_size(left_len) as usize);
-    let left_hash = encode_recurse(left_in, left_out, NotRoot);
-    let right_hash = encode_recurse(right_in, right_out, NotRoot);
-    parent_out[..HASH_SIZE].copy_from_slice(left_hash.as_bytes());
-    parent_out[HASH_SIZE..].copy_from_slice(right_hash.as_bytes());
-    hash::parent_hash(&left_hash, &right_hash, finalization)
-}
-
-#[cfg(feature = "std")]
-fn encode_recurse_rayon(input: &[u8], output: &mut [u8], finalization: Finalization) -> Hash {
-    debug_assert_eq!(
-        output.len() as u128,
-        encoded_subtree_size(input.len() as u64)
-    );
-    if input.len() <= CHUNK_SIZE {
-        output.copy_from_slice(input);
-        return hash::hash_chunk(input, finalization);
-    }
-    let left_len = hash::left_len(input.len() as u64);
-    let (left_in, right_in) = input.split_at(left_len as usize);
-    let (parent_out, rest) = output.split_at_mut(PARENT_SIZE);
-    let (left_out, right_out) = rest.split_at_mut(encoded_subtree_size(left_len) as usize);
-    let (left_hash, right_hash) = rayon::join(
-        || encode_recurse_rayon(left_in, left_out, NotRoot),
-        || encode_recurse_rayon(right_in, right_out, NotRoot),
-    );
-    parent_out[..HASH_SIZE].copy_from_slice(left_hash.as_bytes());
-    parent_out[HASH_SIZE..].copy_from_slice(right_hash.as_bytes());
-    hash::parent_hash(&left_hash, &right_hash, finalization)
-}
-
-fn encode_outboard_recurse(input: &[u8], output: &mut [u8], finalization: Finalization) -> Hash {
-    debug_assert_eq!(
-        output.len() as u128,
-        outboard_subtree_size(input.len() as u64)
-    );
-    if input.len() <= CHUNK_SIZE {
-        return hash::hash_chunk(input, finalization);
-    }
-    let left_len = hash::left_len(input.len() as u64);
-    let (left_in, right_in) = input.split_at(left_len as usize);
-    let (parent_out, rest) = output.split_at_mut(PARENT_SIZE);
-    let (left_out, right_out) = rest.split_at_mut(outboard_subtree_size(left_len) as usize);
-    let left_hash = encode_outboard_recurse(left_in, left_out, NotRoot);
-    let right_hash = encode_outboard_recurse(right_in, right_out, NotRoot);
-    parent_out[..HASH_SIZE].copy_from_slice(left_hash.as_bytes());
-    parent_out[HASH_SIZE..].copy_from_slice(right_hash.as_bytes());
-    hash::parent_hash(&left_hash, &right_hash, finalization)
-}
-
-#[cfg(feature = "std")]
-fn encode_outboard_recurse_rayon(
-    input: &[u8],
-    output: &mut [u8],
-    finalization: Finalization,
-) -> Hash {
-    debug_assert_eq!(
-        output.len() as u128,
-        outboard_subtree_size(input.len() as u64)
-    );
-    if input.len() <= CHUNK_SIZE {
-        return hash::hash_chunk(input, finalization);
-    }
-    let left_len = hash::left_len(input.len() as u64);
-    let (left_in, right_in) = input.split_at(left_len as usize);
-    let (parent_out, rest) = output.split_at_mut(PARENT_SIZE);
-    let (left_out, right_out) = rest.split_at_mut(outboard_subtree_size(left_len) as usize);
-    let (left_hash, right_hash) = rayon::join(
-        || encode_outboard_recurse_rayon(left_in, left_out, NotRoot),
-        || encode_outboard_recurse_rayon(right_in, right_out, NotRoot),
-    );
-    parent_out[..HASH_SIZE].copy_from_slice(left_hash.as_bytes());
-    parent_out[HASH_SIZE..].copy_from_slice(right_hash.as_bytes());
-    hash::parent_hash(&left_hash, &right_hash, finalization)
-}
-
-// This function doesn't check for adequate space. Its caller should check.
-fn layout_chunks_in_place(
-    buf: &mut [u8],
-    read_offset: usize,
-    write_offset: usize,
-    content_len: usize,
-) {
-    if content_len <= CHUNK_SIZE {
-        copy_in_place(buf, read_offset..read_offset + content_len, write_offset);
-    } else {
-        let left_len = hash::left_len(content_len as u64) as usize;
-        let left_write_offset = write_offset + PARENT_SIZE;
-        let right_len = content_len - left_len;
-        let right_read_offset = read_offset + left_len;
-        let right_write_offset = left_write_offset + encoded_subtree_size(left_len as u64) as usize;
-        // Encoding the left side will overwrite some of the space occupied by the right, so do the
-        // right side first.
-        layout_chunks_in_place(buf, right_read_offset, right_write_offset, right_len);
-        layout_chunks_in_place(buf, read_offset, left_write_offset, left_len);
-    }
-}
-
-// This function doesn't check for adequate space. Its caller should check.
-fn write_parents_in_place(buf: &mut [u8], content_len: usize, finalization: Finalization) -> Hash {
-    if content_len <= CHUNK_SIZE {
-        debug_assert_eq!(content_len, buf.len());
-        hash::hash_chunk(buf, finalization)
-    } else {
-        let left_len = hash::left_len(content_len as u64) as usize;
-        let right_len = content_len - left_len;
-        let split = encoded_subtree_size(left_len as u64) as usize;
-        let (parent, rest) = buf.split_at_mut(PARENT_SIZE);
-        let (left_slice, right_slice) = rest.split_at_mut(split);
-        let left_hash = write_parents_in_place(left_slice, left_len, NotRoot);
-        let right_hash = write_parents_in_place(right_slice, right_len, NotRoot);
-        *array_mut_ref!(parent, 0, HASH_SIZE) = *left_hash.as_bytes();
-        *array_mut_ref!(parent, HASH_SIZE, HASH_SIZE) = *right_hash.as_bytes();
-        hash::parent_hash(&left_hash, &right_hash, finalization)
-    }
-}
-
-// This function doesn't check for adequate space. Its caller should check.
-#[cfg(feature = "std")]
-fn write_parents_in_place_rayon(
-    buf: &mut [u8],
-    content_len: usize,
-    finalization: Finalization,
-) -> Hash {
-    if content_len <= CHUNK_SIZE {
-        debug_assert_eq!(content_len, buf.len());
-        hash::hash_chunk(buf, finalization)
-    } else {
-        let left_len = hash::left_len(content_len as u64) as usize;
-        let right_len = content_len - left_len;
-        let split = encoded_subtree_size(left_len as u64) as usize;
-        let (parent, rest) = buf.split_at_mut(PARENT_SIZE);
-        let (left_slice, right_slice) = rest.split_at_mut(split);
-        let (left_hash, right_hash) = rayon::join(
-            || write_parents_in_place_rayon(left_slice, left_len, NotRoot),
-            || write_parents_in_place_rayon(right_slice, right_len, NotRoot),
-        );
-        *array_mut_ref!(parent, 0, HASH_SIZE) = *left_hash.as_bytes();
-        *array_mut_ref!(parent, HASH_SIZE, HASH_SIZE) = *right_hash.as_bytes();
-        hash::parent_hash(&left_hash, &right_hash, finalization)
-    }
+/// This is a convenience wrapper around `Writer::new_outboard` and
+/// `Writer::write_all`.
+pub fn outboard(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
+    let bytes = input.as_ref();
+    let mut vec = Vec::with_capacity(outboard_size(bytes.len() as u64) as usize);
+    let mut writer = Writer::new_outboard(io::Cursor::new(&mut vec));
+    writer.write_all(bytes).unwrap();
+    let hash = writer.finish().unwrap();
+    (vec, hash)
 }
 
 /// Compute the size of a combined encoding, given the size of the input. Note that for input sizes
@@ -1235,7 +953,7 @@ pub(crate) enum LenNext {
 /// use std::io::prelude::*;
 ///
 /// let input = vec![0; 1_000_000];
-/// let (_, encoded) = bao::encode::encode_to_vec(&input);
+/// let (encoded, hash) = bao::encode::encode(&input);
 /// // These parameters are multiples of the chunk size, which avoids unnecessary overhead.
 /// let slice_start = 65536;
 /// let slice_len = 8192;
@@ -1434,13 +1152,15 @@ pub(crate) fn cast_offset(offset: u128) -> io::Result<u64> {
 mod test {
     use super::*;
     use crate::decode::make_test_input;
-    use std::io::Cursor;
 
     #[test]
-    fn test_encoded_size() {
+    fn test_encode() {
         for &case in hash::TEST_CASES {
+            println!("case {}", case);
             let input = make_test_input(case);
-            let (_, encoded) = encode_to_vec(&input);
+            let expected_hash = hash::hash(&input);
+            let (encoded, hash) = encode(&input);
+            assert_eq!(expected_hash, hash);
             assert_eq!(encoded.len() as u128, encoded_size(case as u64));
             assert_eq!(encoded.len(), encoded.capacity());
             assert_eq!(
@@ -1451,78 +1171,15 @@ mod test {
     }
 
     #[test]
-    fn test_encode() {
-        for &case in hash::TEST_CASES {
-            println!("case {}", case);
-            let input = make_test_input(case);
-            let expected_hash = hash::hash(&input);
-            let (to_vec_hash, output) = encode_to_vec(&input);
-            assert_eq!(expected_hash, to_vec_hash);
-
-            let mut serial_output = vec![0; encoded_subtree_size(case as u64) as usize];
-            let serial_hash = encode_recurse(&input, &mut serial_output, Root);
-            assert_eq!(expected_hash, serial_hash);
-            assert_eq!(&output[HEADER_SIZE..], &*serial_output);
-
-            let mut parallel_output = vec![0; encoded_subtree_size(case as u64) as usize];
-            let parallel_hash = encode_recurse_rayon(&input, &mut parallel_output, Root);
-            assert_eq!(expected_hash, parallel_hash);
-            assert_eq!(&output[HEADER_SIZE..], &*parallel_output);
-
-            let mut highlevel_output = vec![0; encoded_size(case as u64) as usize];
-            let highlevel_hash = encode(&input, &mut highlevel_output);
-            assert_eq!(expected_hash, highlevel_hash);
-            assert_eq!(output, highlevel_output);
-
-            let mut highlevel_in_place_output = input.clone();
-            highlevel_in_place_output.resize(encoded_size(case as u64) as usize, 0);
-            let highlevel_in_place_hash = encode_in_place(&mut highlevel_in_place_output, case);
-            assert_eq!(expected_hash, highlevel_in_place_hash);
-            assert_eq!(output, highlevel_in_place_output);
-
-            let mut writer_output = Vec::new();
-            {
-                let mut writer = Writer::new(Cursor::new(&mut writer_output));
-                writer.write_all(&input).unwrap();
-                let writer_hash = writer.finish().unwrap();
-                assert_eq!(expected_hash, writer_hash);
-            }
-            assert_eq!(output, writer_output);
-        }
-    }
-
-    #[test]
     fn test_outboard_encode() {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
             let expected_hash = hash::hash(&input);
-            let (to_vec_hash, outboard) = encode_outboard_to_vec(&input);
-            assert_eq!(expected_hash, to_vec_hash);
-
-            let mut serial_output = vec![0; outboard_subtree_size(case as u64) as usize];
-            let serial_hash = encode_outboard_recurse(&input, &mut serial_output, Root);
-            assert_eq!(expected_hash, serial_hash);
-            assert_eq!(&outboard[HEADER_SIZE..], &*serial_output);
-
-            let mut parallel_outboard = vec![0; outboard_subtree_size(case as u64) as usize];
-            let parallel_hash = encode_outboard_recurse_rayon(&input, &mut parallel_outboard, Root);
-            assert_eq!(expected_hash, parallel_hash);
-            assert_eq!(&outboard[HEADER_SIZE..], &*parallel_outboard);
-
-            let mut highlevel_outboard = vec![0; outboard_size(case as u64) as usize];
-            let highlevel_hash = encode_outboard(&input, &mut highlevel_outboard);
-            assert_eq!(expected_hash, highlevel_hash);
-            assert_eq!(outboard, highlevel_outboard);
-
-            let mut writer_outboard = Vec::new();
-            {
-                let mut writer = Writer::new_outboard(Cursor::new(&mut writer_outboard));
-                writer.write_all(&input).unwrap();
-                let writer_hash = writer.finish().unwrap();
-                assert_eq!(expected_hash, writer_hash);
-            }
-            assert_eq!(outboard, writer_outboard);
+            let (outboard, hash) = outboard(&input);
+            assert_eq!(expected_hash, hash);
+            assert_eq!(outboard.len() as u128, outboard_size(case as u64));
+            assert_eq!(outboard.len(), outboard.capacity());
         }
     }
 
