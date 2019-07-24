@@ -391,7 +391,7 @@ impl State {
         }
     }
 
-    fn count(&self) -> u64 {
+    pub fn count(&self) -> u64 {
         self.total_len
     }
 

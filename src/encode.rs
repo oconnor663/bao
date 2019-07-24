@@ -590,7 +590,6 @@ enum FlipperNext {
 #[derive(Clone, Debug)]
 pub struct Writer<T: Read + Write + Seek> {
     inner: T,
-    total_len: u64,
     chunk_state: blake2s_simd::State,
     tree_state: hash::State,
     outboard: bool,
@@ -604,7 +603,6 @@ impl<T: Read + Write + Seek> Writer<T> {
     pub fn new(inner: T) -> Self {
         Self {
             inner,
-            total_len: 0,
             chunk_state: hash::new_chunk_state(),
             tree_state: hash::State::new(),
             outboard: false,
@@ -630,8 +628,13 @@ impl<T: Read + Write + Seek> Writer<T> {
     /// `std::io::Write` interface. The downside is that `finish` is a relatively expensive step.
     pub fn finish(&mut self) -> io::Result<Hash> {
         // First finish the post-order encoding.
+        let total_len = self
+            .tree_state
+            .count()
+            .checked_add(self.chunk_state.count())
+            .expect("addition overflowed");
         let root_hash;
-        if self.total_len <= CHUNK_SIZE as u64 {
+        if total_len <= CHUNK_SIZE as u64 {
             root_hash = hash::finalize_hash(&mut self.chunk_state, Root);
         } else {
             let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
@@ -647,7 +650,7 @@ impl<T: Read + Write + Seek> Writer<T> {
                 }
             }
         }
-        self.inner.write_all(&hash::encode_len(self.total_len))?;
+        self.inner.write_all(&hash::encode_len(total_len))?;
 
         // Then flip the tree to be pre-order.
         self.flip_post_order_stream()?;
@@ -730,10 +733,6 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
             self.inner.write(&buf[..take])?
         };
         self.chunk_state.update(&buf[..written]);
-        self.total_len = self
-            .total_len
-            .checked_add(written as u64)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "length overflow"))?;
         Ok(written)
     }
 
@@ -865,8 +864,8 @@ impl ParseState {
     // indicated bookkeeping, adjusting its subtree stack if any and seeking
     // its underlying reader if any. The caller then passes the object back to
     // seek_bookkeeping_done(), which returns an optional NextRead action. If
-    // the action is non-None, the caller carries it out and then repeats the
-    // seek loop. If the action is None, the seek is finished.
+    // the action is other than Done, the caller carries it out and then
+    // repeats the seek loop. If the action is Done, the seek is finished.
     //
     // Usually seeking won't instruct the caller to read any chunks, but will
     // instead stop when it gets to the position where the next read loop will
