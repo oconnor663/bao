@@ -41,14 +41,12 @@
 
 use crate::hash::Finalization::{self, NotRoot, Root};
 use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, PARENT_SIZE};
-use arrayref::array_mut_ref;
+use arrayref::{array_mut_ref, array_ref};
 use arrayvec::ArrayVec;
-use blake2s_simd;
+use blake2s_simd::many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE};
 use copy_in_place::copy_in_place;
 use core::cmp;
 use core::fmt;
-#[cfg(feature = "std")]
-use rayon;
 #[cfg(feature = "std")]
 use std::io;
 #[cfg(feature = "std")]
@@ -570,7 +568,9 @@ enum FlipperNext {
 /// required part of its interface. However, it could be extended to support `no_std`-compatible
 /// traits outside of the standard library too. Please reach out to me if you need that.
 ///
-/// This implementation is single-threaded.
+/// The implementation is single-threaded but uses SIMD parallelism. As with
+/// `hash::Writer`, performance is best if you use an input buffer of size
+/// `hash::BUF_SIZE`, or some integer multiple of that.
 ///
 /// # Example
 ///
@@ -627,32 +627,47 @@ impl<T: Read + Write + Seek> Writer<T> {
     /// stream input without knowing its length in advance, which is a core requirement of the
     /// `std::io::Write` interface. The downside is that `finish` is a relatively expensive step.
     pub fn finish(&mut self) -> io::Result<Hash> {
-        // First finish the post-order encoding.
+        // Compute the total len before we merge the final chunk into the
+        // tree_state.
         let total_len = self
             .tree_state
             .count()
             .checked_add(self.chunk_state.count())
             .expect("addition overflowed");
-        let root_hash;
-        if total_len <= CHUNK_SIZE as u64 {
-            root_hash = hash::finalize_hash(&mut self.chunk_state, Root);
-        } else {
-            let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
+
+        // If the chunk_state contains any chunk data, we have to finalize it
+        // and incorporate it into the tree. Also, if there was never any data
+        // at all, we have to hash the empty chunk. Note that any partial chunk
+        // bytes retained in the chunk_state have already been written to the
+        // underlying writer by .write().
+        if self.chunk_state.count() > 0 || self.tree_state.count() == 0 {
+            let finalization = if self.tree_state.count() == 0 {
+                Root
+            } else {
+                NotRoot
+            };
+            let hash = hash::finalize_hash(&mut self.chunk_state, finalization);
             self.tree_state
-                .push_subtree(&chunk_hash, self.chunk_state.count() as usize);
-            loop {
-                match self.tree_state.merge_finish() {
-                    hash::StateFinish::Parent(parent) => self.inner.write_all(&parent)?,
-                    hash::StateFinish::Root(root) => {
-                        root_hash = root;
-                        break;
-                    }
+                .push_subtree(&hash, self.chunk_state.count() as usize);
+        }
+
+        // Merge and write all the parents along the right edge.
+        let root_hash;
+        loop {
+            match self.tree_state.merge_finish() {
+                hash::StateFinish::Parent(parent) => self.inner.write_all(&parent)?,
+                hash::StateFinish::Root(root) => {
+                    root_hash = root;
+                    break;
                 }
             }
         }
+
+        // Write the length header, at the end.
         self.inner.write_all(&hash::encode_len(total_len))?;
 
-        // Then flip the tree to be pre-order.
+        // Finally, flip the tree to be pre-order. This means rewriting the
+        // entire output, so it's expensive.
         self.flip_post_order_stream()?;
 
         Ok(root_hash)
@@ -711,29 +726,96 @@ impl<T: Read + Write + Seek> Writer<T> {
 
 #[cfg(feature = "std")]
 impl<T: Read + Write + Seek> Write for Writer<T> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if buf.is_empty() {
-            // Without more bytes coming, we're not sure how to finalize.
-            return Ok(0);
+    fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
+        // Similar to hash::Writer, in normal operation we hash chunks in their
+        // entirety using SIMD as they come in, only retaining a partial chunk
+        // in the chunk_state if there's uneven input left over. However again,
+        // the first chunk is a special case: If we receive exactly one chunk
+        // on the first call, we have to retain it in the chunk_state, because
+        // we won't know how to finalize it until we get more input. (Receiving
+        // less than one chunk would retain it in any case, as uneven input
+        // left over.)
+        let orig_input_len = input.len();
+        let maybe_root = self.tree_state.count() == 0 && input.len() <= CHUNK_SIZE;
+        let have_partial_chunk = self.chunk_state.count() > 0;
+        if maybe_root || have_partial_chunk {
+            let want = CHUNK_SIZE - self.chunk_state.count() as usize;
+            let take = cmp::min(want, input.len());
+            if !self.outboard {
+                self.inner.write_all(dbg!(&input[..take]))?;
+            }
+            self.chunk_state.update(&input[..take]);
+            input = &input[take..];
+
+            // If there's more input coming, finish the chunk before we
+            // continue. Otherwise short circuit.
+            if !input.is_empty() {
+                // In this case there cannot be any pending parent nodes to be
+                // written, because either we're partway through a chunk
+                // already or we're the first chunk.
+                debug_assert!(self.tree_state.merge_parent().is_none());
+                let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
+                self.chunk_state = hash::new_chunk_state();
+                self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
+            } else {
+                return Ok(orig_input_len);
+            }
         }
-        if self.chunk_state.count() as usize == CHUNK_SIZE {
-            let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
-            self.chunk_state = hash::new_chunk_state();
-            self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
+
+        // Hash groups of full chunks in parallel using SIMD. After hashing a
+        // group of chunks, write each chunk to the output (if non-outboard),
+        // incorporate its hash into the tree_state, and write out any
+        // completed parent nodes.
+        let params = hash::chunk_params(NotRoot);
+        let mut chunks = input.chunks_exact(CHUNK_SIZE);
+        let mut fused_chunks = chunks.by_ref().fuse();
+        loop {
+            let chunk_group: ArrayVec<[&[u8; CHUNK_SIZE]; MAX_SIMD_DEGREE]> = fused_chunks
+                .by_ref()
+                .take(MAX_SIMD_DEGREE)
+                .map(|chunk| array_ref!(chunk, 0, CHUNK_SIZE))
+                .collect();
+            if chunk_group.is_empty() {
+                break;
+            }
+            let mut jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = chunk_group
+                .iter()
+                .map(|&chunk| HashManyJob::new(&params, chunk))
+                .collect();
+            blake2s_simd::many::hash_many(&mut jobs);
+            for (&chunk, job) in chunk_group.iter().zip(&jobs) {
+                // Note that we always merge and write the previous chunk's
+                // parents just before writing the next chunk, rather than
+                // after we finished writing the previous chunk. That's because
+                // we don't know whether the last set of merges is root or not,
+                // until we get more input.
+                while let Some(parent) = self.tree_state.merge_parent() {
+                    self.inner.write_all(&parent)?;
+                }
+                if !self.outboard {
+                    self.inner.write_all(chunk)?;
+                }
+                let chunk_hash = Hash::new(job.to_hash().as_array());
+                self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
+            }
+        }
+
+        // Emit any remaining partial chunk bytes and retain them in the
+        // chunk_state.
+        debug_assert!(chunks.remainder().len() < CHUNK_SIZE);
+        debug_assert_eq!(self.chunk_state.count(), 0);
+        if !chunks.remainder().is_empty() {
+            // Again we merge and write the previous chunk's parents now that
+            // we're sure there's more input.
             while let Some(parent) = self.tree_state.merge_parent() {
                 self.inner.write_all(&parent)?;
             }
+            if !self.outboard {
+                self.inner.write_all(dbg!(chunks.remainder()))?;
+            }
+            self.chunk_state.update(chunks.remainder());
         }
-        let want = CHUNK_SIZE - self.chunk_state.count() as usize;
-        let take = cmp::min(want, buf.len());
-        // The outboard mode skips writing content to the stream.
-        let written = if self.outboard {
-            take
-        } else {
-            self.inner.write(&buf[..take])?
-        };
-        self.chunk_state.update(&buf[..written]);
-        Ok(written)
+        Ok(orig_input_len)
     }
 
     fn flush(&mut self) -> io::Result<()> {

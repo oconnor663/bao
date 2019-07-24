@@ -31,11 +31,11 @@ pub const HASH_SIZE: usize = 32;
 pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
 pub(crate) const HEADER_SIZE: usize = 8;
 pub(crate) const CHUNK_SIZE: usize = 4096;
-// NOTE: The max stack depth described in the spec is 52. However this
-// implementation pushes the final chunk hash onto the stack before running the
-// merge loop, so we need space for one more. That said, 2^52 bytes is already
-// an astronomical amount of input that will probably never come up in
-// practice.
+// NOTE: The max stack depth described in the spec is 52, the log-base-2 of the
+// maximum number of chunks. However this implementation pushes the final chunk
+// hash onto the stack before running the merge loop, so we need space for one
+// more. That said, 2^64 bytes is an astronomical amount of input that will
+// probably never come up in practice.
 pub(crate) const MAX_DEPTH: usize = 53;
 pub(crate) const MAX_SINGLE_THREADED: usize = 8 * CHUNK_SIZE;
 
@@ -196,7 +196,7 @@ pub(crate) fn left_len(content_len: u64) -> u64 {
     largest_power_of_two_leq(full_chunks) * CHUNK_SIZE as u64
 }
 
-fn chunk_params(finalization: Finalization) -> blake2s_simd::Params {
+pub(crate) fn chunk_params(finalization: Finalization) -> blake2s_simd::Params {
     let mut params = common_params();
     if let Root = finalization {
         params.last_node(true);
@@ -204,7 +204,7 @@ fn chunk_params(finalization: Finalization) -> blake2s_simd::Params {
     params
 }
 
-fn parent_params(finalization: Finalization) -> blake2s_simd::Params {
+pub(crate) fn parent_params(finalization: Finalization) -> blake2s_simd::Params {
     let mut params = common_params();
     params.node_depth(1);
     if let Root = finalization {
@@ -452,7 +452,9 @@ impl State {
             .expect("addition overflowed");
     }
 
-    /// Returns a `ParentNode` corresponding to a just-completed subtree, if any.
+    /// Returns a `ParentNode` corresponding to a just-completed subtree, if
+    /// any. You must not call this until you're sure there's more input
+    /// coming, or else the finalization might be incorrect.
     ///
     /// Callers that want parent node bytes (to build an encoded tree) must call `merge_parent` in
     /// a loop, until it returns `None`. Parent nodes are yielded in smallest-to-largest order.
@@ -501,7 +503,25 @@ impl fmt::Debug for State {
     }
 }
 
-pub const BUF_LEN: usize = MAX_SIMD_DEGREE * CHUNK_SIZE;
+/// An efficient buffer size for callers of the streaming implementations in
+/// this crate, `hash::Writer`, `encode::Writer`, and `decode::Reader`.
+///
+/// The streaming implementations are single threaded, but they use SIMD
+/// parallelism to get good performance. To avoid unnecessary copying, they
+/// rely on the caller to use an input buffer size large enough to occupy all
+/// the SIMD lanes on the machine. This constant, or an integer multiple of it,
+/// is an optimal size.
+///
+/// On x86 for example, the AVX2 instruction set supports hashing 8 chunks in
+/// parallel. Chunks are 4096 bytes each, so `BUF_SIZE` is currently 32768
+/// bytes. When Rust adds support for AVX512, the value of `BUF_SIZE` on x86
+/// will double to 65536 bytes. It's not expected to grow any larger than that
+/// for the foreseeable future, so on not-very-space-constrained platforms it's
+/// possible to use `BUF_SIZE` as the size of a stack array. If this constant
+/// grows above 65536 on any platform, it will be considered a
+/// backwards-incompatible change, and it will be accompanied by a major
+/// version bump.
+pub const BUF_SIZE: usize = MAX_SIMD_DEGREE * CHUNK_SIZE;
 
 /// An incremental hasher. `Writer` is no_std-compatible and does not allocate.
 /// The implementation is single-threaded but uses SIMD parallelism.
@@ -531,7 +551,7 @@ impl Writer {
 
     /// Add input to the hash. This is equivalent to `write`, except that it's
     /// also available with `no_std`. For best performance, use an input buffer
-    /// of size `BUF_LEN`, or some integer multiple of that.
+    /// of size `BUF_SIZE`, or some integer multiple of that.
     pub fn update(&mut self, mut input: &[u8]) {
         // In normal operation, we hash every chunk that comes in using SIMD
         // and push those hashes into the tree state, only retaining a partial
@@ -553,8 +573,8 @@ impl Writer {
             // continue. Otherwise short circuit.
             if !input.is_empty() {
                 let chunk_hash = finalize_hash(&mut self.chunk_state, NotRoot);
-                self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
                 self.chunk_state = new_chunk_state();
+                self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
             } else {
                 return;
             }
