@@ -52,6 +52,7 @@ use std::io::SeekFrom;
 
 /// Encode an entire slice into a bytes vector in the default combined mode.
 /// This is a convenience wrapper around `Writer::write_all`.
+#[cfg(feature = "std")]
 pub fn encode(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
     let bytes = input.as_ref();
     let mut vec = Vec::with_capacity(encoded_size(bytes.len() as u64) as usize);
@@ -63,6 +64,7 @@ pub fn encode(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
 
 /// Encode an entire slice into a bytes vector in the outboard mode. This is a
 /// convenience wrapper around `Writer::new_outboard` and `Writer::write_all`.
+#[cfg(feature = "std")]
 pub fn outboard(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
     let bytes = input.as_ref();
     let mut vec = Vec::with_capacity(outboard_size(bytes.len() as u64) as usize);
