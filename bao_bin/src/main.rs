@@ -71,7 +71,7 @@ fn hash_one(maybe_path: &Option<PathBuf>, args: &Args) -> Result<bao::hash::Hash
     let mut input = open_input(maybe_path)?;
     Ok(if args.flag_outboard.is_some() {
         let mut outboard = open_input(&args.flag_outboard)?;
-        bao::decode::hash_from_outboard_encoded(&mut input, &mut outboard)?
+        bao::decode::hash_from_outboard(&mut input, &mut outboard)?
     } else if args.flag_encoded {
         bao::decode::hash_from_encoded(&mut input)?
     } else if let Some(map) = maybe_memmap_input(&input)? {
@@ -134,21 +134,6 @@ fn decode(args: &Args) -> Result<(), Error> {
     let input = open_input(&args.arg_input)?;
     let mut output = open_output(&args.arg_output)?;
     let hash = parse_hash(args)?;
-    // If we're not seeking or outboard or stdout, try to memmap the files.
-    let special_options =
-        args.flag_start.is_some() || args.flag_count.is_some() || args.flag_outboard.is_some();
-    if !special_options {
-        if let Some(in_map) = maybe_memmap_input(&input)? {
-            let content_len = bao::decode::parse_and_check_content_len(&in_map)?;
-            if let Some(mut out_map) = maybe_memmap_output(&output, content_len as u128)? {
-                bao::decode::decode(&in_map, &mut out_map, &hash)?;
-                return Ok(());
-            }
-        }
-    }
-    // If the files weren't mappable, or if we're seeking or outboard, fall back to the reader.
-    // Unfortunately there are a 2x2 different cases here, becuase seeking requires statically
-    // knowing that the inputs are files.
     let outboard;
     let mut generic_reader;
     let mut file_reader;
@@ -328,43 +313,6 @@ fn maybe_memmap_input(input: &Input) -> Result<Option<memmap::Mmap>, Error> {
             memmap::MmapOptions::new()
                 .len(metadata.len() as usize)
                 .map(&in_file)?
-        };
-        Some(map)
-    })
-}
-
-fn maybe_memmap_output(
-    output: &Output,
-    target_len: u128,
-) -> Result<Option<memmap::MmapMut>, Error> {
-    let out_file = match *output {
-        Output::Stdout => return Ok(None),
-        Output::File(ref file) => file,
-    };
-    if target_len > u64::max_value() as u128 {
-        panic!(format!("unreasonable target length: {}", target_len));
-    }
-    let metadata = out_file.metadata()?;
-    Ok(if !metadata.is_file() {
-        // Not a real file.
-        None
-    } else if metadata.len() != 0 {
-        // The output file hasn't been truncated. Likely opened in append mode.
-        None
-    } else if target_len == 0 {
-        // Mapping an empty file currently fails. https://github.com/danburkert/memmap-rs/issues/72
-        None
-    } else if target_len > isize::max_value() as u128 {
-        // Too long to safely map. https://github.com/danburkert/memmap-rs/issues/69
-        None
-    } else {
-        out_file.set_len(target_len as u64)?;
-        // Explicitly set the length of the memory map, so that filesystem changes can't race to
-        // violate the invariants we just checked.
-        let map = unsafe {
-            memmap::MmapOptions::new()
-                .len(target_len as usize)
-                .map_mut(&out_file)?
         };
         Some(map)
     })

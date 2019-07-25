@@ -37,7 +37,6 @@ pub(crate) const CHUNK_SIZE: usize = 4096;
 // more. That said, 2^64 bytes is an astronomical amount of input that will
 // probably never come up in practice.
 pub(crate) const MAX_DEPTH: usize = 53;
-pub(crate) const MAX_SINGLE_THREADED: usize = 8 * CHUNK_SIZE;
 
 /// An array of `HASH_SIZE` bytes. This will be a wrapper type in a future version.
 pub(crate) type ParentNode = [u8; 2 * HASH_SIZE];

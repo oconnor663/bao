@@ -15,7 +15,7 @@
 //! let (encoded, hash) = bao::encode::encode(input);
 //!
 //! // Decode them with one of the all-at-once functions.
-//! let decoded_at_once = bao::decode::decode_to_vec(&encoded, &hash)?;
+//! let decoded_at_once = bao::decode::decode(&encoded, &hash)?;
 //!
 //! // Also decode them incrementally.
 //! let mut decoded_incrementally = Vec::new();
@@ -32,26 +32,20 @@
 //! let mut bad_encoded = encoded.clone();
 //! let last_index = bad_encoded.len() - 1;
 //! bad_encoded[last_index] ^= 1;
-//! let err = bao::decode::decode_to_vec(&bad_encoded, &hash);
-//! assert_eq!(Err(bao::decode::Error::HashMismatch), err);
+//! let err = bao::decode::decode(&bad_encoded, &hash).unwrap_err();
+//! assert_eq!(std::io::ErrorKind::InvalidData, err.kind());
 //! # Ok(())
 //! # }
 //! ```
 
-use arrayref::{array_ref, array_refs};
-use arrayvec::ArrayVec;
-use copy_in_place::copy_in_place;
-#[cfg(feature = "std")]
-use rayon;
-
 use crate::encode;
 use crate::encode::NextRead;
-use crate::hash::Finalization::{self, NotRoot, Root};
+use crate::hash::Finalization::{self, Root};
 use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
-
+use arrayref::array_refs;
+use arrayvec::ArrayVec;
 use core::cmp;
 use core::fmt;
-use core::result;
 #[cfg(feature = "std")]
 use std::error;
 #[cfg(feature = "std")]
@@ -61,371 +55,18 @@ use std::io::prelude::*;
 #[cfg(feature = "std")]
 use std::io::SeekFrom;
 
-fn verify_chunk(chunk_bytes: &[u8], hash: &Hash, finalization: Finalization) -> Result<()> {
-    let computed = hash::hash_chunk(chunk_bytes, finalization);
-    // Hash implements constant time equality.
-    if hash == &computed {
-        Ok(())
-    } else {
-        Err(Error::HashMismatch)
-    }
-}
-
-fn verify_parent(parent_bytes: &[u8], hash: &Hash, finalization: Finalization) -> Result<()> {
-    let computed = hash::hash_parent(parent_bytes, finalization);
-    // Hash implements constant time equality.
-    if hash == &computed {
-        Ok(())
-    } else {
-        Err(Error::HashMismatch)
-    }
-}
-
-struct Subtree {
-    offset: usize,
-    content_len: usize,
-    hash: Hash,
-    finalization: Finalization,
-}
-
-enum Verified {
-    Parent { left: Subtree, right: Subtree },
-    Chunk { offset: usize, len: usize },
-}
-
-fn split_parent(parent: &hash::ParentNode) -> (Hash, Hash) {
-    let (left, right) = array_refs!(parent, HASH_SIZE, HASH_SIZE);
-    (Hash::new(left), Hash::new(right))
-}
-
-// Check that the top level of a subtree (which could be a single chunk) has a valid hash. This is
-// designed to be callable by single-threaded, multi-threaded, and in-place decode functions. Note
-// that it's legal for the subtree buffer to contain extra bytes after the parent node or chunk.
-// The slices and casts in this function assume the buffer is big enough for the content, which
-// should be checked by the caller with parse_and_check_content_len or known some other way.
-fn verify_one_level(buf: &[u8], subtree: &Subtree) -> Result<Verified> {
-    let &Subtree {
-        offset,
-        content_len,
-        ref hash,
-        finalization,
-    } = subtree;
-    if content_len <= CHUNK_SIZE {
-        let chunk = &buf[offset..][..content_len];
-        verify_chunk(chunk, hash, finalization)?;
-        Ok(Verified::Chunk {
-            offset,
-            len: content_len,
-        })
-    } else {
-        let parent = array_ref!(buf, offset, PARENT_SIZE);
-        verify_parent(parent, hash, finalization)?;
-        let (left_hash, right_hash) = split_parent(parent);
-        let left = Subtree {
-            offset: subtree.offset + PARENT_SIZE,
-            content_len: hash::left_len(content_len as u64) as usize,
-            hash: left_hash,
-            finalization: NotRoot,
-        };
-        let right = Subtree {
-            offset: left.offset + encode::encoded_subtree_size(left.content_len as u64) as usize,
-            content_len: content_len - left.content_len,
-            hash: right_hash,
-            finalization: NotRoot,
-        };
-        Ok(Verified::Parent { left, right })
-    }
-}
-
-fn decode_recurse(encoded: &[u8], subtree: &Subtree, output: &mut [u8]) -> Result<usize> {
-    match verify_one_level(encoded, subtree)? {
-        Verified::Chunk { offset, len } => {
-            output[..len].copy_from_slice(&encoded[offset..][..len]);
-            Ok(len)
-        }
-        Verified::Parent { left, right } => {
-            let (left_out, right_out) = output.split_at_mut(left.content_len);
-            let left_n = decode_recurse(encoded, &left, left_out)?;
-            let right_n = decode_recurse(encoded, &right, right_out)?;
-            Ok(left_n + right_n)
-        }
-    }
-}
-
+/// Decode an entire slice in the default combined mode into a bytes vector.
+/// This is a convenience wrapper around `Reader::read_to_end`.
 #[cfg(feature = "std")]
-fn decode_recurse_rayon(encoded: &[u8], subtree: &Subtree, output: &mut [u8]) -> Result<usize> {
-    match verify_one_level(encoded, subtree)? {
-        Verified::Chunk { offset, len } => {
-            output[..len].copy_from_slice(&encoded[offset..][..len]);
-            Ok(len)
-        }
-        Verified::Parent { left, right } => {
-            let (left_out, right_out) = output.split_at_mut(left.content_len);
-            let (left_res, right_res) = rayon::join(
-                || decode_recurse_rayon(encoded, &left, left_out),
-                || decode_recurse_rayon(encoded, &right, right_out),
-            );
-            Ok(left_res? + right_res?)
-        }
-    }
+pub fn decode(encoded: impl AsRef<[u8]>, hash: &Hash) -> io::Result<Vec<u8>> {
+    let bytes = encoded.as_ref();
+    let mut vec = Vec::with_capacity(encode::encoded_size(bytes.len() as u64) as usize);
+    let mut reader = Reader::new(bytes, hash);
+    reader.read_to_end(&mut vec)?;
+    Ok(vec)
 }
 
-fn verify_recurse(encoded: &[u8], subtree: &Subtree) -> Result<()> {
-    match verify_one_level(encoded, subtree)? {
-        Verified::Chunk { .. } => Ok(()),
-        Verified::Parent { left, right } => {
-            verify_recurse(encoded, &left)?;
-            verify_recurse(encoded, &right)
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-fn verify_recurse_rayon(encoded: &[u8], subtree: &Subtree) -> Result<()> {
-    match verify_one_level(encoded, subtree)? {
-        Verified::Chunk { .. } => Ok(()),
-        Verified::Parent { left, right } => {
-            let (left_res, right_res) = rayon::join(
-                || verify_recurse_rayon(encoded, &left),
-                || verify_recurse_rayon(encoded, &right),
-            );
-            left_res.and(right_res)
-        }
-    }
-}
-
-// This function doesn't perform any verification, and it should only be used after one of the
-// verify functions above.
-fn extract_in_place(
-    buf: &mut [u8],
-    mut read_offset: usize,
-    mut write_offset: usize,
-    content_len: usize,
-) {
-    if content_len <= CHUNK_SIZE {
-        // This function might eventually make its way into libcore:
-        // https://github.com/rust-lang/rust/pull/53652
-        copy_in_place(buf, read_offset..read_offset + content_len, write_offset);
-    } else {
-        read_offset += PARENT_SIZE;
-        let left_len = hash::left_len(content_len as u64) as usize;
-        extract_in_place(buf, read_offset, write_offset, left_len);
-        read_offset += encode::encoded_subtree_size(left_len as u64) as usize;
-        write_offset += left_len;
-        let right_len = content_len - left_len;
-        extract_in_place(buf, read_offset, write_offset, right_len);
-    }
-}
-
-/// Parse the length of an encoded slice and convert it to a `usize`. This is useful if you need to
-/// allocate space for decoding.
-///
-/// If the encoded slice isn't long enough to represent the reported length -- which includes the
-/// case where the length can't fit in a `usize` -- this returns `Error::Truncated`.
-///
-/// # Example
-///
-/// ```
-/// let input = b"foobar";
-/// let (encoded, hash) = bao::encode::encode(input);
-/// let content_len = bao::decode::parse_and_check_content_len(&encoded).unwrap();
-/// assert_eq!(input.len(), content_len);
-///
-/// let err = bao::decode::parse_and_check_content_len(&encoded[..encoded.len()/2]).unwrap_err();
-/// assert_eq!(bao::decode::Error::Truncated, err);
-/// ```
-pub fn parse_and_check_content_len(encoded: &[u8]) -> Result<usize> {
-    // Casting the content_len down to usize runs the risk that 1 and 2^32+1 might give the same result
-    // on 32 bit systems, which would lead to apparent collisions. Check for that case, as well as the
-    // more obvious cases where the buffer is too small for the content length, or too small to even
-    // contain a header. Note that this doesn't verify any hashes.
-    if encoded.len() < HEADER_SIZE {
-        return Err(Error::Truncated);
-    }
-    let len = hash::decode_len(array_ref!(encoded, 0, HEADER_SIZE));
-    if (encoded.len() as u128) < encode::encoded_size(len) {
-        return Err(Error::Truncated);
-    }
-    Ok(len as usize)
-}
-
-fn root_subtree(content_len: usize, hash: &Hash) -> Subtree {
-    Subtree {
-        offset: HEADER_SIZE,
-        content_len,
-        hash: *hash,
-        finalization: Root,
-    }
-}
-
-/// Decode a combined mode encoding to an output slice. The slice must be at least the length
-/// reported by `parse_and_check_content_len`. This returns the number of decoded bytes if
-/// successful, or an error if the encoding doesn't match the `hash`.
-///
-/// If the `std` feature is enabled, as it is by default, this will use multiple threads via Rayon.
-///
-/// # Example
-///
-/// ```
-/// let input = b"foobar";
-/// let (encoded, hash) = bao::encode::encode(input);
-/// // Note that if you're allocating a new Vec like this, decode_to_vec is more convenient.
-/// let mut output = vec![0; input.len()];
-/// let content_len = bao::decode::decode(&encoded, &mut output, &hash).unwrap();
-/// assert_eq!(input.len(), content_len);
-/// assert_eq!(input, &output[..content_len]);
-/// ```
-pub fn decode(encoded: &[u8], output: &mut [u8], hash: &Hash) -> Result<usize> {
-    let content_len = parse_and_check_content_len(encoded)?;
-    #[cfg(feature = "std")]
-    {
-        if content_len <= hash::MAX_SINGLE_THREADED {
-            decode_recurse(encoded, &root_subtree(content_len, hash), output)
-        } else {
-            decode_recurse_rayon(encoded, &root_subtree(content_len, hash), output)
-        }
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        decode_recurse(encoded, &root_subtree(content_len, hash), output)
-    }
-}
-
-/// Decode a combined mode encoding in place, overwriting the encoded bytes starting from the
-/// beginning of the slice. This returns the number of decoded bytes if successful, or an error if
-/// the encoding doesn't match the `hash`.
-///
-/// If the `std` feature is enabled, as it is by default, this will use multiple threads via Rayon.
-/// This function is slower than `decode`, however, because only the hashing can be parallelized;
-/// copying the input bytes around has to be done on a single thread.
-///
-/// # Example
-///
-/// ```
-/// let input = b"some bytes";
-/// let (mut buffer, hash) = bao::encode::encode(input);
-/// let content_len = bao::decode::decode_in_place(&mut buffer, &hash).unwrap();
-/// assert_eq!(input.len(), content_len);
-/// assert_eq!(input, &buffer[..content_len]);
-/// ```
-pub fn decode_in_place(encoded: &mut [u8], hash: &Hash) -> Result<usize> {
-    // Note that if you change anything in this function, you should probably
-    // also update benchmarks::decode_in_place_fake.
-    let content_len = parse_and_check_content_len(encoded)?;
-    #[cfg(feature = "std")]
-    {
-        if content_len <= hash::MAX_SINGLE_THREADED {
-            verify_recurse(encoded, &root_subtree(content_len, hash))?;
-        } else {
-            verify_recurse_rayon(encoded, &root_subtree(content_len, hash))?;
-        }
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        verify_recurse(encoded, &root_subtree(content_len, hash))?;
-    }
-    extract_in_place(encoded, HEADER_SIZE, 0, content_len);
-    Ok(content_len)
-}
-
-/// A convenience wrapper around `decode`, which allocates a new `Vec` to hold the content.
-#[cfg(feature = "std")]
-pub fn decode_to_vec(encoded: &[u8], hash: &Hash) -> Result<Vec<u8>> {
-    let content_len = parse_and_check_content_len(encoded)?;
-    // Unsafe code here could avoid the cost of initialization, but it's not much.
-    let mut out = vec![0; content_len];
-    decode(encoded, &mut out, hash)?;
-    Ok(out)
-}
-
-/// Given a combined encoding, quickly determine the root hash by reading just the root node.
-///
-/// The `read_exact_fn` callback will be called exactly twice.
-///
-/// # Example
-///
-/// ```
-/// let (encoded, hash1) = bao::encode::encode(b"foobar");
-/// let mut reader = &*encoded;
-/// let hash2 = bao::decode::hash_from_encoded_nostd(|buf| {
-///     let take = buf.len();
-///     buf.copy_from_slice(&reader[..take]);
-///     reader = &reader[take..];
-///     Ok::<(), ()>(())
-/// }).unwrap();
-/// assert_eq!(hash1, hash2);
-/// ```
-pub fn hash_from_encoded_nostd<F, E>(mut read_exact_fn: F) -> result::Result<Hash, E>
-where
-    F: FnMut(&mut [u8]) -> result::Result<(), E>,
-{
-    let mut header = [0; HEADER_SIZE];
-    read_exact_fn(&mut header)?;
-    let content_len = hash::decode_len(&header);
-    if content_len <= CHUNK_SIZE as u64 {
-        let mut chunk_buf = [0; CHUNK_SIZE];
-        let chunk = &mut chunk_buf[..content_len as usize];
-        read_exact_fn(chunk)?;
-        Ok(hash::hash_chunk(chunk, Root))
-    } else {
-        let mut parent = [0; PARENT_SIZE];
-        read_exact_fn(&mut parent)?;
-        Ok(hash::hash_parent(&parent, Root))
-    }
-}
-
-/// Given an outboard encoding, quickly determine the root hash by reading just the root node.
-///
-/// Depending on the content length, the `outboard_read_exact_fn` callback will be called one or
-/// two times, and the `content_read_exact_fn` will be called either one time or not at all.
-///
-/// # Example
-///
-/// ```
-/// let input = b"foobar";
-/// let (outboard, hash1) = bao::encode::outboard(input);
-/// let mut content_reader = &input[..];
-/// let mut outboard_reader = &*outboard;
-/// let hash2 = bao::decode::hash_from_outboard_encoded_nostd(
-///     |buf| {
-///         let take = buf.len();
-///         buf.copy_from_slice(&content_reader[..take]);
-///         content_reader = &content_reader[take..];
-///         Ok::<(), ()>(())
-///     },
-///     |buf| {
-///         let take = buf.len();
-///         buf.copy_from_slice(&outboard_reader[..take]);
-///         outboard_reader = &outboard_reader[take..];
-///         Ok::<(), ()>(())
-///     },
-/// ).unwrap();
-/// assert_eq!(hash1, hash2);
-/// ```
-pub fn hash_from_outboard_encoded_nostd<F1, F2, E>(
-    content_read_exact_fn: F1,
-    mut outboard_read_exact_fn: F2,
-) -> result::Result<Hash, E>
-where
-    F1: FnOnce(&mut [u8]) -> result::Result<(), E>,
-    F2: FnMut(&mut [u8]) -> result::Result<(), E>,
-{
-    let mut header = [0; HEADER_SIZE];
-    outboard_read_exact_fn(&mut header)?;
-    let content_len = hash::decode_len(&header);
-    if content_len <= CHUNK_SIZE as u64 {
-        let mut chunk_buf = [0; CHUNK_SIZE];
-        let chunk = &mut chunk_buf[..content_len as usize];
-        content_read_exact_fn(chunk)?;
-        Ok(hash::hash_chunk(chunk, Root))
-    } else {
-        let mut parent = [0; PARENT_SIZE];
-        outboard_read_exact_fn(&mut parent)?;
-        Ok(hash::hash_parent(&parent, Root))
-    }
-}
-
-/// Given a combined encoding beind a `Read` interface, quickly determine the root hash by reading
+/// Given a combined encoding behind a `Read` interface, quickly determine the root hash by reading
 /// just the root node.
 ///
 /// # Example
@@ -437,10 +78,22 @@ where
 /// ```
 #[cfg(feature = "std")]
 pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
-    hash_from_encoded_nostd(|buf| reader.read_exact(buf))
+    let mut header = [0; HEADER_SIZE];
+    reader.read_exact(&mut header)?;
+    let content_len = hash::decode_len(&header);
+    if content_len <= CHUNK_SIZE as u64 {
+        let mut chunk_buf = [0; CHUNK_SIZE];
+        let chunk = &mut chunk_buf[..content_len as usize];
+        reader.read_exact(chunk)?;
+        Ok(hash::hash_chunk(chunk, Root))
+    } else {
+        let mut parent = [0; PARENT_SIZE];
+        reader.read_exact(&mut parent)?;
+        Ok(hash::hash_parent(&parent, Root))
+    }
 }
 
-/// Given an outboard encoding beind two `Read` interfaces, quickly determine the root hash by
+/// Given an outboard encoding behind two `Read` interfaces, quickly determine the root hash by
 /// reading just the root node.
 ///
 /// # Example
@@ -448,18 +101,27 @@ pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
 /// ```
 /// let input = b"foobar";
 /// let (outboard, hash1) = bao::encode::outboard(input);
-/// let hash2 = bao::decode::hash_from_outboard_encoded(&mut &input[..], &mut &*outboard).unwrap();
+/// let hash2 = bao::decode::hash_from_outboard(&mut &input[..], &mut &*outboard).unwrap();
 /// assert_eq!(hash1, hash2);
 /// ```
 #[cfg(feature = "std")]
-pub fn hash_from_outboard_encoded<C: Read, O: Read>(
+pub fn hash_from_outboard<C: Read, O: Read>(
     content_reader: &mut C,
     outboard_reader: &mut O,
 ) -> io::Result<Hash> {
-    hash_from_outboard_encoded_nostd(
-        |buf| content_reader.read_exact(buf),
-        |buf| outboard_reader.read_exact(buf),
-    )
+    let mut header = [0; HEADER_SIZE];
+    outboard_reader.read_exact(&mut header)?;
+    let content_len = hash::decode_len(&header);
+    if content_len <= CHUNK_SIZE as u64 {
+        let mut chunk_buf = [0; CHUNK_SIZE];
+        let chunk = &mut chunk_buf[..content_len as usize];
+        content_reader.read_exact(chunk)?;
+        Ok(hash::hash_chunk(chunk, Root))
+    } else {
+        let mut parent = [0; PARENT_SIZE];
+        outboard_reader.read_exact(&mut parent)?;
+        Ok(hash::hash_parent(&parent, Root))
+    }
 }
 
 // This incremental verifier layers on top of encode::ParseState, and supports
@@ -516,7 +178,7 @@ impl VerifyState {
         self.parser.feed_header(header);
     }
 
-    fn feed_parent(&mut self, parent: &hash::ParentNode) -> Result<()> {
+    fn feed_parent(&mut self, parent: &hash::ParentNode) -> Result<(), Error> {
         let finalization = self.parser.finalization();
         let expected_hash = self.stack.last().expect("unexpectedly empty stack");
         let computed_hash = hash::hash_parent(parent, finalization);
@@ -524,15 +186,15 @@ impl VerifyState {
         if expected_hash != &computed_hash {
             return Err(Error::HashMismatch);
         }
-        let (left_child, right_child) = split_parent(parent);
+        let (left_child, right_child) = array_refs!(parent, HASH_SIZE, HASH_SIZE);
         self.stack.pop();
-        self.stack.push(right_child);
-        self.stack.push(left_child);
+        self.stack.push(Hash::new(right_child));
+        self.stack.push(Hash::new(left_child));
         self.parser.advance_parent();
         Ok(())
     }
 
-    fn feed_chunk(&mut self, chunk_hash: &Hash) -> Result<()> {
+    fn feed_chunk(&mut self, chunk_hash: &Hash) -> Result<(), Error> {
         let expected_hash = self.stack.last().expect("unexpectedly empty stack");
         // Hash implements constant time equality.
         if chunk_hash != expected_hash {
@@ -556,8 +218,6 @@ impl fmt::Debug for VerifyState {
         )
     }
 }
-
-type Result<T> = result::Result<T, Error>;
 
 /// Errors that can happen during decoding.
 ///
@@ -1068,28 +728,6 @@ impl<T: Read> Read for SliceReader<T> {
     }
 }
 
-// This module is only exposed for writing benchmarks, and nothing here should
-// actually be used outside this crate.
-#[cfg(feature = "std")]
-#[doc(hidden)]
-pub mod benchmarks {
-    use super::*;
-
-    // A limitation of the benchmarks runner is that you can't do per-run reinitialization that
-    // doesn't get measured. So we do an "in-place" decoding where the buffer we actually modify is
-    // garbage bytes, so that we don't trash the input in each run.
-    pub fn decode_in_place_fake(encoded: &[u8], hash: &Hash, fake_buf: &mut [u8]) -> Result<usize> {
-        let content_len = parse_and_check_content_len(encoded)?;
-        if content_len <= hash::MAX_SINGLE_THREADED {
-            verify_recurse(encoded, &root_subtree(content_len, hash))?;
-        } else {
-            verify_recurse_rayon(encoded, &root_subtree(content_len, hash))?;
-        }
-        extract_in_place(fake_buf, HEADER_SIZE, 0, content_len);
-        Ok(content_len)
-    }
-}
-
 #[cfg(test)]
 pub(crate) fn make_test_input(len: usize) -> Vec<u8> {
     // Fill the input with incrementing bytes, so that reads from different sections are very
@@ -1125,50 +763,26 @@ mod test {
     use crate::hash;
 
     #[test]
-    fn test_decoders() {
+    fn test_decode() {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
             let (encoded, hash) = { encode::encode(&input) };
-
-            let mut output = vec![0; case];
-            decode_recurse(&encoded, &root_subtree(input.len(), &hash), &mut output).unwrap();
+            let output = decode(&encoded, &hash).unwrap();
             assert_eq!(input, output);
+        }
+    }
 
-            let mut output = vec![0; case];
-            decode_recurse_rayon(&encoded, &root_subtree(input.len(), &hash), &mut output).unwrap();
-            assert_eq!(input, output);
-
-            let mut output = vec![0; case];
-            decode(&encoded, &mut output, &hash).unwrap();
-            assert_eq!(input, output);
-
-            let mut output = encoded.clone();
-            let n = decode_in_place(&mut output, &hash).unwrap();
-            output.truncate(n);
-            assert_eq!(input, output);
-
-            let output = decode_to_vec(&encoded, &hash).unwrap();
-            assert_eq!(input, output);
-
+    #[test]
+    fn test_decode_outboard() {
+        for &case in hash::TEST_CASES {
+            println!("case {}", case);
+            let input = make_test_input(case);
+            let (outboard, hash) = { encode::outboard(&input) };
             let mut output = Vec::new();
-            let mut decoder = Reader::new(&encoded[..], &hash);
-            decoder.read_to_end(&mut output).unwrap();
+            let mut reader = Reader::new_outboard(&input[..], &outboard[..], &hash);
+            reader.read_to_end(&mut output).unwrap();
             assert_eq!(input, output);
-
-            let (outboard, outboard_hash) = { encode::outboard(&input) };
-            assert_eq!(hash, outboard_hash);
-            let mut output = Vec::new();
-            let mut decoder = Reader::new_outboard(&input[..], &outboard[..], &hash);
-            decoder.read_to_end(&mut output).unwrap();
-            assert_eq!(input, output);
-
-            // Go ahead and test the fake benchmarking decoder because why not.
-            let output = encoded.clone();
-            let mut output_mut = encoded.clone();
-            let n = benchmarks::decode_in_place_fake(&output, &hash, &mut output_mut).unwrap();
-            output_mut.truncate(n);
-            assert_eq!(input, output_mut);
         }
     }
 
@@ -1194,34 +808,8 @@ mod test {
                 let mut bad_encoded = encoded.clone();
                 bad_encoded[tweak] ^= 1;
 
-                let mut output = vec![0; case];
-                let res =
-                    decode_recurse(&bad_encoded, &root_subtree(input.len(), &hash), &mut output);
-                assert_eq!(Error::HashMismatch, res.unwrap_err());
-
-                let mut output = vec![0; case];
-                let res = decode_recurse_rayon(
-                    &bad_encoded,
-                    &root_subtree(input.len(), &hash),
-                    &mut output,
-                );
-                assert_eq!(Error::HashMismatch, res.unwrap_err());
-
-                let mut output = vec![0; case];
-                let res = decode(&bad_encoded, &mut output, &hash);
-                assert_eq!(Error::HashMismatch, res.unwrap_err());
-
-                let mut output = bad_encoded.clone();
-                let res = decode_in_place(&mut output, &hash);
-                assert_eq!(Error::HashMismatch, res.unwrap_err());
-
-                let res = decode_to_vec(&bad_encoded, &hash);
-                assert_eq!(Error::HashMismatch, res.unwrap_err());
-
-                let mut output = Vec::new();
-                let mut decoder = Reader::new(&bad_encoded[..], &hash);
-                let res = decoder.read_to_end(&mut output);
-                assert_eq!(io::ErrorKind::InvalidData, res.unwrap_err().kind());
+                let err = decode(&bad_encoded, &hash).unwrap_err();
+                assert_eq!(err.kind(), io::ErrorKind::InvalidData);
             }
         }
     }
@@ -1406,14 +994,13 @@ mod test {
     }
 
     #[test]
-    fn test_hash_from_outboard_encoded() {
+    fn test_hash_from_outboard() {
         for &case in hash::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
             let (outboard, hash) = encode::outboard(&input);
             let inferred_hash =
-                hash_from_outboard_encoded(&mut Cursor::new(&input), &mut Cursor::new(&outboard))
-                    .unwrap();
+                hash_from_outboard(&mut Cursor::new(&input), &mut Cursor::new(&outboard)).unwrap();
             assert_eq!(hash, inferred_hash, "hashes don't match");
         }
     }
