@@ -72,7 +72,7 @@ fn bench_bao_hash_slice_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_serial_writer_short(b: &mut Bencher) {
+fn bench_bao_hash_writer_short(b: &mut Bencher) {
     let mut input = RandomInput::new(b, SHORT);
     b.iter(|| {
         let mut writer = hash::Writer::new();
@@ -82,7 +82,7 @@ fn bench_bao_hash_serial_writer_short(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_serial_writer_medium(b: &mut Bencher) {
+fn bench_bao_hash_writer_medium(b: &mut Bencher) {
     let mut input = RandomInput::new(b, MEDIUM);
     b.iter(|| {
         let mut writer = hash::Writer::new();
@@ -92,7 +92,7 @@ fn bench_bao_hash_serial_writer_medium(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_serial_writer_long(b: &mut Bencher) {
+fn bench_bao_hash_writer_long(b: &mut Bencher) {
     let mut input = RandomInput::new(b, LONG);
     b.iter(|| {
         let mut writer = hash::Writer::new();
@@ -170,66 +170,6 @@ fn bench_bao_encode_writer_outboard_long(b: &mut Bencher) {
         let mut writer = encode::Writer::new_outboard(Cursor::new(&mut output));
         writer.write_all(input.get()).unwrap();
         writer.finish().unwrap()
-    });
-}
-
-#[bench]
-fn bench_bao_decode_slice_combined_short(b: &mut Bencher) {
-    let input = RandomInput::new(b, SHORT).get().to_vec();
-    let (encoded, hash) = encode::encode(&input);
-    let mut output = vec![0; SHORT];
-    b.iter(|| decode::decode(&encoded, &mut output, &hash));
-}
-
-#[bench]
-fn bench_bao_decode_slice_combined_medium(b: &mut Bencher) {
-    let input = RandomInput::new(b, MEDIUM).get().to_vec();
-    let (encoded, hash) = encode::encode(&input);
-    let mut output = vec![0; MEDIUM];
-    b.iter(|| decode::decode(&encoded, &mut output, &hash));
-}
-
-#[bench]
-fn bench_bao_decode_slice_combined_long(b: &mut Bencher) {
-    let input = RandomInput::new(b, LONG).get().to_vec();
-    let (encoded, hash) = encode::encode(&input);
-    let mut output = vec![0; LONG];
-    b.iter(|| decode::decode(&encoded, &mut output, &hash));
-}
-
-#[bench]
-fn bench_bao_decode_slice_in_place_short(b: &mut Bencher) {
-    let input = RandomInput::new(b, SHORT).get().to_vec();
-    let (encoded, hash) = encode::encode(&input);
-    // For the purposes of this benchmark, we use a tweaked version of
-    // decode_in_place that doesn't actually trash the input.
-    let mut fake_buf = encoded.clone();
-    b.iter(|| {
-        decode::benchmarks::decode_in_place_fake(&encoded, &hash, &mut fake_buf).unwrap();
-    });
-}
-
-#[bench]
-fn bench_bao_decode_slice_in_place_medium(b: &mut Bencher) {
-    let input = RandomInput::new(b, MEDIUM).get().to_vec();
-    let (encoded, hash) = encode::encode(&input);
-    // For the purposes of this benchmark, we use a tweaked version of
-    // decode_in_place that doesn't actually trash the input.
-    let mut fake_buf = encoded.clone();
-    b.iter(|| {
-        decode::benchmarks::decode_in_place_fake(&encoded, &hash, &mut fake_buf).unwrap();
-    });
-}
-
-#[bench]
-fn bench_bao_decode_slice_in_place_long(b: &mut Bencher) {
-    let input = RandomInput::new(b, LONG).get().to_vec();
-    let (encoded, hash) = encode::encode(&input);
-    // For the purposes of this benchmark, we use a tweaked version of
-    // decode_in_place that doesn't actually trash the input.
-    let mut fake_buf = encoded.clone();
-    b.iter(|| {
-        decode::benchmarks::decode_in_place_fake(&encoded, &hash, &mut fake_buf).unwrap();
     });
 }
 
