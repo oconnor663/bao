@@ -963,28 +963,38 @@ mod test {
     }
 
     #[test]
-    fn test_invalid_hash_with_eof_seek() {
-        // Similar to above, the decoder must keep track of whether it's validated the root node,
-        // even if the caller attempts to seek past the end of the file before reading anything.
+    fn test_invalid_eof_seek() {
+        // The decoder must validate the final chunk as part of seeking to or
+        // past EOF.
         for &case in hash::TEST_CASES {
             let input = make_test_input(case);
             let (encoded, hash) = encode::encode(&input);
-            let mut bad_bytes = *hash.as_bytes();
-            bad_bytes[0] ^= 1;
-            let bad_hash = Hash::new(&bad_bytes);
 
-            // Seeking past the end of a tree should succeed with the right hash.
+            // Seeking to EOF should succeed with the right hash.
             let mut output = Vec::new();
             let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
             decoder.seek(SeekFrom::Start(case as u64)).unwrap();
             decoder.read_to_end(&mut output).unwrap();
             assert_eq!(&output, &[]);
 
-            // Seeking past the end of a tree should fail if the root hash is wrong.
+            // Seeking to EOF should fail if the root hash is wrong.
+            let mut bad_hash_bytes = *hash.as_bytes();
+            bad_hash_bytes[0] ^= 1;
+            let bad_hash = Hash::new(&bad_hash_bytes);
             let mut decoder = Reader::new(Cursor::new(&encoded), &bad_hash);
             let result = decoder.seek(SeekFrom::Start(case as u64));
             assert!(result.is_err(), "a bad hash is supposed to fail!");
             assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
+
+            // It should also fail if the final chunk has been corrupted.
+            if case > 0 {
+                let mut bad_encoded = encoded.clone();
+                *bad_encoded.last_mut().unwrap() ^= 1;
+                let mut decoder = Reader::new(Cursor::new(&bad_encoded), &hash);
+                let result = decoder.seek(SeekFrom::Start(case as u64));
+                assert!(result.is_err(), "a bad hash is supposed to fail!");
+                assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
+            }
         }
     }
 
