@@ -648,9 +648,7 @@ impl ParseState {
             // chunk requirement" in the spec. at_eof() asserts it.
             NextRead::Done
         } else if self.upcoming_parents > 0 {
-            NextRead::Parent {
-                upcoming_parents: self.upcoming_parents,
-            }
+            NextRead::Parent
         } else {
             NextRead::Chunk {
                 size: chunk_size(self.next_chunk_index(), content_len),
@@ -765,9 +763,7 @@ impl ParseState {
                 .unwrap_or(0);
             if downshifted_distance < CHUNK_SIZE as u64 {
                 debug_assert!(self.upcoming_parents > 0);
-                return NextRead::Parent {
-                    upcoming_parents: self.upcoming_parents,
-                };
+                return NextRead::Parent;
             }
 
             // Otherwise jump out of the current subtree and loop. In this case
@@ -852,9 +848,7 @@ impl ParseState {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum NextRead {
     Header,
-    Parent {
-        upcoming_parents: u8,
-    },
+    Parent,
     Chunk {
         size: usize,
         finalization: Finalization,
@@ -1095,9 +1089,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
             let next_read = self.parser.seek_bookkeeping_done(bookkeeping);
             match next_read {
                 NextRead::Header => return self.read_header(),
-                NextRead::Parent {
-                    upcoming_parents: _,
-                } => return self.read_parent(),
+                NextRead::Parent => return self.read_parent(),
                 NextRead::Chunk {
                     size,
                     finalization: _,
@@ -1112,9 +1104,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
         if self.slice_bytes_read < self.slice_len {
             match self.parser.read_next() {
                 NextRead::Header => unreachable!(),
-                NextRead::Parent {
-                    upcoming_parents: _,
-                } => return self.read_parent(),
+                NextRead::Parent => return self.read_parent(),
                 NextRead::Chunk {
                     size,
                     finalization: _,

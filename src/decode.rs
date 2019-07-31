@@ -393,9 +393,7 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
         debug_assert_eq!(0, self.buf_len());
         match next {
             NextRead::Header => self.read_header()?,
-            NextRead::Parent {
-                upcoming_parents: _,
-            } => self.read_parent()?,
+            NextRead::Parent => self.read_parent()?,
             NextRead::Chunk {
                 size,
                 finalization,
@@ -533,9 +531,7 @@ impl<T: Read, O: Read> Read for Reader<T, O> {
         loop {
             match self.shared.state.read_next() {
                 NextRead::Header => self.shared.read_header()?,
-                NextRead::Parent {
-                    upcoming_parents: _,
-                } => self.shared.read_parent()?,
+                NextRead::Parent => self.shared.read_parent()?,
                 NextRead::Chunk {
                     size,
                     finalization,
@@ -731,9 +727,7 @@ impl<T: Read> Read for SliceReader<T> {
         loop {
             match self.shared.state.read_next() {
                 NextRead::Header => self.shared.read_header()?,
-                NextRead::Parent {
-                    upcoming_parents: _,
-                } => self.shared.read_parent()?,
+                NextRead::Parent => self.shared.read_parent()?,
                 NextRead::Chunk {
                     size,
                     finalization,
