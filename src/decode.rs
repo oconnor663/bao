@@ -42,7 +42,7 @@ use crate::encode;
 use crate::encode::NextRead;
 use crate::hash::Finalization::{self, Root};
 use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
-use arrayref::array_refs;
+use arrayref::{array_ref, array_refs};
 use arrayvec::ArrayVec;
 use core::cmp;
 use core::fmt;
@@ -56,13 +56,30 @@ use std::io::prelude::*;
 use std::io::SeekFrom;
 
 /// Decode an entire slice in the default combined mode into a bytes vector.
-/// This is a convenience wrapper around `Reader::read_to_end`.
+/// This is a convenience wrapper around `Reader`.
 #[cfg(feature = "std")]
 pub fn decode(encoded: impl AsRef<[u8]>, hash: &Hash) -> io::Result<Vec<u8>> {
     let bytes = encoded.as_ref();
-    let mut vec = Vec::with_capacity(encode::encoded_size(bytes.len() as u64) as usize);
+    if bytes.len() < HEADER_SIZE {
+        return Err(Error::Truncated.into());
+    }
+    let content_len = hash::decode_len(array_ref!(bytes, 0, HEADER_SIZE));
+    // Sanity check the length before making a potentially large allocation.
+    if (bytes.len() as u128) < encode::encoded_size(content_len) {
+        return Err(Error::Truncated.into());
+    }
+    // There's no way to avoid zeroing this vector without unsafe code, because
+    // Reader::initializer is the default (safe) zeroing implementation anyway.
+    let mut vec = vec![0; content_len as usize];
     let mut reader = Reader::new(bytes, hash);
-    reader.read_to_end(&mut vec)?;
+    reader.read_exact(&mut vec)?;
+    // One more read to confirm EOF. This is unnecessary most of the time, but
+    // in the empty encoding case read_exact won't do any reads at all, and the
+    // Ok return from this call will be the only thing that verifies the hash.
+    // Note that this will never hit the inner reader; we'll receive EOF from
+    // the VerifyState.
+    let n = reader.read(&mut [0])?;
+    debug_assert_eq!(n, 0, "must be EOF");
     Ok(vec)
 }
 
@@ -776,6 +793,7 @@ mod test {
             let (encoded, hash) = { encode::encode(&input) };
             let output = decode(&encoded, &hash).unwrap();
             assert_eq!(input, output);
+            assert_eq!(output.len(), output.capacity());
         }
     }
 
