@@ -139,7 +139,7 @@ pub(crate) fn new_parent_state() -> blake2s_simd::State {
 // with the length of the entire input, and we set the Blake2 final node flag.
 // That means that no root hash can ever collide with an interior hash, or with
 // the root of a different size tree.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Finalization {
     NotRoot,
     Root,
@@ -183,6 +183,12 @@ pub(crate) fn parent_hash(left_hash: &Hash, right_hash: &Hash, finalization: Fin
 // Find the largest power of two that's less than or equal to `n`. We use this
 // for computing subtree sizes below.
 pub(crate) fn largest_power_of_two_leq(n: u64) -> u64 {
+    // There are many places in this crate where we assume a usize fits in a
+    // u64. Most of them wind up calling this function. Go ahead and assert
+    // that here, so that things will explode if we ever run on a platform
+    // where this isn't true, and we can reevaluate our life choices.
+    debug_assert!(mem::size_of::<usize>() <= mem::size_of::<u64>());
+
     ((n / 2) + 1).next_power_of_two()
 }
 
