@@ -702,7 +702,7 @@ impl ParseState {
         // If the seek is to or past EOF, we need to check whether the final
         // chunk has already been validated. If not, we need to validate it as
         // part of seeking.
-        let mut read_final_chunk = false;
+        let mut verifying_final_chunk = false;
         if seek_to >= content_len {
             if self.final_chunk_validated {
                 // The final chunk has already been validated, and we don't
@@ -716,7 +716,7 @@ impl ParseState {
             // The final chunk hasn't been validated. We repoint the seek to
             // the last byte of the encoding, and read it when we get there.
             seek_to = content_len.saturating_sub(1);
-            read_final_chunk = true;
+            verifying_final_chunk = true;
         }
 
         // If seek_to is to the left of the next chunk, reset the whole state,
@@ -742,7 +742,7 @@ impl ParseState {
             // final chunk and call seek_next again.
             let distance = seek_to - self.next_chunk_start();
             if distance < CHUNK_SIZE as u64 {
-                if read_final_chunk {
+                if verifying_final_chunk {
                     let size = (content_len - self.next_chunk_start()) as usize;
                     return NextRead::Chunk {
                         size,
