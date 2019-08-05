@@ -11,7 +11,7 @@
 //! hasher.update(b"input");
 //! hasher.update(b" ");
 //! hasher.update(b"bytes");
-//! let hash_incremental = hasher.finish();
+//! let hash_incremental = hasher.finalize();
 //!
 //! assert_eq!(hash_at_once, hash_incremental);
 //! ```
@@ -50,11 +50,6 @@ pub struct Hash {
 }
 
 impl Hash {
-    /// Create a new `Hash` from an array of bytes.
-    pub fn new(bytes: &[u8; HASH_SIZE]) -> Self {
-        Self { bytes: *bytes }
-    }
-
     /// Convert the `Hash` to a byte array. Note that the array type doesn't provide constant time
     /// equality.
     pub fn as_bytes(&self) -> &[u8; HASH_SIZE] {
@@ -71,6 +66,22 @@ impl Hash {
             s.push(table[(b & 0xf) as usize] as char);
         }
         s
+    }
+}
+
+impl From<blake2s_simd::Hash> for Hash {
+    /// This calls `blake2s_simd::Hash::as_array`, which panics in debug mode
+    /// if the hash length is shorter than the default.
+    fn from(hash: blake2s_simd::Hash) -> Self {
+        Hash {
+            bytes: *hash.as_array(),
+        }
+    }
+}
+
+impl From<[u8; HASH_SIZE]> for Hash {
+    fn from(bytes: [u8; HASH_SIZE]) -> Self {
+        Hash { bytes }
     }
 }
 
@@ -116,27 +127,6 @@ fn common_params() -> blake2s_simd::Params {
     params
 }
 
-// TODO: Clean up these helpers when there are fewer callers.
-fn chunk_params_old() -> blake2s_simd::Params {
-    let mut params = common_params();
-    params.node_depth(0);
-    params
-}
-
-fn parent_params_old() -> blake2s_simd::Params {
-    let mut params = common_params();
-    params.node_depth(1);
-    params
-}
-
-pub(crate) fn new_chunk_state() -> blake2s_simd::State {
-    chunk_params_old().to_state()
-}
-
-pub(crate) fn new_parent_state() -> blake2s_simd::State {
-    parent_params_old().to_state()
-}
-
 // The root node is hashed differently from interior nodes. It gets suffixed
 // with the length of the entire input, and we set the Blake2 final node flag.
 // That means that no root hash can ever collide with an interior hash, or with
@@ -147,40 +137,6 @@ pub(crate) enum Finalization {
     Root,
 }
 use self::Finalization::{NotRoot, Root};
-
-pub(crate) fn finalize_hash(state: &mut blake2s_simd::State, finalization: Finalization) -> Hash {
-    // For the root node, we set the Blake2 last node flag. One of the reasons
-    // for this design is that we don't need to know a given node is the root
-    // until the very end, so we don't always need a chunk buffer.
-    if let Root = finalization {
-        state.set_last_node(true);
-    }
-    let blake_digest = state.finalize();
-    Hash {
-        bytes: *array_ref!(blake_digest.as_bytes(), 0, HASH_SIZE),
-    }
-}
-
-pub(crate) fn hash_chunk(chunk: &[u8], finalization: Finalization) -> Hash {
-    debug_assert!(chunk.len() <= CHUNK_SIZE);
-    let mut state = new_chunk_state();
-    state.update(chunk);
-    finalize_hash(&mut state, finalization)
-}
-
-pub(crate) fn hash_parent(parent: &[u8], finalization: Finalization) -> Hash {
-    debug_assert_eq!(parent.len(), PARENT_SIZE);
-    let mut state = new_parent_state();
-    state.update(parent);
-    finalize_hash(&mut state, finalization)
-}
-
-pub(crate) fn parent_hash(left_hash: &Hash, right_hash: &Hash, finalization: Finalization) -> Hash {
-    let mut state = new_parent_state();
-    state.update(left_hash.as_bytes());
-    state.update(right_hash.as_bytes());
-    finalize_hash(&mut state, finalization)
-}
 
 // Find the largest power of two that's less than or equal to `n`. We use this
 // for computing subtree sizes below.
@@ -347,7 +303,7 @@ fn condense_parents(mut children: &mut [u8], finalization: Finalization) -> Hash
 pub fn hash(input: &[u8]) -> Hash {
     // Handle the single chunk case explicitly.
     if input.len() <= CHUNK_SIZE {
-        return Hash::new(chunk_params(Root).hash(input).as_array());
+        return chunk_params(Root).hash(input).into();
     }
     let simd_degree = blake2s_simd::many::degree();
     let mut children_array = [0; MAX_SIMD_DEGREE * HASH_SIZE];
@@ -375,7 +331,7 @@ pub(crate) enum StateFinish {
 /// handles merging subtrees and keeps track of subtrees assembled so far. It takes only hashes as
 /// input, rather than raw input bytes, so it can be used with e.g. multiple threads hashing chunks
 /// in parallel. Callers that need `ParentNode` bytes for building the encoded tree, can use the
-/// optional `merge_parent` and `merge_finish` interfaces.
+/// optional `merge_parent` and `merge_finalize` interfaces.
 ///
 /// This struct contains a relatively large buffer on the stack for holding partial subtree hashes:
 /// 64 hashes at 32 bytes apiece, 2048 bytes in total. This is enough state space for the largest
@@ -410,7 +366,12 @@ impl State {
         let mut parent_node = [0; PARENT_SIZE];
         parent_node[..HASH_SIZE].copy_from_slice(left_child.as_bytes());
         parent_node[HASH_SIZE..].copy_from_slice(right_child.as_bytes());
-        let parent_hash = parent_hash(&left_child, &right_child, finalization);
+        let parent_hash = parent_params(finalization)
+            .to_state()
+            .update(left_child.as_bytes())
+            .update(right_child.as_bytes())
+            .finalize()
+            .into();
         self.subtrees.push(parent_hash);
         parent_node
     }
@@ -470,7 +431,7 @@ impl State {
     /// Callers that only want the final root hash can ignore this function; the next call to
     /// `push_subtree` will take care of merging in that case.
     ///
-    /// After the final call to `push_subtree`, you must call `merge_finish` in a loop instead of
+    /// After the final call to `push_subtree`, you must call `merge_finalize` in a loop instead of
     /// this function.
     pub fn merge_parent(&mut self) -> Option<ParentNode> {
         if !self.needs_merge() {
@@ -480,10 +441,10 @@ impl State {
     }
 
     /// Returns a tuple of `ParentNode` bytes and (in the last call only) the root hash. Callers
-    /// who need `ParentNode` bytes must call `merge_finish` in a loop after pushing the final
+    /// who need `ParentNode` bytes must call `merge_finalize` in a loop after pushing the final
     /// subtree, until the second return value is `Some`. Callers who don't need parent nodes
-    /// should use the simpler `finish` interface instead.
-    pub fn merge_finish(&mut self) -> StateFinish {
+    /// should use the simpler `finalize` interface instead.
+    pub fn merge_finalize(&mut self) -> StateFinish {
         if self.subtrees.len() > 2 {
             StateFinish::Parent(self.merge_inner(NotRoot))
         } else if self.subtrees.len() == 2 {
@@ -493,11 +454,11 @@ impl State {
         }
     }
 
-    /// A wrapper around `merge_finish` for callers who don't need the parent
+    /// A wrapper around `merge_finalize` for callers who don't need the parent
     /// nodes.
-    pub fn finish(&mut self) -> Hash {
+    pub fn finalize(&mut self) -> Hash {
         loop {
-            match self.merge_finish() {
+            match self.merge_finalize() {
                 StateFinish::Parent(_) => {} // ignored
                 StateFinish::Root(root) => return root,
             }
@@ -541,7 +502,7 @@ pub const BUF_SIZE: usize = MAX_SIMD_DEGREE * CHUNK_SIZE;
 /// hasher.update(b"input");
 /// hasher.update(b" ");
 /// hasher.update(b"bytes");
-/// let hash_incremental = hasher.finish();
+/// let hash_incremental = hasher.finalize();
 /// ```
 #[derive(Clone, Debug)]
 pub struct Writer {
@@ -553,7 +514,9 @@ impl Writer {
     /// Create a new `Writer`.
     pub fn new() -> Self {
         Self {
-            chunk_state: new_chunk_state(),
+            // The chunk_state will have the Root finalization (the last_node
+            // flag) set later if it turns one that the root is a chunk.
+            chunk_state: chunk_params(NotRoot).to_state(),
             tree_state: State::new(),
         }
     }
@@ -579,11 +542,11 @@ impl Writer {
             self.chunk_state.update(&input[..take]);
             input = &input[take..];
 
-            // If there's more input coming, finish the chunk before we
+            // If there's more input coming, finalize the chunk before we
             // continue. Otherwise short circuit.
             if !input.is_empty() {
-                let chunk_hash = finalize_hash(&mut self.chunk_state, NotRoot);
-                self.chunk_state = new_chunk_state();
+                let chunk_hash = self.chunk_state.finalize().into();
+                self.chunk_state = chunk_params(NotRoot).to_state();
                 self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
             } else {
                 return;
@@ -609,7 +572,7 @@ impl Writer {
             }
             blake2s_simd::many::hash_many(&mut jobs);
             for job in &jobs {
-                let chunk_hash = Hash::new(job.to_hash().as_array());
+                let chunk_hash = job.to_hash().into();
                 self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
             }
         }
@@ -621,21 +584,20 @@ impl Writer {
     }
 
     /// Finish computing the root hash. The writer cannot be used after this.
-    pub fn finish(&mut self) -> Hash {
+    pub fn finalize(&mut self) -> Hash {
         // If the chunk_state contains any chunk data, we have to finalize it
         // and incorporate it into the tree. Also, if there was never any data
         // at all, we have to hash the empty chunk.
         if self.chunk_state.count() > 0 || self.tree_state.count() == 0 {
-            let finalization = if self.tree_state.count() == 0 {
-                Root
-            } else {
-                NotRoot
-            };
-            let hash = finalize_hash(&mut self.chunk_state, finalization);
+            if self.tree_state.count() == 0 {
+                // This is after-the-fact Root finalization.
+                self.chunk_state.set_last_node(true);
+            }
+            let hash = self.chunk_state.finalize().into();
             self.tree_state
                 .push_subtree(&hash, self.chunk_state.count() as usize);
         }
-        self.tree_state.finish()
+        self.tree_state.finalize()
     }
 }
 
@@ -724,20 +686,20 @@ mod test {
     }
 
     fn drive_state(mut input: &[u8]) -> Hash {
-        let mut state = State::new();
-        let finalization = if input.len() <= CHUNK_SIZE {
+        let last_chunk_finialization = if input.len() <= CHUNK_SIZE {
             Root
         } else {
             NotRoot
         };
+        let mut state = State::new();
         while input.len() > CHUNK_SIZE {
-            let hash = hash_chunk(&input[..CHUNK_SIZE], NotRoot);
+            let hash = chunk_params(NotRoot).hash(&input[..CHUNK_SIZE]).into();
             state.push_subtree(&hash, CHUNK_SIZE);
             input = &input[CHUNK_SIZE..];
         }
-        let hash = hash_chunk(input, finalization);
+        let hash = chunk_params(last_chunk_finialization).hash(input).into();
         state.push_subtree(&hash, input.len());
-        state.finish()
+        state.finalize()
     }
 
     // These tests just check the different implementations against each other,
@@ -764,7 +726,7 @@ mod test {
 
             let mut writer = Writer::new();
             writer.write_all(&input).unwrap();
-            let found = writer.finish();
+            let found = writer.finalize();
             assert_eq!(expected, found, "hashes don't match");
         }
     }

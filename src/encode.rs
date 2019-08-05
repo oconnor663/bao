@@ -32,7 +32,7 @@
 //! let mut encoded_incrementally = Vec::new();
 //! let mut encoder = bao::encode::Writer::new(Cursor::new(&mut encoded_incrementally));
 //! encoder.write_all(b"some input")?;
-//! let hash = encoder.finish()?;
+//! let hash = encoder.finalize()?;
 //! assert_eq!(expected_hash, hash);
 //!
 //! assert_eq!(encoded_at_once, encoded_incrementally);
@@ -41,7 +41,7 @@
 //! ```
 
 use crate::hash::Finalization::{self, NotRoot, Root};
-use crate::hash::{self, Hash, CHUNK_SIZE, HEADER_SIZE, PARENT_SIZE};
+use crate::hash::{self, chunk_params, Hash, CHUNK_SIZE, HEADER_SIZE, PARENT_SIZE};
 use arrayref::{array_mut_ref, array_ref};
 use arrayvec::ArrayVec;
 use blake2s_simd::many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE};
@@ -58,7 +58,7 @@ pub fn encode(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
     let mut vec = Vec::with_capacity(encoded_size(bytes.len() as u64) as usize);
     let mut writer = Writer::new(io::Cursor::new(&mut vec));
     writer.write_all(bytes).unwrap();
-    let hash = writer.finish().unwrap();
+    let hash = writer.finalize().unwrap();
     (vec, hash)
 }
 
@@ -69,7 +69,7 @@ pub fn outboard(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
     let mut vec = Vec::with_capacity(outboard_size(bytes.len() as u64) as usize);
     let mut writer = Writer::new_outboard(io::Cursor::new(&mut vec));
     writer.write_all(bytes).unwrap();
-    let hash = writer.finish().unwrap();
+    let hash = writer.finalize().unwrap();
     (vec, hash)
 }
 
@@ -276,7 +276,7 @@ enum FlipperNext {
     Done,
 }
 
-/// An incremental encoder. Note that you must call `finish` after you're done writing.
+/// An incremental encoder. Note that you must call `finalize` after you're done writing.
 ///
 /// `Writer` supports both combined and outboard encoding, depending on which constructor you use.
 ///
@@ -298,7 +298,7 @@ enum FlipperNext {
 /// let encoded_cursor = std::io::Cursor::new(&mut encoded_incrementally);
 /// let mut encoder = bao::encode::Writer::new(encoded_cursor);
 /// encoder.write_all(b"some input")?;
-/// encoder.finish()?;
+/// encoder.finalize()?;
 /// # Ok(())
 /// # }
 /// ```
@@ -317,7 +317,9 @@ impl<T: Read + Write + Seek> Writer<T> {
     pub fn new(inner: T) -> Self {
         Self {
             inner,
-            chunk_state: hash::new_chunk_state(),
+            // The chunk_state will have the Root finalization (the last_node
+            // flag) set later if it turns one that the root is a chunk.
+            chunk_state: chunk_params(NotRoot).to_state(),
             tree_state: hash::State::new(),
             outboard: false,
         }
@@ -334,13 +336,13 @@ impl<T: Read + Write + Seek> Writer<T> {
     }
 
     /// Finalize the encoding, after all the input has been written. You can't
-    /// use this Writer again after calling `finish`.
+    /// use this Writer again after calling `finalize`.
     ///
     /// The underlying strategy of the `Writer` is to first store the tree in a post-order layout,
     /// and then to go back and flip the entire thing into pre-order. That makes it possible to
     /// stream input without knowing its length in advance, which is a core requirement of the
-    /// `std::io::Write` interface. The downside is that `finish` is a relatively expensive step.
-    pub fn finish(&mut self) -> io::Result<Hash> {
+    /// `std::io::Write` interface. The downside is that `finalize` is a relatively expensive step.
+    pub fn finalize(&mut self) -> io::Result<Hash> {
         // Compute the total len before we merge the final chunk into the
         // tree_state.
         let total_len = self
@@ -355,12 +357,11 @@ impl<T: Read + Write + Seek> Writer<T> {
         // bytes retained in the chunk_state have already been written to the
         // underlying writer by .write().
         if self.chunk_state.count() > 0 || self.tree_state.count() == 0 {
-            let finalization = if self.tree_state.count() == 0 {
-                Root
-            } else {
-                NotRoot
-            };
-            let hash = hash::finalize_hash(&mut self.chunk_state, finalization);
+            if self.tree_state.count() == 0 {
+                // This is after-the-fact Root finalization.
+                self.chunk_state.set_last_node(true);
+            }
+            let hash = self.chunk_state.finalize().into();
             self.tree_state
                 .push_subtree(&hash, self.chunk_state.count() as usize);
         }
@@ -368,7 +369,7 @@ impl<T: Read + Write + Seek> Writer<T> {
         // Merge and write all the parents along the right edge.
         let root_hash;
         loop {
-            match self.tree_state.merge_finish() {
+            match self.tree_state.merge_finalize() {
                 hash::StateFinish::Parent(parent) => self.inner.write_all(&parent)?,
                 hash::StateFinish::Root(root) => {
                     root_hash = root;
@@ -467,8 +468,8 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
                 // written, because either we're partway through a chunk
                 // already or we're the first chunk.
                 debug_assert!(self.tree_state.merge_parent().is_none());
-                let chunk_hash = hash::finalize_hash(&mut self.chunk_state, NotRoot);
-                self.chunk_state = hash::new_chunk_state();
+                let chunk_hash = self.chunk_state.finalize().into();
+                self.chunk_state = chunk_params(NotRoot).to_state();
                 self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
             } else {
                 return Ok(orig_input_len);
@@ -508,7 +509,7 @@ impl<T: Read + Write + Seek> Write for Writer<T> {
                 if !self.outboard {
                     self.inner.write_all(chunk)?;
                 }
-                let chunk_hash = Hash::new(job.to_hash().as_array());
+                let chunk_hash = job.to_hash().into();
                 self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
             }
         }

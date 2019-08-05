@@ -79,7 +79,7 @@ fn hash_one(maybe_path: &Option<PathBuf>, args: &Args) -> Result<bao::hash::Hash
     } else {
         let mut writer = bao::hash::Writer::new();
         io::copy(&mut input, &mut writer)?;
-        writer.finish()
+        writer.finalize()
     })
 }
 
@@ -126,7 +126,7 @@ fn encode(args: &Args) -> Result<(), Error> {
         bao::encode::Writer::new(output.require_file()?)
     };
     io::copy(&mut input, &mut writer)?;
-    writer.finish()?;
+    writer.finalize()?;
     Ok(())
 }
 
@@ -323,11 +323,7 @@ fn parse_hash(args: &Args) -> Result<bao::hash::Hash, Error> {
     if hash_vec.len() != bao::hash::HASH_SIZE {
         return Err(err_msg("wrong length hash"));
     };
-    Ok(bao::hash::Hash::new(array_ref!(
-        hash_vec,
-        0,
-        bao::hash::HASH_SIZE
-    )))
+    Ok((*array_ref!(hash_vec, 0, bao::hash::HASH_SIZE)).into())
 }
 
 // When streaming out decoded content, it's acceptable for the caller to pipe us

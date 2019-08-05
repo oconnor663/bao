@@ -77,7 +77,7 @@ fn bench_bao_hash_writer_short(b: &mut Bencher) {
     b.iter(|| {
         let mut writer = hash::Writer::new();
         writer.write_all(input.get()).unwrap();
-        writer.finish()
+        writer.finalize()
     });
 }
 
@@ -87,7 +87,7 @@ fn bench_bao_hash_writer_medium(b: &mut Bencher) {
     b.iter(|| {
         let mut writer = hash::Writer::new();
         writer.write_all(input.get()).unwrap();
-        writer.finish()
+        writer.finalize()
     });
 }
 
@@ -97,7 +97,7 @@ fn bench_bao_hash_writer_long(b: &mut Bencher) {
     b.iter(|| {
         let mut writer = hash::Writer::new();
         writer.write_all(input.get()).unwrap();
-        writer.finish()
+        writer.finalize()
     });
 }
 
@@ -109,7 +109,7 @@ fn bench_bao_encode_writer_combined_short(b: &mut Bencher) {
         output.clear();
         let mut writer = encode::Writer::new(Cursor::new(&mut output));
         writer.write_all(input.get()).unwrap();
-        writer.finish().unwrap()
+        writer.finalize().unwrap()
     });
 }
 
@@ -121,7 +121,7 @@ fn bench_bao_encode_writer_combined_medium(b: &mut Bencher) {
         output.clear();
         let mut writer = encode::Writer::new(Cursor::new(&mut output));
         writer.write_all(input.get()).unwrap();
-        writer.finish().unwrap()
+        writer.finalize().unwrap()
     });
 }
 
@@ -133,7 +133,7 @@ fn bench_bao_encode_writer_combined_long(b: &mut Bencher) {
         output.clear();
         let mut writer = encode::Writer::new(Cursor::new(&mut output));
         writer.write_all(input.get()).unwrap();
-        writer.finish().unwrap()
+        writer.finalize().unwrap()
     });
 }
 
@@ -145,7 +145,7 @@ fn bench_bao_encode_writer_outboard_short(b: &mut Bencher) {
         output.clear();
         let mut writer = encode::Writer::new_outboard(Cursor::new(&mut output));
         writer.write_all(input.get()).unwrap();
-        writer.finish().unwrap()
+        writer.finalize().unwrap()
     });
 }
 
@@ -157,7 +157,7 @@ fn bench_bao_encode_writer_outboard_medium(b: &mut Bencher) {
         output.clear();
         let mut writer = encode::Writer::new_outboard(Cursor::new(&mut output));
         writer.write_all(input.get()).unwrap();
-        writer.finish().unwrap()
+        writer.finalize().unwrap()
     });
 }
 
@@ -169,7 +169,7 @@ fn bench_bao_encode_writer_outboard_long(b: &mut Bencher) {
         output.clear();
         let mut writer = encode::Writer::new_outboard(Cursor::new(&mut output));
         writer.write_all(input.get()).unwrap();
-        writer.finish().unwrap()
+        writer.finalize().unwrap()
     });
 }
 

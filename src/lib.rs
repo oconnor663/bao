@@ -20,7 +20,7 @@
 //! hasher.update(b"input");
 //! hasher.update(b" ");
 //! hasher.update(b"bytes");
-//! let hash_incremental = hasher.finish();
+//! let hash_incremental = hasher.finalize();
 //!
 //! assert_eq!(hash_at_once, hash_incremental);
 //! ```

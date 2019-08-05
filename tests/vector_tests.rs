@@ -100,7 +100,7 @@ fn test_hash_vectors() {
         // Make sure the Writer gives the same answer.
         let mut writer = bao::hash::Writer::new();
         writer.write_all(&input).unwrap();
-        let writer_hash = writer.finish();
+        let writer_hash = writer.finalize();
         assert_eq!(hash, writer_hash);
     }
 }
@@ -108,7 +108,7 @@ fn test_hash_vectors() {
 fn corrupt_hash(hash: &Hash) -> Hash {
     let mut bad_bytes = *hash.as_bytes();
     bad_bytes[0] ^= 1;
-    Hash::new(&bad_bytes)
+    bad_bytes.into()
 }
 
 #[test]

@@ -45,7 +45,10 @@
 use crate::encode;
 use crate::encode::NextRead;
 use crate::hash::Finalization::{self, Root};
-use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
+use crate::hash::{
+    self, chunk_params, parent_params, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH,
+    PARENT_SIZE,
+};
 use arrayref::{array_ref, array_refs};
 use arrayvec::ArrayVec;
 use blake2s_simd::many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE};
@@ -101,11 +104,11 @@ pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
         let mut chunk_buf = [0; CHUNK_SIZE];
         let chunk = &mut chunk_buf[..content_len as usize];
         reader.read_exact(chunk)?;
-        Ok(hash::hash_chunk(chunk, Root))
+        Ok(chunk_params(Root).hash(chunk).into())
     } else {
         let mut parent = [0; PARENT_SIZE];
         reader.read_exact(&mut parent)?;
-        Ok(hash::hash_parent(&parent, Root))
+        Ok(parent_params(Root).hash(&parent).into())
     }
 }
 
@@ -131,11 +134,11 @@ pub fn hash_from_outboard<C: Read, O: Read>(
         let mut chunk_buf = [0; CHUNK_SIZE];
         let chunk = &mut chunk_buf[..content_len as usize];
         content_reader.read_exact(chunk)?;
-        Ok(hash::hash_chunk(chunk, Root))
+        Ok(chunk_params(Root).hash(chunk).into())
     } else {
         let mut parent = [0; PARENT_SIZE];
         outboard_reader.read_exact(&mut parent)?;
-        Ok(hash::hash_parent(&parent, Root))
+        Ok(parent_params(Root).hash(&parent).into())
     }
 }
 
@@ -196,15 +199,15 @@ impl VerifyState {
     fn feed_parent(&mut self, parent: &hash::ParentNode) -> Result<(), Error> {
         let finalization = self.parser.finalization();
         let expected_hash = self.stack.last().expect("unexpectedly empty stack");
-        let computed_hash = hash::hash_parent(parent, finalization);
+        let computed_hash: Hash = parent_params(finalization).hash(parent).into();
         // Hash implements constant time equality.
         if expected_hash != &computed_hash {
             return Err(Error::HashMismatch);
         }
-        let (left_child, right_child) = array_refs!(parent, HASH_SIZE, HASH_SIZE);
+        let (&left_child, &right_child) = array_refs!(parent, HASH_SIZE, HASH_SIZE);
         self.stack.pop();
-        self.stack.push(Hash::new(right_child));
-        self.stack.push(Hash::new(left_child));
+        self.stack.push(right_child.into());
+        self.stack.push(left_child.into());
         self.parser.advance_parent();
         Ok(())
     }
@@ -426,7 +429,7 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
         }
         let buf_slice = &mut self.buf[..size];
         self.input.read_exact(buf_slice)?;
-        let hash = hash::hash_chunk(buf_slice, finalization);
+        let hash = chunk_params(finalization).hash(buf_slice).into();
         self.state.feed_chunk(&hash)?;
         self.buf_start = skip;
         self.buf_end = size;
@@ -585,8 +588,7 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
                 let parent = parents_iter.next().expect("ran out of parents");
                 self.state.feed_parent(parent)?;
             }
-            self.state
-                .feed_chunk(&Hash::new(job.to_hash().as_array()))?;
+            self.state.feed_chunk(&job.to_hash().into())?;
         }
         debug_assert!(parents_iter.next().is_none(), "didn't use all parents");
 
@@ -1136,7 +1138,7 @@ mod test {
             // Seeking to EOF should fail if the root hash is wrong.
             let mut bad_hash_bytes = *hash.as_bytes();
             bad_hash_bytes[0] ^= 1;
-            let bad_hash = Hash::new(&bad_hash_bytes);
+            let bad_hash = bad_hash_bytes.into();
             let mut decoder = Reader::new(Cursor::new(&encoded), &bad_hash);
             let result = decoder.seek(SeekFrom::Start(case as u64));
             assert!(result.is_err(), "a bad hash is supposed to fail!");
