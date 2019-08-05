@@ -1,5 +1,7 @@
 //! Compute a Bao hash from some input bytes.
 //!
+//! This module is `no_std`-compatible.
+//!
 //! # Example
 //!
 //! ```
@@ -332,8 +334,10 @@ fn condense_parents(mut children: &mut [u8], finalization: Finalization) -> Hash
     }
 }
 
-/// Hash a slice of input bytes all at once. If the `std` feature is enabled, as it is by default,
-/// this will use multiple threads via Rayon. This is the fastest hashing implementation.
+/// Hash a slice of input bytes all at once. If the `std` feature is enabled,
+/// as it is by default, this will use multiple threads via Rayon. Other than
+/// initializing the global threadpool, this function doesn't allocate. This is
+/// the fastest hashing implementation.
 ///
 /// # Example
 ///
@@ -529,7 +533,7 @@ impl fmt::Debug for State {
 pub const BUF_SIZE: usize = MAX_SIMD_DEGREE * CHUNK_SIZE;
 
 /// An incremental hasher. `Writer` is no_std-compatible and does not allocate.
-/// The implementation is single-threaded but uses SIMD parallelism.
+/// This implementation is single-threaded.
 ///
 /// # Example
 /// ```
@@ -554,9 +558,10 @@ impl Writer {
         }
     }
 
-    /// Add input to the hash. This is equivalent to `write`, except that it's
-    /// also available with `no_std`. For best performance, use an input buffer
-    /// of size `BUF_SIZE`, or some integer multiple of that.
+    /// Add input to the hash. The `Write::write` implementation is equivalent
+    /// to this, except that this is also available under `no_std`. For best
+    /// performance, use an input buffer of size `BUF_SIZE`, or some integer
+    /// multiple of that.
     pub fn update(&mut self, mut input: &[u8]) {
         // In normal operation, we hash every chunk that comes in using SIMD
         // and push those hashes into the tree state, only retaining a partial

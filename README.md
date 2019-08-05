@@ -173,13 +173,9 @@ possible. It's a good starting point for understanding the algorithms
 involved, before diving into the Rust code.
 
 The `bao` library crate includes `no_std` support if you set
-`default-features = false` in your `Cargo.toml`. Most of the standalone
-functions that don't obviously depend on `std` are available. For
-example, `bao::encode::encode` is available with a single threaded
-implementation, but `bao::encode::encode_to_vec` isn't available. Of the
-streaming implementations, only `hash::Writer` is available, because the
-encoding and decoding implementations rely more on the `std::io::{Read,
-Write, Seek}` interfaces. If there are any callers that want to do
-streaming encoding or decoding under `no_std`, please let me know, and
-we can figure out which libcore-compatible traits it makes sense to
-implement.
+`default-features = false` in your `Cargo.toml`. Currently only the
+`hash` module is available, with Rayon-based multithreading disabled.
+The `encode` and `decode` modules currently depend on the
+`std::io::{Read, Write, Seek}` traits. Those traits are all they need
+from `std`, and they do not allocate, so they could be made
+`no_std`-compatible in the future with some compatibility layer.

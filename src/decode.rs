@@ -4,6 +4,10 @@
 //! If there's a mismatch, decoding will return an error. It's possible for incremental decoding to
 //! return some valid bytes before encountering a error, but it will never return unverified bytes.
 //!
+//! This module requires the `std` feature, which is enabled by default. The
+//! standard library is only used for the `std::io::{Read, Write, Seek}`. This
+//! implementation does not allocate.
+//!
 //! # Example
 //!
 //! ```
@@ -45,20 +49,15 @@ use crate::hash::{self, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PAR
 use arrayref::{array_ref, array_refs};
 use arrayvec::ArrayVec;
 use blake2s_simd::many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE};
-use core::cmp;
-use core::fmt;
-#[cfg(feature = "std")]
+use std::cmp;
 use std::error;
-#[cfg(feature = "std")]
+use std::fmt;
 use std::io;
-#[cfg(feature = "std")]
 use std::io::prelude::*;
-#[cfg(feature = "std")]
 use std::io::SeekFrom;
 
 /// Decode an entire slice in the default combined mode into a bytes vector.
 /// This is a convenience wrapper around `Reader`.
-#[cfg(feature = "std")]
 pub fn decode(encoded: impl AsRef<[u8]>, hash: &Hash) -> io::Result<Vec<u8>> {
     let bytes = encoded.as_ref();
     if bytes.len() < HEADER_SIZE {
@@ -94,7 +93,6 @@ pub fn decode(encoded: impl AsRef<[u8]>, hash: &Hash) -> io::Result<Vec<u8>> {
 /// let hash2 = bao::decode::hash_from_encoded(&mut &*encoded).unwrap();
 /// assert_eq!(hash1, hash2);
 /// ```
-#[cfg(feature = "std")]
 pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
     let mut header = [0; HEADER_SIZE];
     reader.read_exact(&mut header)?;
@@ -122,7 +120,6 @@ pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
 /// let hash2 = bao::decode::hash_from_outboard(&mut &input[..], &mut &*outboard).unwrap();
 /// assert_eq!(hash1, hash2);
 /// ```
-#[cfg(feature = "std")]
 pub fn hash_from_outboard<C: Read, O: Read>(
     content_reader: &mut C,
     outboard_reader: &mut O,
@@ -266,10 +263,8 @@ impl fmt::Display for Error {
     }
 }
 
-#[cfg(feature = "std")]
 impl error::Error for Error {}
 
-#[cfg(feature = "std")]
 impl From<Error> for io::Error {
     fn from(e: Error) -> io::Error {
         match e {
@@ -280,7 +275,6 @@ impl From<Error> for io::Error {
 }
 
 // Shared between Reader and SliceReader.
-#[cfg(feature = "std")]
 #[derive(Clone)]
 struct ReaderShared<T: Read, O: Read> {
     input: T,
@@ -350,7 +344,6 @@ fn efficient_output_len(len: usize) -> usize {
     }
 }
 
-#[cfg(feature = "std")]
 impl<T: Read, O: Read> ReaderShared<T, O> {
     fn new(input: T, outboard: Option<O>, hash: &Hash) -> Self {
         Self {
@@ -627,7 +620,6 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
     }
 }
 
-#[cfg(feature = "std")]
 impl<T: Read + Seek, O: Read + Seek> ReaderShared<T, O> {
     // The Reader will call this as part of seeking, but note that the
     // SliceReader won't, because all the seek bookkeeping has already been
@@ -658,7 +650,6 @@ impl<T: Read + Seek, O: Read + Seek> ReaderShared<T, O> {
     }
 }
 
-#[cfg(feature = "std")]
 impl<T: Read, O: Read> fmt::Debug for ReaderShared<T, O> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -709,13 +700,11 @@ impl<T: Read, O: Read> fmt::Debug for ReaderShared<T, O> {
 /// # Ok(())
 /// # }
 /// ```
-#[cfg(feature = "std")]
 #[derive(Clone, Debug)]
 pub struct Reader<T: Read, O: Read> {
     shared: ReaderShared<T, O>,
 }
 
-#[cfg(feature = "std")]
 impl<T: Read> Reader<T, T> {
     pub fn new(inner: T, hash: &Hash) -> Self {
         Self {
@@ -724,7 +713,6 @@ impl<T: Read> Reader<T, T> {
     }
 }
 
-#[cfg(feature = "std")]
 impl<T: Read, O: Read> Reader<T, O> {
     pub fn new_outboard(inner: T, outboard: O, hash: &Hash) -> Self {
         Self {
@@ -733,14 +721,12 @@ impl<T: Read, O: Read> Reader<T, O> {
     }
 }
 
-#[cfg(feature = "std")]
 impl<T: Read, O: Read> Read for Reader<T, O> {
     fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
         self.shared.read(output)
     }
 }
 
-#[cfg(feature = "std")]
 impl<T: Read + Seek, O: Read + Seek> Seek for Reader<T, O> {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         // Clear the internal buffer when seeking. The buffered bytes won't be
@@ -785,7 +771,6 @@ impl<T: Read + Seek, O: Read + Seek> Seek for Reader<T, O> {
     }
 }
 
-#[cfg(feature = "std")]
 fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
     let sum = position as i128 + offset as i128;
     if sum < 0 {
@@ -855,14 +840,12 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 /// # Ok(())
 /// # }
 /// ```
-#[cfg(feature = "std")]
 pub struct SliceReader<T: Read> {
     shared: ReaderShared<T, T>,
     slice_start: u64,
     slice_remaining: u64,
 }
 
-#[cfg(feature = "std")]
 impl<T: Read> SliceReader<T> {
     pub fn new(inner: T, hash: &Hash, slice_start: u64, slice_len: u64) -> Self {
         Self {
@@ -873,7 +856,6 @@ impl<T: Read> SliceReader<T> {
     }
 }
 
-#[cfg(feature = "std")]
 impl<T: Read> Read for SliceReader<T> {
     fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
         // If we haven't done the initial seek yet, do the full seek loop

@@ -8,6 +8,9 @@
 //! readme](https://github.com/oconnor663/bao/blob/master/README.md) and the [full
 //! specification](https://github.com/oconnor663/bao/blob/master/docs/spec.md).
 //!
+//! The `encode` and `decode` modules require the `std` feature, which is
+//! enabled by default.
+//!
 //! # Example
 //!
 //! ```
@@ -25,6 +28,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "std")]
 pub mod decode;
+#[cfg(feature = "std")]
 pub mod encode;
 pub mod hash;

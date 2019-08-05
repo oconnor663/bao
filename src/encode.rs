@@ -12,6 +12,10 @@
 //! copying any input bytes. The outboard encoding is much smaller, but it can
 //! only be used together with the original input file.
 //!
+//! This module requires the `std` feature, which is enabled by default. The
+//! standard library is only used for the `std::io::{Read, Write, Seek}`. This
+//! implementation does not allocate.
+//!
 //! # Example
 //!
 //! ```
@@ -41,18 +45,14 @@ use crate::hash::{self, Hash, CHUNK_SIZE, HEADER_SIZE, PARENT_SIZE};
 use arrayref::{array_mut_ref, array_ref};
 use arrayvec::ArrayVec;
 use blake2s_simd::many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE};
-use core::cmp;
-use core::fmt;
-#[cfg(feature = "std")]
+use std::cmp;
+use std::fmt;
 use std::io;
-#[cfg(feature = "std")]
 use std::io::prelude::*;
-#[cfg(feature = "std")]
 use std::io::SeekFrom;
 
 /// Encode an entire slice into a bytes vector in the default combined mode.
 /// This is a convenience wrapper around `Writer::write_all`.
-#[cfg(feature = "std")]
 pub fn encode(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
     let bytes = input.as_ref();
     let mut vec = Vec::with_capacity(encoded_size(bytes.len() as u64) as usize);
@@ -64,7 +64,6 @@ pub fn encode(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
 
 /// Encode an entire slice into a bytes vector in the outboard mode. This is a
 /// convenience wrapper around `Writer::new_outboard` and `Writer::write_all`.
-#[cfg(feature = "std")]
 pub fn outboard(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
     let bytes = input.as_ref();
     let mut vec = Vec::with_capacity(outboard_size(bytes.len() as u64) as usize);
@@ -303,7 +302,6 @@ enum FlipperNext {
 /// # Ok(())
 /// # }
 /// ```
-#[cfg(feature = "std")]
 #[derive(Clone, Debug)]
 pub struct Writer<T: Read + Write + Seek> {
     inner: T,
@@ -312,7 +310,6 @@ pub struct Writer<T: Read + Write + Seek> {
     outboard: bool,
 }
 
-#[cfg(feature = "std")]
 impl<T: Read + Write + Seek> Writer<T> {
     /// Create a new `Writer` that will produce a combined encoding.The encoding will contain all
     /// the input bytes, so that it can be decoded without the original input file. This is what
@@ -441,7 +438,6 @@ impl<T: Read + Write + Seek> Writer<T> {
     }
 }
 
-#[cfg(feature = "std")]
 impl<T: Read + Write + Seek> Write for Writer<T> {
     fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
         // Similar to hash::Writer, in normal operation we hash chunks in their
@@ -966,7 +962,6 @@ pub(crate) enum LenNext {
 /// # Ok(())
 /// # }
 /// ```
-#[cfg(feature = "std")]
 pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
     input: T,
     outboard: Option<O>,
@@ -980,7 +975,6 @@ pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
     seek_done: bool,
 }
 
-#[cfg(feature = "std")]
 impl<T: Read + Seek> SliceExtractor<T, T> {
     /// Create a new `SliceExtractor` to read from a combined encoding. Note that `slice_start` and
     /// `slice_len` are with respect to the *content* of the encoding, that is, the *original*
@@ -991,7 +985,6 @@ impl<T: Read + Seek> SliceExtractor<T, T> {
     }
 }
 
-#[cfg(feature = "std")]
 impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
     /// Create a new `SliceExtractor` to read from an unmodified input file and an outboard
     /// encoding of that same file (see `Writer::new_outboard`). As with `SliceExtractor::new`,
@@ -1118,7 +1111,6 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
     }
 }
 
-#[cfg(feature = "std")]
 impl<T: Read + Seek, O: Read + Seek> Read for SliceExtractor<T, O> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // If we don't have any output ready to go, try to read more.
@@ -1135,7 +1127,6 @@ impl<T: Read + Seek, O: Read + Seek> Read for SliceExtractor<T, O> {
     }
 }
 
-#[cfg(feature = "std")]
 pub(crate) fn cast_offset(offset: u128) -> io::Result<u64> {
     if offset > u64::max_value() as u128 {
         Err(io::Error::new(
