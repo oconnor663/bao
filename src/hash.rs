@@ -116,17 +116,6 @@ pub(crate) fn decode_len(bytes: &[u8; HEADER_SIZE]) -> u64 {
     u64::from_le_bytes(*bytes)
 }
 
-fn common_params() -> blake2s_simd::Params {
-    let mut params = blake2s_simd::Params::new();
-    params
-        .hash_length(HASH_SIZE)
-        .fanout(2)
-        .max_depth(255)
-        .max_leaf_length(CHUNK_SIZE as u32)
-        .inner_hash_length(HASH_SIZE);
-    params
-}
-
 // The root node is hashed differently from interior nodes. It gets suffixed
 // with the length of the entire input, and we set the Blake2 final node flag.
 // That means that no root hash can ever collide with an interior hash, or with
@@ -157,6 +146,17 @@ pub(crate) fn left_len(content_len: u64) -> u64 {
     // Subtract 1 to reserve at least one byte for the right side.
     let full_chunks = (content_len - 1) / CHUNK_SIZE as u64;
     largest_power_of_two_leq(full_chunks) * CHUNK_SIZE as u64
+}
+
+fn common_params() -> blake2s_simd::Params {
+    let mut params = blake2s_simd::Params::new();
+    params
+        .hash_length(HASH_SIZE)
+        .fanout(2)
+        .max_depth(255)
+        .max_leaf_length(CHUNK_SIZE as u32)
+        .inner_hash_length(HASH_SIZE);
+    params
 }
 
 pub(crate) fn chunk_params(finalization: Finalization) -> blake2s_simd::Params {
@@ -718,7 +718,7 @@ mod test {
     }
 
     #[test]
-    fn test_writer() {
+    fn test_hasher() {
         for &case in TEST_CASES {
             println!("case {}", case);
             let input = vec![0x42; case];
