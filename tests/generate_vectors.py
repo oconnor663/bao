@@ -68,11 +68,11 @@ def encoded():
     ret = []
     for size in SIZES:
         b = input_bytes(size)
-        encoded = bao.bao_encode(b)
+        encoded, hash_ = bao.bao_encode(b)
         fields = [
             ("input_len", size),
             ("output_len", len(encoded)),
-            ("bao_hash", bao.bao_hash(io.BytesIO(b)).hex()),
+            ("bao_hash", hash_.hex()),
             ("encoded_blake2s", blake2s_hash(encoded)),
             ("corruptions", encode_corruption_points(size)),
         ]
@@ -84,7 +84,7 @@ def outboard():
     ret = []
     for size in SIZES:
         b = input_bytes(size)
-        encoded = bao.bao_encode(b, outboard=True)
+        encoded, hash_ = bao.bao_encode(b, outboard=True)
         input_corruptions = []
         corruption = 0
         while corruption < size:
@@ -93,7 +93,7 @@ def outboard():
         fields = [
             ("input_len", size),
             ("output_len", len(encoded)),
-            ("bao_hash", bao.bao_hash(io.BytesIO(b)).hex()),
+            ("bao_hash", hash_.hex()),
             ("encoded_blake2s", blake2s_hash(encoded)),
             ("outboard_corruptions",
              encode_corruption_points(size, outboard=True)),
@@ -171,7 +171,7 @@ def slices():
         size = case["input_len"]
         offsets = case["seek_offsets"]
         b = input_bytes(size)
-        encoded = bao.bao_encode(b)
+        encoded, hash_ = bao.bao_encode(b)
         slices = []
         for offset in offsets:
             slice_bytes = io.BytesIO()
@@ -189,7 +189,7 @@ def slices():
             slices.append(OrderedDict(fields))
         fields = [
             ("input_len", size),
-            ("bao_hash", bao.bao_hash(io.BytesIO(b)).hex()),
+            ("bao_hash", hash_.hex()),
             ("slices", slices),
         ]
         ret.append(OrderedDict(fields))

@@ -139,19 +139,22 @@ def left_len(parent_len):
 def bao_encode(buf, *, outboard=False):
     def encode_recurse(buf, finalization):
         if len(buf) <= CHUNK_SIZE:
-            return hash_chunk(buf, finalization), b"" if outboard else buf
+            chunk_hash = hash_chunk(buf, finalization)
+            chunk_encoded = b"" if outboard else buf
+            return chunk_encoded, chunk_hash
         llen = left_len(len(buf))
         # Interior nodes have no len suffix.
-        left_hash, left_encoded = encode_recurse(buf[:llen], NOT_ROOT)
-        right_hash, right_encoded = encode_recurse(buf[llen:], NOT_ROOT)
+        left_encoded, left_hash = encode_recurse(buf[:llen], NOT_ROOT)
+        right_encoded, right_hash = encode_recurse(buf[llen:], NOT_ROOT)
         node = left_hash + right_hash
         encoded = node + left_encoded + right_encoded
-        return hash_parent(node, finalization), encoded
+        return encoded, hash_parent(node, finalization)
 
     # Only this topmost call sets a non-None finalization.
-    hash_, encoded = encode_recurse(buf, ROOT)
+    encoded, hash_ = encode_recurse(buf, ROOT)
     # The final output prefixes the encoded length.
-    return encode_len(len(buf)) + encoded
+    output = encode_len(len(buf)) + encoded
+    return output, hash_
 
 
 def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
@@ -344,7 +347,7 @@ def main():
         if args["--outboard"] is not None:
             outboard = True
             out_stream = open_output(args["--outboard"])
-        encoded = bao_encode(in_stream.read(), outboard=outboard)
+        encoded, _ = bao_encode(in_stream.read(), outboard=outboard)
         out_stream.write(encoded)
     elif args["decode"]:
         hash_ = binascii.unhexlify(args["<hash>"])

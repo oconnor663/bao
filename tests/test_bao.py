@@ -28,7 +28,8 @@ VECTORS = json.load(VECTORS_PATH.open())
 # =================
 #
 # Most of the functions in bao.py (except bao_encode) work with streams. These
-# wrappers work with bytes, which makes them easier to test.
+# wrappers work with bytes, and return hashes as strings, which makes them
+# easier to test.
 
 
 def bao_hash(content):
@@ -37,12 +38,14 @@ def bao_hash(content):
 
 def bao_encode(content):
     # Note that unlike the other functions, this one already takes bytes.
-    return bao.bao_encode(content, outboard=False)
+    encoded, hash_ = bao.bao_encode(content, outboard=False)
+    return encoded, hash_.hex()
 
 
 def bao_encode_outboard(content):
     # Note that unlike the other functions, this one already takes bytes.
-    return bao.bao_encode(content, outboard=True)
+    outboard, hash_ = bao.bao_encode(content, outboard=True)
+    return outboard, hash_.hex()
 
 
 def bao_decode(hash, encoded):
@@ -152,23 +155,24 @@ def test_encoded():
         corruptions = case["corruptions"]
 
         # First make sure the encoded output is what it's supposed to be.
-        encoded = bao_encode(input_bytes)
+        encoded, hash_ = bao_encode(input_bytes)
+        assert expected_bao_hash == hash_
         assert output_len == len(encoded)
         assert encoded_blake2s == blake2s(encoded)
 
         # Now test decoding.
-        output = bao_decode(expected_bao_hash, encoded)
+        output = bao_decode(hash_, encoded)
         assert input_bytes == output
 
         # Make sure decoding with the wrong hash fails.
-        wrong_hash = "0" * len(expected_bao_hash)
+        wrong_hash = "0" * len(hash_)
         assert_decode_failure(bao_decode, wrong_hash, encoded)
 
         # Make sure each of the corruption points causes decoding to fail.
         for c in corruptions:
             corrupted = bytearray(encoded)
             corrupted[c] ^= 1
-            assert_decode_failure(bao_decode, expected_bao_hash, corrupted)
+            assert_decode_failure(bao_decode, hash_, corrupted)
 
 
 def make_tempfile(b=b""):
@@ -215,16 +219,17 @@ def test_outboard():
         input_corruptions = case["input_corruptions"]
 
         # First make sure the encoded output is what it's supposed to be.
-        outboard = bao_encode_outboard(input_bytes)
+        outboard, hash_ = bao_encode_outboard(input_bytes)
+        assert expected_bao_hash == hash_
         assert output_len == len(outboard)
         assert encoded_blake2s == blake2s(outboard)
 
         # Now test decoding.
-        output = bao_decode_outboard(expected_bao_hash, input_bytes, outboard)
+        output = bao_decode_outboard(hash_, input_bytes, outboard)
         assert input_bytes == output
 
         # Make sure decoding with the wrong hash fails.
-        wrong_hash = "0" * len(expected_bao_hash)
+        wrong_hash = "0" * len(hash_)
         assert_decode_failure(bao_decode_outboard, wrong_hash, input_bytes,
                               outboard)
 
@@ -233,16 +238,16 @@ def test_outboard():
         for c in outboard_corruptions:
             corrupted = bytearray(outboard)
             corrupted[c] ^= 1
-            assert_decode_failure(bao_decode_outboard, expected_bao_hash,
-                                  input_bytes, corrupted)
+            assert_decode_failure(bao_decode_outboard, hash_, input_bytes,
+                                  corrupted)
 
         # Make sure each of the input corruption points causes decoding to
         # fail.
         for c in input_corruptions:
             corrupted = bytearray(input_bytes)
             corrupted[c] ^= 1
-            assert_decode_failure(bao_decode_outboard, expected_bao_hash,
-                                  corrupted, outboard)
+            assert_decode_failure(bao_decode_outboard, hash_, corrupted,
+                                  outboard)
 
 
 def test_outboard_cli():
@@ -283,8 +288,10 @@ def test_slices():
         expected_bao_hash = case["bao_hash"]
         slices = case["slices"]
 
-        encoded = bao_encode(input_bytes)
-        outboard = bao_encode_outboard(input_bytes)
+        encoded, hash_ = bao_encode(input_bytes)
+        outboard, hash_outboard = bao_encode_outboard(input_bytes)
+        assert expected_bao_hash == hash_
+        assert expected_bao_hash == hash_outboard
 
         for slice_case in slices:
             slice_start = slice_case["start"]
@@ -307,12 +314,12 @@ def test_slices():
             # slicing a byte array in Python allows indices past the end of the
             # array, and sort of silently caps them.
             input_slice = input_bytes[slice_start:][:slice_len]
-            output = bao_decode_slice(slice_bytes, expected_bao_hash,
-                                      slice_start, slice_len)
+            output = bao_decode_slice(slice_bytes, hash_, slice_start,
+                                      slice_len)
             assert input_slice == output
 
             # Make sure decoding with the wrong hash fails.
-            wrong_hash = "0" * len(expected_bao_hash)
+            wrong_hash = "0" * len(hash_)
             assert_decode_failure(bao_decode_slice, slice_bytes, wrong_hash,
                                   slice_start, slice_len)
 
@@ -321,9 +328,8 @@ def test_slices():
             for c in corruptions:
                 corrupted = bytearray(slice_bytes)
                 corrupted[c] ^= 1
-                assert_decode_failure(bao_decode_slice, corrupted,
-                                      expected_bao_hash, slice_start,
-                                      slice_len)
+                assert_decode_failure(bao_decode_slice, corrupted, hash_,
+                                      slice_start, slice_len)
 
 
 def test_slices_cli():
