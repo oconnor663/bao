@@ -363,7 +363,10 @@ def main():
             # This loop just crashes on IO errors, which is fine for testing.
             for name in inputs:
                 hash_ = bao_hash(open_input(name))
-                print("{}  {}".format(hash_.hex(), name))
+                if len(inputs) > 1:
+                    print("{}  {}".format(hash_.hex(), name))
+                else:
+                    print(hash_.hex())
         else:
             hash_ = bao_hash(in_stream)
             print(hash_.hex())

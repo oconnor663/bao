@@ -86,7 +86,11 @@ fn hash(args: &Args) -> Result<(), Error> {
             // that some of the inputs will error on read e.g. because they're directories.
             match hash_one(&Some(input.clone())) {
                 Ok(hash) => {
-                    println!("{}  {}", hash.to_hex(), input_str);
+                    if args.arg_inputs.len() > 1 {
+                        println!("{}  {}", hash.to_hex(), input_str);
+                    } else {
+                        println!("{}", hash.to_hex());
+                    }
                 }
                 Err(e) => {
                     did_error = true;
