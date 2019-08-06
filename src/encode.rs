@@ -319,7 +319,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
             inner,
             // The chunk_state will have the Root finalization (the last_node
             // flag) set later if it turns one that the root is a chunk.
-            chunk_state: chunk_params(NotRoot).to_state(),
+            chunk_state: chunk_params(NotRoot, 0).to_state(),
             tree_state: hash::State::new(),
             outboard: false,
         }
@@ -469,7 +469,9 @@ impl<T: Read + Write + Seek> Write for Encoder<T> {
                 // already or we're the first chunk.
                 debug_assert!(self.tree_state.merge_parent().is_none());
                 let chunk_hash = self.chunk_state.finalize().into();
-                self.chunk_state = chunk_params(NotRoot).to_state();
+                // At this point the chunk_state needs to be reset. However, we
+                // don't know what offset to use until we get to the next
+                // partial chunk. We'll reset it then.
                 self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
             } else {
                 return Ok(orig_input_len);
@@ -480,7 +482,7 @@ impl<T: Read + Write + Seek> Write for Encoder<T> {
         // group of chunks, write each chunk to the output (if non-outboard),
         // incorporate its hash into the tree_state, and write out any
         // completed parent nodes.
-        let params = hash::chunk_params(NotRoot);
+        let mut chunk_offset = self.tree_state.count() / CHUNK_SIZE as u64;
         let mut chunks = input.chunks_exact(CHUNK_SIZE);
         let mut fused_chunks = chunks.by_ref().fuse();
         loop {
@@ -494,7 +496,11 @@ impl<T: Read + Write + Seek> Write for Encoder<T> {
             }
             let mut jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = chunk_group
                 .iter()
-                .map(|&chunk| HashManyJob::new(&params, chunk))
+                .map(|&chunk| {
+                    let params = chunk_params(NotRoot, chunk_offset);
+                    chunk_offset += 1;
+                    HashManyJob::new(&params, chunk)
+                })
                 .collect();
             blake2s_simd::many::hash_many(&mut jobs);
             for (&chunk, job) in chunk_group.iter().zip(&jobs) {
@@ -527,6 +533,9 @@ impl<T: Read + Write + Seek> Write for Encoder<T> {
             if !self.outboard {
                 self.inner.write_all(chunks.remainder())?;
             }
+            // This is where we reset the chunk_state, because we know we're
+            // starting a new one.
+            self.chunk_state = chunk_params(NotRoot, chunk_offset).to_state();
             self.chunk_state.update(chunks.remainder());
         }
         Ok(orig_input_len)
@@ -651,6 +660,7 @@ impl ParseState {
                 size: chunk_size(self.next_chunk_index(), content_len),
                 finalization: self.finalization(),
                 skip: (self.content_position % CHUNK_SIZE as u64) as usize,
+                offset: self.content_position / CHUNK_SIZE as u64,
             }
         }
     }
@@ -745,6 +755,7 @@ impl ParseState {
                         size,
                         finalization: self.finalization(),
                         skip: size, // Skip the whole thing.
+                        offset: self.content_position / CHUNK_SIZE as u64,
                     };
                 } else {
                     self.content_position = seek_to;
@@ -850,6 +861,7 @@ pub(crate) enum NextRead {
         size: usize,
         finalization: Finalization,
         skip: usize,
+        offset: u64,
     },
     Done,
 }
@@ -1088,6 +1100,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
                     size,
                     finalization: _,
                     skip,
+                    offset: _,
                 } => return self.read_chunk(size, skip),
                 NextRead::Done => self.seek_done = true, // Fall through to read.
             }
@@ -1103,6 +1116,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
                     size,
                     finalization: _,
                     skip,
+                    offset: _,
                 } => return self.read_chunk(size, skip),
                 NextRead::Done => {} // EOF
             }

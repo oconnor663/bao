@@ -466,6 +466,8 @@ problem, because the interior subtree hashes are always 32 bytes.
 
 ### Should we stick closer to the BLAKE2 spec when setting node offset and node depth?
 
+TODO: rework this section
+
 **Probaby not.** In the [BLAKE2 spec](https://blake2.net/blake2.pdf), it was
 originally intended that each node would use its unique depth/offset pair as
 parameters to the hash function. The Security section above made the case that

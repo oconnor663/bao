@@ -359,6 +359,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         size: usize,
         finalization: Finalization,
         skip: usize,
+        offset: u64,
         parents_to_read: usize,
     ) -> io::Result<()> {
         debug_assert_eq!(0, self.buf_len());
@@ -372,7 +373,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         }
         let buf_slice = &mut self.buf[..size];
         self.input.read_exact(buf_slice)?;
-        let hash = chunk_params(finalization).hash(buf_slice).into();
+        let hash = chunk_params(finalization, offset).hash(buf_slice).into();
         self.state.feed_chunk(&hash)?;
         self.buf_start = skip;
         self.buf_end = size;
@@ -484,6 +485,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                     size,
                     finalization,
                     skip,
+                    offset,
                 } => {
                     // On the first chunk, we might find that we either we
                     // don't have enough output buffer space or that we need to
@@ -491,14 +493,20 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                     // to reading to the internal buffer.
                     if size > remaining_output.len() || skip > 0 {
                         debug_assert!(chunk_jobs.is_empty(), "first chunk");
-                        self.buffer_verified_chunk(size, finalization, skip, parents_to_read)?;
+                        self.buffer_verified_chunk(
+                            size,
+                            finalization,
+                            skip,
+                            offset,
+                            parents_to_read,
+                        )?;
                         return Ok(self.take_buffered_bytes(remaining_output));
                     }
                     // Otherwise this is the fast path. Try to read as many
                     // chunks as possible into the remaining output space
                     // (which, remember, may have been capped at the start for
                     // efficiency).
-                    let chunk_params = hash::chunk_params(finalization);
+                    let chunk_params = hash::chunk_params(finalization, offset);
                     let (chunk, remaining) = remaining_output.split_at_mut(size);
                     remaining_output = remaining;
                     self.read_ahead_unverified_one_chunk(chunk, parents_to_read, &mut parents_vec)?;
@@ -555,8 +563,15 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                 size,
                 finalization,
                 skip,
+                offset,
             } => {
-                self.buffer_verified_chunk(size, finalization, skip, 0 /* parents_to_read */)?;
+                self.buffer_verified_chunk(
+                    size,
+                    finalization,
+                    skip,
+                    offset,
+                    0, /* parents_to_read */
+                )?;
                 debug_assert_eq!(0, self.buf_len());
             }
             NextRead::Done => return Ok(true), // The seek is done.
