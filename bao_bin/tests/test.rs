@@ -53,6 +53,12 @@ fn test_hash_many() {
     assert_eq!(expected, output);
 }
 
+fn assert_hash_mismatch(output: &std::process::Output) {
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains(bao::decode::Error::HashMismatch.to_string().as_str()));
+}
+
 #[test]
 fn test_encode_decode_combined() {
     let dir = tempdir().unwrap();
@@ -68,12 +74,23 @@ fn test_encode_decode_combined() {
 
     // Test decode using stdin and stdout.
     let decoded_bytes = cmd!(bao_exe(), "decode", &input_hash)
-        .input(encoded_bytes)
+        .input(&*encoded_bytes)
         .stdout_capture()
         .run()
         .unwrap()
         .stdout;
     assert_eq!(input_bytes, &*decoded_bytes);
+
+    // Make sure decoding with the wrong hash fails.
+    let zero_hash = "0".repeat(input_hash.len());
+    let output = cmd!(bao_exe(), "decode", &zero_hash)
+        .input(&*encoded_bytes)
+        .stdout_capture()
+        .stderr_capture()
+        .unchecked()
+        .run()
+        .unwrap();
+    assert_hash_mismatch(&output);
 
     // Test decode using files. This exercises memmapping.
     let decoded_path = dir.path().join("decoded");
@@ -136,6 +153,23 @@ fn test_encode_decode_outboard() {
     .unwrap()
     .stdout;
     assert_eq!(input_bytes, &*decoded_bytes);
+
+    // Make sure decoding with the wrong hash fails.
+    let zero_hash = "0".repeat(input_hash.len());
+    let output = cmd!(
+        bao_exe(),
+        "decode",
+        &zero_hash,
+        "--outboard",
+        &outboard_path
+    )
+    .input(input_bytes)
+    .stdout_capture()
+    .stderr_capture()
+    .unchecked()
+    .run()
+    .unwrap();
+    assert_hash_mismatch(&output);
 
     // Test decode using --start and --count. Note that --start requires that the input is a file.
     // (Note that the outboard case is never memmapped, so we don't need a separate test for that.)
@@ -219,4 +253,21 @@ fn test_slice() {
     .unwrap()
     .stdout;
     assert_eq!(&input[slice_start..][..slice_len], &*decoded);
+
+    // Test that decode-slice with the wrong hash fails.
+    let zero_hash = "0".repeat(hash.len());
+    let output = cmd!(
+        bao_exe(),
+        "decode-slice",
+        &zero_hash,
+        slice_start.to_string(),
+        slice_len.to_string()
+    )
+    .input(&*slice_bytes)
+    .stdout_capture()
+    .stderr_capture()
+    .unchecked()
+    .run()
+    .unwrap();
+    assert_hash_mismatch(&output);
 }
