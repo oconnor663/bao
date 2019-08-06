@@ -35,13 +35,11 @@
 # remember the size of each subtree; just the hash is enough.
 #
 # *bao_encode* is a recursive implementation, but as noted above, it's not
-# streaming. Instead, it buffers the entire input and output in memory. The
-# Rust implementation uses either memory mapped files or a more complicated
-# tree-flipping strategy to avoid hogging memory like this. The tree-flipping
-# approach is to write the output tree first in a post-order layout, and then
-# to do a second pass back-to-front to flip it in place to pre-order. Without
-# knowing the total length of the input, a one-pass design wouldn't know how
-# much space to leave for pre-order parent nodes.
+# streaming. Instead, to keep things simple, it buffers the entire input and
+# output in memory. The Rust implementation uses a more complicated
+# tree-flipping strategy to avoid hogging memory like this, where it writes the
+# output tree first in a post-order layout, and then does a second pass
+# back-to-front to flip it in place to pre-order.
 
 __doc__ = """\
 Usage: bao.py hash [<inputs>...]
