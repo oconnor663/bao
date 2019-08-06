@@ -75,9 +75,7 @@ chunk hash: 1f889c...   chunk hash: 1f889c...
 ```
 
 We can verify those values on the command line using the `blake2` utility from
-[blake2_simd](https://github.com/oconnor663/blake2_simd), which supports the
-necessary flags (the coreutils `b2sum` doesn't expose all the BLAKE2
-parameters):
+[blake2_simd](https://github.com/oconnor663/blake2_simd):
 
 ```bash
 # Install the blake2 utility. Make sure your Cargo bin dir is in your $PATH.
