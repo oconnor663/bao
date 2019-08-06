@@ -1,6 +1,6 @@
 [package]
 name = "bao"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Jack O'Connor"]
 description = "a general purpose tree hash for files"
 license = "MIT"

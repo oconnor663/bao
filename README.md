@@ -4,9 +4,8 @@
 [Rust Crate](https://crates.io/crates/bao) —
 [Rust Docs](https://docs.rs/bao)
 
-> **Caution!** Not yet suitable for production use. The output of Bao isn't
-stable. Hashes in v0.6 (next) will differ from v0.5 (current), and there might
-be more changes before 1.0.
+> **Caution!** Not yet suitable for production use. The output of Bao
+> isn't stable. There might be more changes before 1.0.
 
 Bao (rhymes with bough 🌳) is a general purpose tree hash for files.
 Here's the [full specification](docs/spec.md). Here's a [talk I gave

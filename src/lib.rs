@@ -11,6 +11,9 @@
 //! The `encode` and `decode` modules require the `std` feature, which is
 //! enabled by default.
 //!
+//! **Caution!** Not yet suitable for production use. The output of Bao isn't
+//! stable. There might be more changes before 1.0.
+//!
 //! # Example
 //!
 //! ```
