@@ -35,15 +35,6 @@ def bao_hash(content):
     return bao.bao_hash(io.BytesIO(content)).hex()
 
 
-def bao_hash_encoded(encoded):
-    return bao.bao_hash_encoded(io.BytesIO(encoded)).hex()
-
-
-def bao_hash_outboard(content, outboard):
-    return bao.bao_hash_encoded(io.BytesIO(content),
-                                io.BytesIO(outboard)).hex()
-
-
 def bao_encode(content):
     # Note that unlike the other functions, this one already takes bytes.
     return bao.bao_encode(content, outboard=False)
@@ -165,23 +156,19 @@ def test_encoded():
         assert output_len == len(encoded)
         assert encoded_blake2s == blake2s(encoded)
 
-        # Test hashing the encoded bytes.
-        encoded_hash = bao_hash_encoded(encoded)
-        assert expected_bao_hash == encoded_hash
-
         # Now test decoding.
         output = bao_decode(expected_bao_hash, encoded)
         assert input_bytes == output
 
         # Make sure decoding with the wrong hash fails.
-        wrong_hash = "0" * len(encoded_hash)
+        wrong_hash = "0" * len(expected_bao_hash)
         assert_decode_failure(bao_decode, wrong_hash, encoded)
 
         # Make sure each of the corruption points causes decoding to fail.
         for c in corruptions:
             corrupted = bytearray(encoded)
             corrupted[c] ^= 1
-            assert_decode_failure(bao_decode, encoded_hash, corrupted)
+            assert_decode_failure(bao_decode, expected_bao_hash, corrupted)
 
 
 def make_tempfile(b=b""):
@@ -208,17 +195,12 @@ def test_encoded_cli():
     assert output_len == len(encoded)
     assert encoded_blake2s == blake2s(encoded)
 
-    # Test hashing the encoded bytes.
-    encoded_hash = bao_cli("hash", "--encoded",
-                           encoded_file.name).decode().strip()
-    assert expected_bao_hash == encoded_hash
-
     # Now test decoding.
     output = bao_cli("decode", expected_bao_hash, encoded_file.name)
     assert input_bytes == output
 
     # Make sure decoding with the wrong hash fails.
-    wrong_hash = "0" * len(encoded_hash)
+    wrong_hash = "0" * len(expected_bao_hash)
     bao_cli("decode", wrong_hash, encoded_file.name, should_fail=True)
 
 
@@ -236,10 +218,6 @@ def test_outboard():
         outboard = bao_encode_outboard(input_bytes)
         assert output_len == len(outboard)
         assert encoded_blake2s == blake2s(outboard)
-
-        # Test `bao hash --outboard`.
-        bao_hash_encoded = bao_hash_outboard(input_bytes, outboard)
-        assert expected_bao_hash == bao_hash_encoded
 
         # Now test decoding.
         output = bao_decode_outboard(expected_bao_hash, input_bytes, outboard)
@@ -282,11 +260,6 @@ def test_outboard_cli():
     outboard = outboard_file.read()
     assert output_len == len(outboard)
     assert encoded_blake2s == blake2s(outboard)
-
-    # Test `bao hash --outboard`.
-    outboard_encoded_hash = bao_cli("hash", input_file.name, "--outboard",
-                                    outboard_file.name).decode().strip()
-    assert expected_bao_hash == outboard_encoded_hash
 
     # Now test decoding.
     output = bao_cli("decode", expected_bao_hash, input_file.name,

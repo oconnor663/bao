@@ -44,10 +44,9 @@
 
 use crate::encode;
 use crate::encode::NextRead;
-use crate::hash::Finalization::{self, Root};
 use crate::hash::{
-    self, chunk_params, parent_params, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH,
-    PARENT_SIZE,
+    self, chunk_params, parent_params, Finalization, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE,
+    MAX_DEPTH, PARENT_SIZE,
 };
 use arrayref::{array_ref, array_refs};
 use arrayvec::ArrayVec;
@@ -84,62 +83,6 @@ pub fn decode(encoded: impl AsRef<[u8]>, hash: &Hash) -> io::Result<Vec<u8>> {
     let n = reader.read(&mut [0])?;
     debug_assert_eq!(n, 0, "must be EOF");
     Ok(vec)
-}
-
-/// Given a combined encoding behind a `Read` interface, quickly determine the root hash by reading
-/// just the root node.
-///
-/// # Example
-///
-/// ```
-/// let (encoded, hash1) = bao::encode::encode(b"foobar");
-/// let hash2 = bao::decode::hash_from_encoded(&mut &*encoded).unwrap();
-/// assert_eq!(hash1, hash2);
-/// ```
-pub fn hash_from_encoded<T: Read>(reader: &mut T) -> io::Result<Hash> {
-    let mut header = [0; HEADER_SIZE];
-    reader.read_exact(&mut header)?;
-    let content_len = hash::decode_len(&header);
-    if content_len <= CHUNK_SIZE as u64 {
-        let mut chunk_buf = [0; CHUNK_SIZE];
-        let chunk = &mut chunk_buf[..content_len as usize];
-        reader.read_exact(chunk)?;
-        Ok(chunk_params(Root).hash(chunk).into())
-    } else {
-        let mut parent = [0; PARENT_SIZE];
-        reader.read_exact(&mut parent)?;
-        Ok(parent_params(Root).hash(&parent).into())
-    }
-}
-
-/// Given an outboard encoding behind two `Read` interfaces, quickly determine the root hash by
-/// reading just the root node.
-///
-/// # Example
-///
-/// ```
-/// let input = b"foobar";
-/// let (outboard, hash1) = bao::encode::outboard(input);
-/// let hash2 = bao::decode::hash_from_outboard(&mut &input[..], &mut &*outboard).unwrap();
-/// assert_eq!(hash1, hash2);
-/// ```
-pub fn hash_from_outboard<C: Read, O: Read>(
-    content_reader: &mut C,
-    outboard_reader: &mut O,
-) -> io::Result<Hash> {
-    let mut header = [0; HEADER_SIZE];
-    outboard_reader.read_exact(&mut header)?;
-    let content_len = hash::decode_len(&header);
-    if content_len <= CHUNK_SIZE as u64 {
-        let mut chunk_buf = [0; CHUNK_SIZE];
-        let chunk = &mut chunk_buf[..content_len as usize];
-        content_reader.read_exact(chunk)?;
-        Ok(chunk_params(Root).hash(chunk).into())
-    } else {
-        let mut parent = [0; PARENT_SIZE];
-        outboard_reader.read_exact(&mut parent)?;
-        Ok(parent_params(Root).hash(&parent).into())
-    }
 }
 
 // This incremental verifier layers on top of encode::ParseState, and supports
@@ -1153,29 +1096,6 @@ mod test {
                 assert!(result.is_err(), "a bad hash is supposed to fail!");
                 assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
             }
-        }
-    }
-
-    #[test]
-    fn test_hash_from_encoded() {
-        for &case in hash::TEST_CASES {
-            println!("case {}", case);
-            let input = make_test_input(case);
-            let (encoded, hash) = encode::encode(&input);
-            let inferred_hash = hash_from_encoded(&mut Cursor::new(&*encoded)).unwrap();
-            assert_eq!(hash, inferred_hash, "hashes don't match");
-        }
-    }
-
-    #[test]
-    fn test_hash_from_outboard() {
-        for &case in hash::TEST_CASES {
-            println!("case {}", case);
-            let input = make_test_input(case);
-            let (outboard, hash) = encode::outboard(&input);
-            let inferred_hash =
-                hash_from_outboard(&mut Cursor::new(&input), &mut Cursor::new(&outboard)).unwrap();
-            assert_eq!(hash, inferred_hash, "hashes don't match");
         }
     }
 

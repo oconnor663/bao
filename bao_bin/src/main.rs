@@ -4,7 +4,6 @@ use serde::Deserialize;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::prelude::*;
-use std::iter;
 use std::path::{Path, PathBuf};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -12,7 +11,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 // Note that docopt.rs currently has a bug related to commands wrapped over multiple lines, so
 // don't wrap them. https://github.com/docopt/docopt.rs/issues/244
 const USAGE: &str = "
-Usage: bao hash [<input>] [<inputs>... | --encoded | --outboard=<file>]
+Usage: bao hash [<inputs>...]
        bao encode <input> (<output> | --outboard=<file>)
        bao decode <hash> [<input>] [<output>] [--outboard=<file>] [--start=<offset>] [--count=<count>]
        bao slice <start> <count> [<input>] [<output>] [--outboard=<file>]
@@ -34,7 +33,6 @@ struct Args {
     arg_start: u64,
     arg_count: u64,
     flag_count: Option<u64>,
-    flag_encoded: bool,
     flag_help: bool,
     flag_outboard: Option<PathBuf>,
     flag_start: Option<u64>,
@@ -67,14 +65,9 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn hash_one(maybe_path: &Option<PathBuf>, args: &Args) -> Result<bao::hash::Hash, Error> {
+fn hash_one(maybe_path: &Option<PathBuf>) -> Result<bao::hash::Hash, Error> {
     let mut input = open_input(maybe_path)?;
-    Ok(if args.flag_outboard.is_some() {
-        let mut outboard = open_input(&args.flag_outboard)?;
-        bao::decode::hash_from_outboard(&mut input, &mut outboard)?
-    } else if args.flag_encoded {
-        bao::decode::hash_from_encoded(&mut input)?
-    } else if let Some(map) = maybe_memmap_input(&input)? {
+    Ok(if let Some(map) = maybe_memmap_input(&input)? {
         bao::hash::hash(&map)
     } else {
         let mut encoder = bao::hash::Hasher::new();
@@ -86,13 +79,12 @@ fn hash_one(maybe_path: &Option<PathBuf>, args: &Args) -> Result<bao::hash::Hash
 fn hash(args: &Args) -> Result<(), Error> {
     if !args.arg_inputs.is_empty() {
         let mut did_error = false;
-        let all_inputs = iter::once(args.arg_input.as_ref().unwrap()).chain(args.arg_inputs.iter());
-        for input in all_inputs {
+        for input in args.arg_inputs.iter() {
             let input_str = input.to_string_lossy();
             // As with b2sum or sha1sum, the multi-arg hash loop prints errors and keeps going.
             // This is more convenient for the user in cases like `bao hash *`, where it's common
             // that some of the inputs will error on read e.g. because they're directories.
-            match hash_one(&Some(input.clone()), args) {
+            match hash_one(&Some(input.clone())) {
                 Ok(hash) => {
                     println!("{}  {}", hash.to_hex(), input_str);
                 }
@@ -106,7 +98,7 @@ fn hash(args: &Args) -> Result<(), Error> {
             std::process::exit(1);
         }
     } else {
-        let hash = hash_one(&args.arg_input, &args)?;
+        let hash = hash_one(&None)?;
         println!("{}", hash.to_hex());
     }
     Ok(())

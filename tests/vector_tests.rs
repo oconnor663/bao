@@ -122,10 +122,6 @@ fn test_encode_vectors() {
         let encoded_size = bao::encode::encoded_size(case.input_len as u64) as usize;
         assert_eq!(encoded_size, encoded.len());
 
-        // Test getting the hash from the encoding.
-        let hash_encoded = bao::decode::hash_from_encoded(&mut &*encoded).unwrap();
-        assert_eq!(hash, hash_encoded);
-
         // Test decoding.
         let output = bao::decode::decode(&encoded, &hash).unwrap();
         assert_eq!(input, output);
@@ -164,10 +160,6 @@ fn test_outboard_vectors() {
         assert_eq!(case.encoded_blake2s, blake2s(&outboard));
         let outboard_size = bao::encode::outboard_size(case.input_len as u64) as usize;
         assert_eq!(outboard_size, outboard.len());
-
-        // Test getting the hash from the encoding.
-        let hash_encoded = bao::decode::hash_from_outboard(&mut &*input, &mut &*outboard).unwrap();
-        assert_eq!(hash, hash_encoded);
 
         // Test decoding. Currently only the Decoder implements it.
         let output = decode_outboard(&input, &outboard, &hash).unwrap();
