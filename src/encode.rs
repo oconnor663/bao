@@ -13,8 +13,8 @@
 //! only be used together with the original input file.
 //!
 //! This module requires the `std` feature, which is enabled by default. The
-//! standard library is only used for the `std::io::{Read, Write, Seek}`. This
-//! implementation does not allocate.
+//! standard library is only used for the `std::io::{Read, Write, Seek}`
+//! traits. This implementation does not allocate.
 //!
 //! # Example
 //!
@@ -30,7 +30,7 @@
 //! assert_eq!(expected_hash, hash);
 //!
 //! let mut encoded_incrementally = Vec::new();
-//! let mut encoder = bao::encode::Writer::new(Cursor::new(&mut encoded_incrementally));
+//! let mut encoder = bao::encode::Encoder::new(Cursor::new(&mut encoded_incrementally));
 //! encoder.write_all(b"some input")?;
 //! let hash = encoder.finalize()?;
 //! assert_eq!(expected_hash, hash);
@@ -52,24 +52,24 @@ use std::io::prelude::*;
 use std::io::SeekFrom;
 
 /// Encode an entire slice into a bytes vector in the default combined mode.
-/// This is a convenience wrapper around `Writer::write_all`.
+/// This is a convenience wrapper around `Encoder::write_all`.
 pub fn encode(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
     let bytes = input.as_ref();
     let mut vec = Vec::with_capacity(encoded_size(bytes.len() as u64) as usize);
-    let mut writer = Writer::new(io::Cursor::new(&mut vec));
-    writer.write_all(bytes).unwrap();
-    let hash = writer.finalize().unwrap();
+    let mut encoder = Encoder::new(io::Cursor::new(&mut vec));
+    encoder.write_all(bytes).unwrap();
+    let hash = encoder.finalize().unwrap();
     (vec, hash)
 }
 
 /// Encode an entire slice into a bytes vector in the outboard mode. This is a
-/// convenience wrapper around `Writer::new_outboard` and `Writer::write_all`.
+/// convenience wrapper around `Encoder::new_outboard` and `Encoder::write_all`.
 pub fn outboard(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
     let bytes = input.as_ref();
     let mut vec = Vec::with_capacity(outboard_size(bytes.len() as u64) as usize);
-    let mut writer = Writer::new_outboard(io::Cursor::new(&mut vec));
-    writer.write_all(bytes).unwrap();
-    let hash = writer.finalize().unwrap();
+    let mut encoder = Encoder::new_outboard(io::Cursor::new(&mut vec));
+    encoder.write_all(bytes).unwrap();
+    let hash = encoder.finalize().unwrap();
     (vec, hash)
 }
 
@@ -278,14 +278,14 @@ enum FlipperNext {
 
 /// An incremental encoder. Note that you must call `finalize` after you're done writing.
 ///
-/// `Writer` supports both combined and outboard encoding, depending on which constructor you use.
+/// `Encoder` supports both combined and outboard encoding, depending on which constructor you use.
 ///
-/// `Writer` is currently only available when `std` is enabled, because `std::io::Write` is a
+/// `Encoder` is currently only available when `std` is enabled, because `std::io::Write` is a
 /// required part of its interface. However, it could be extended to support `no_std`-compatible
 /// traits outside of the standard library too. Please reach out to me if you need that.
 ///
 /// The implementation is single-threaded but uses SIMD parallelism. As with
-/// `hash::Writer`, performance is best if you use an input buffer of size
+/// `hash::Encoder`, performance is best if you use an input buffer of size
 /// `hash::BUF_SIZE`, or some integer multiple of that.
 ///
 /// # Example
@@ -296,22 +296,22 @@ enum FlipperNext {
 ///
 /// let mut encoded_incrementally = Vec::new();
 /// let encoded_cursor = std::io::Cursor::new(&mut encoded_incrementally);
-/// let mut encoder = bao::encode::Writer::new(encoded_cursor);
+/// let mut encoder = bao::encode::Encoder::new(encoded_cursor);
 /// encoder.write_all(b"some input")?;
 /// encoder.finalize()?;
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Clone, Debug)]
-pub struct Writer<T: Read + Write + Seek> {
+pub struct Encoder<T: Read + Write + Seek> {
     inner: T,
     chunk_state: blake2s_simd::State,
     tree_state: hash::State,
     outboard: bool,
 }
 
-impl<T: Read + Write + Seek> Writer<T> {
-    /// Create a new `Writer` that will produce a combined encoding.The encoding will contain all
+impl<T: Read + Write + Seek> Encoder<T> {
+    /// Create a new `Encoder` that will produce a combined encoding.The encoding will contain all
     /// the input bytes, so that it can be decoded without the original input file. This is what
     /// you get from `bao encode`.
     pub fn new(inner: T) -> Self {
@@ -325,20 +325,20 @@ impl<T: Read + Write + Seek> Writer<T> {
         }
     }
 
-    /// Create a new `Writer` for making an outboard encoding. That means that the encoding won't
+    /// Create a new `Encoder` for making an outboard encoding. That means that the encoding won't
     /// include any input bytes. Instead, the input will need to be supplied as a separate argument
     /// when the outboard encoding is later decoded. This is what you get from `bao encode
     /// --outboard`.
     pub fn new_outboard(inner: T) -> Self {
-        let mut writer = Self::new(inner);
-        writer.outboard = true;
-        writer
+        let mut encoder = Self::new(inner);
+        encoder.outboard = true;
+        encoder
     }
 
     /// Finalize the encoding, after all the input has been written. You can't
-    /// use this Writer again after calling `finalize`.
+    /// use this `Encoder` again after calling `finalize`.
     ///
-    /// The underlying strategy of the `Writer` is to first store the tree in a post-order layout,
+    /// The underlying strategy of the `Encoder` is to first store the tree in a post-order layout,
     /// and then to go back and flip the entire thing into pre-order. That makes it possible to
     /// stream input without knowing its length in advance, which is a core requirement of the
     /// `std::io::Write` interface. The downside is that `finalize` is a relatively expensive step.
@@ -439,9 +439,9 @@ impl<T: Read + Write + Seek> Writer<T> {
     }
 }
 
-impl<T: Read + Write + Seek> Write for Writer<T> {
+impl<T: Read + Write + Seek> Write for Encoder<T> {
     fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
-        // Similar to hash::Writer, in normal operation we hash chunks in their
+        // Similar to hash::Hasher, in normal operation we hash chunks in their
         // entirety using SIMD as they come in, only retaining a partial chunk
         // in the chunk_state if there's uneven input left over. However again,
         // the first chunk is a special case: If we receive exactly one chunk
@@ -988,7 +988,7 @@ impl<T: Read + Seek> SliceExtractor<T, T> {
 
 impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
     /// Create a new `SliceExtractor` to read from an unmodified input file and an outboard
-    /// encoding of that same file (see `Writer::new_outboard`). As with `SliceExtractor::new`,
+    /// encoding of that same file (see `Encoder::new_outboard`). As with `SliceExtractor::new`,
     /// `slice_start` and `slice_len` are with respect to the *content* of the encoding, that is,
     /// the *original* input bytes. This corresponds to `bao slice slice_start slice_len
     /// --outboard`.

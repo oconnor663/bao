@@ -7,7 +7,7 @@
 //! ```
 //! let hash_at_once = bao::hash::hash(b"input bytes");
 //!
-//! let mut hasher = bao::hash::Writer::new();
+//! let mut hasher = bao::hash::Hasher::new();
 //! hasher.update(b"input");
 //! hasher.update(b" ");
 //! hasher.update(b"bytes");
@@ -324,7 +324,7 @@ pub(crate) enum StateFinish {
     Root(Hash),
 }
 
-/// A minimal state object for incrementally hashing input. Most callers should use the `Writer`
+/// A minimal state object for incrementally hashing input. Most callers should use the `Hasher`
 /// interface instead.
 ///
 /// This is designed to be useful for as many callers as possible, including `no_std` callers. It
@@ -474,7 +474,7 @@ impl fmt::Debug for State {
 }
 
 /// An efficient buffer size for callers of the streaming implementations in
-/// this crate, `hash::Writer`, `encode::Writer`, and `decode::Reader`.
+/// this crate, `hash::Hasher`, `encode::Encoder`, and `decode::Decoder`.
 ///
 /// The streaming implementations are single threaded, but they use SIMD
 /// parallelism to get good performance. To avoid unnecessary copying, they
@@ -493,25 +493,25 @@ impl fmt::Debug for State {
 /// version bump.
 pub const BUF_SIZE: usize = MAX_SIMD_DEGREE * CHUNK_SIZE;
 
-/// An incremental hasher. `Writer` is no_std-compatible and does not allocate.
+/// An incremental hasher. `Hasher` is no_std-compatible and does not allocate.
 /// This implementation is single-threaded.
 ///
 /// # Example
 /// ```
-/// let mut hasher = bao::hash::Writer::new();
+/// let mut hasher = bao::hash::Hasher::new();
 /// hasher.update(b"input");
 /// hasher.update(b" ");
 /// hasher.update(b"bytes");
 /// let hash_incremental = hasher.finalize();
 /// ```
 #[derive(Clone, Debug)]
-pub struct Writer {
+pub struct Hasher {
     chunk_state: blake2s_simd::State,
     tree_state: State,
 }
 
-impl Writer {
-    /// Create a new `Writer`.
+impl Hasher {
+    /// Create a new `Hasher`.
     pub fn new() -> Self {
         Self {
             // The chunk_state will have the Root finalization (the last_node
@@ -583,7 +583,7 @@ impl Writer {
         self.chunk_state.update(chunks.remainder());
     }
 
-    /// Finish computing the root hash. The writer cannot be used after this.
+    /// Finish computing the root hash. The hasher cannot be used after this.
     pub fn finalize(&mut self) -> Hash {
         // If the chunk_state contains any chunk data, we have to finalize it
         // and incorporate it into the tree. Also, if there was never any data
@@ -602,7 +602,7 @@ impl Writer {
 }
 
 #[cfg(feature = "std")]
-impl io::Write for Writer {
+impl io::Write for Hasher {
     fn write(&mut self, input: &[u8]) -> io::Result<usize> {
         self.update(input);
         Ok(input.len())
@@ -724,9 +724,9 @@ mod test {
             let input = vec![0x42; case];
             let expected = hash(&input);
 
-            let mut writer = Writer::new();
-            writer.write_all(&input).unwrap();
-            let found = writer.finalize();
+            let mut hasher = Hasher::new();
+            hasher.write_all(&input).unwrap();
+            let found = hasher.finalize();
             assert_eq!(expected, found, "hashes don't match");
         }
     }

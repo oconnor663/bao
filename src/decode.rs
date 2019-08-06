@@ -5,8 +5,8 @@
 //! return some valid bytes before encountering a error, but it will never return unverified bytes.
 //!
 //! This module requires the `std` feature, which is enabled by default. The
-//! standard library is only used for the `std::io::{Read, Write, Seek}`. This
-//! implementation does not allocate.
+//! standard library is only used for the `std::io::{Read, Write, Seek}`
+//! traits. This implementation does not allocate.
 //!
 //! # Example
 //!
@@ -24,7 +24,7 @@
 //! // Also decode them incrementally.
 //! let mut decoded_incrementally = Vec::new();
 //! {
-//!     let mut decoder = bao::decode::Reader::new(&*encoded, &hash);
+//!     let mut decoder = bao::decode::Decoder::new(&*encoded, &hash);
 //!     // The inner block here limits the lifetime of this mutable borrow.
 //!     decoder.read_to_end(&mut decoded_incrementally)?;
 //! }
@@ -60,7 +60,7 @@ use std::io::prelude::*;
 use std::io::SeekFrom;
 
 /// Decode an entire slice in the default combined mode into a bytes vector.
-/// This is a convenience wrapper around `Reader`.
+/// This is a convenience wrapper around `Decoder`.
 pub fn decode(encoded: impl AsRef<[u8]>, hash: &Hash) -> io::Result<Vec<u8>> {
     let bytes = encoded.as_ref();
     if bytes.len() < HEADER_SIZE {
@@ -72,9 +72,9 @@ pub fn decode(encoded: impl AsRef<[u8]>, hash: &Hash) -> io::Result<Vec<u8>> {
         return Err(Error::Truncated.into());
     }
     // There's no way to avoid zeroing this vector without unsafe code, because
-    // Reader::initializer is the default (safe) zeroing implementation anyway.
+    // Decoder::initializer is the default (safe) zeroing implementation anyway.
     let mut vec = vec![0; content_len as usize];
-    let mut reader = Reader::new(bytes, hash);
+    let mut reader = Decoder::new(bytes, hash);
     reader.read_exact(&mut vec)?;
     // One more read to confirm EOF. This is redundant in most cases, but in
     // the empty encoding case read_exact won't do any reads at all, and the Ok
@@ -143,7 +143,7 @@ pub fn hash_from_outboard<C: Read, O: Read>(
 }
 
 // This incremental verifier layers on top of encode::ParseState, and supports
-// both the Reader and the SliceReader.
+// both the Decoder and the SliceDecoder.
 #[derive(Clone)]
 struct VerifyState {
     stack: ArrayVec<[Hash; MAX_DEPTH]>,
@@ -277,9 +277,9 @@ impl From<Error> for io::Error {
     }
 }
 
-// Shared between Reader and SliceReader.
+// Shared between Decoder and SliceDecoder.
 #[derive(Clone)]
-struct ReaderShared<T: Read, O: Read> {
+struct DecoderShared<T: Read, O: Read> {
     input: T,
     outboard: Option<O>,
     state: VerifyState,
@@ -347,7 +347,7 @@ fn efficient_output_len(len: usize) -> usize {
     }
 }
 
-impl<T: Read, O: Read> ReaderShared<T, O> {
+impl<T: Read, O: Read> DecoderShared<T, O> {
     fn new(input: T, outboard: Option<O>, hash: &Hash) -> Self {
         Self {
             input,
@@ -598,8 +598,8 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
     }
 
     // Returns Ok(true) to indicate the seek is finished. Note that both the
-    // Reader and the SliceReader will use this method (which doesn't depend on
-    // io::Seek), but only the Reader will call handle_seek_bookkeeping first.
+    // Decoder and the SliceDecoder will use this method (which doesn't depend on
+    // io::Seek), but only the Decoder will call handle_seek_bookkeeping first.
     // This may read a chunk, but it never leaves output bytes in the buffer,
     // because the only time seeking reads a chunk it also skips the entire
     // thing.
@@ -622,9 +622,9 @@ impl<T: Read, O: Read> ReaderShared<T, O> {
     }
 }
 
-impl<T: Read + Seek, O: Read + Seek> ReaderShared<T, O> {
-    // The Reader will call this as part of seeking, but note that the
-    // SliceReader won't, because all the seek bookkeeping has already been
+impl<T: Read + Seek, O: Read + Seek> DecoderShared<T, O> {
+    // The Decoder will call this as part of seeking, but note that the
+    // SliceDecoder won't, because all the seek bookkeeping has already been
     // taken care of during slice extraction.
     fn handle_seek_bookkeeping(
         &mut self,
@@ -635,7 +635,7 @@ impl<T: Read + Seek, O: Read + Seek> ReaderShared<T, O> {
         // depending on whether the encoding is combined or outboard.
         if let Some(outboard) = &mut self.outboard {
             if let Some((content_pos, outboard_pos)) = bookkeeping.underlying_seek_outboard() {
-                // As with Reader in the outboard case, the outboard extractor has to seek both of
+                // As with Decoder in the outboard case, the outboard extractor has to seek both of
                 // its inner readers. The content position of the state goes into the content
                 // reader, and the rest of the reported seek offset goes into the outboard reader.
                 self.input.seek(SeekFrom::Start(content_pos))?;
@@ -652,11 +652,11 @@ impl<T: Read + Seek, O: Read + Seek> ReaderShared<T, O> {
     }
 }
 
-impl<T: Read, O: Read> fmt::Debug for ReaderShared<T, O> {
+impl<T: Read, O: Read> fmt::Debug for DecoderShared<T, O> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "ReaderShared {{ is_outboard: {}, state: {:?}, buf_start: {}, buf_end: {} }}",
+            "DecoderShared {{ is_outboard: {}, state: {:?}, buf_start: {}, buf_end: {} }}",
             self.outboard.is_some(),
             self.state,
             self.buf_start,
@@ -686,14 +686,14 @@ impl<T: Read, O: Read> fmt::Debug for ReaderShared<T, O> {
 /// // Decode the combined mode.
 /// let mut combined_output = Vec::new();
 /// {
-///     let mut decoder = bao::decode::Reader::new(&*encoded, &hash);
+///     let mut decoder = bao::decode::Decoder::new(&*encoded, &hash);
 ///     decoder.read_to_end(&mut combined_output)?;
 /// }
 ///
 /// // Decode the outboard mode.
 /// let mut outboard_output = Vec::new();
 /// {
-///     let mut decoder = bao::decode::Reader::new_outboard(&input[..], &*outboard, &hash);
+///     let mut decoder = bao::decode::Decoder::new_outboard(&input[..], &*outboard, &hash);
 ///     decoder.read_to_end(&mut outboard_output)?;
 /// }
 ///
@@ -703,33 +703,33 @@ impl<T: Read, O: Read> fmt::Debug for ReaderShared<T, O> {
 /// # }
 /// ```
 #[derive(Clone, Debug)]
-pub struct Reader<T: Read, O: Read> {
-    shared: ReaderShared<T, O>,
+pub struct Decoder<T: Read, O: Read> {
+    shared: DecoderShared<T, O>,
 }
 
-impl<T: Read> Reader<T, T> {
+impl<T: Read> Decoder<T, T> {
     pub fn new(inner: T, hash: &Hash) -> Self {
         Self {
-            shared: ReaderShared::new(inner, None, hash),
+            shared: DecoderShared::new(inner, None, hash),
         }
     }
 }
 
-impl<T: Read, O: Read> Reader<T, O> {
+impl<T: Read, O: Read> Decoder<T, O> {
     pub fn new_outboard(inner: T, outboard: O, hash: &Hash) -> Self {
         Self {
-            shared: ReaderShared::new(inner, Some(outboard), hash),
+            shared: DecoderShared::new(inner, Some(outboard), hash),
         }
     }
 }
 
-impl<T: Read, O: Read> Read for Reader<T, O> {
+impl<T: Read, O: Read> Read for Decoder<T, O> {
     fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
         self.shared.read(output)
     }
 }
 
-impl<T: Read + Seek, O: Read + Seek> Seek for Reader<T, O> {
+impl<T: Read + Seek, O: Read + Seek> Seek for Decoder<T, O> {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         // Clear the internal buffer when seeking. The buffered bytes won't be
         // valid reads at the new offset.
@@ -826,7 +826,7 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 /// // independent of the slice parameters. That's the whole point; if we just wanted to re-encode
 /// // a portion of the input and wind up with a different hash, we wouldn't need slicing.
 /// let mut decoded = Vec::new();
-/// let mut decoder = bao::decode::SliceReader::new(&*slice, &hash, slice_start, slice_len);
+/// let mut decoder = bao::decode::SliceDecoder::new(&*slice, &hash, slice_start, slice_len);
 /// {
 ///     decoder.read_to_end(&mut decoded)?;
 /// }
@@ -836,29 +836,29 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 /// let mut bad_slice = slice.clone();
 /// let last_index = bad_slice.len() - 1;
 /// bad_slice[last_index] ^= 1;
-/// let mut decoder = bao::decode::SliceReader::new(&*bad_slice, &hash, slice_start, slice_len);
+/// let mut decoder = bao::decode::SliceDecoder::new(&*bad_slice, &hash, slice_start, slice_len);
 /// let err = decoder.read_to_end(&mut Vec::new()).unwrap_err();
 /// assert_eq!(std::io::ErrorKind::InvalidData, err.kind());
 /// # Ok(())
 /// # }
 /// ```
-pub struct SliceReader<T: Read> {
-    shared: ReaderShared<T, T>,
+pub struct SliceDecoder<T: Read> {
+    shared: DecoderShared<T, T>,
     slice_start: u64,
     slice_remaining: u64,
 }
 
-impl<T: Read> SliceReader<T> {
+impl<T: Read> SliceDecoder<T> {
     pub fn new(inner: T, hash: &Hash, slice_start: u64, slice_len: u64) -> Self {
         Self {
-            shared: ReaderShared::new(inner, None, hash),
+            shared: DecoderShared::new(inner, None, hash),
             slice_start,
             slice_remaining: slice_len,
         }
     }
 }
 
-impl<T: Read> Read for SliceReader<T> {
+impl<T: Read> Read for SliceDecoder<T> {
     fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
         // If we haven't done the initial seek yet, do the full seek loop
         // first. Note that this will never leave any buffered output. The only
@@ -944,7 +944,7 @@ mod test {
             let input = make_test_input(case);
             let (outboard, hash) = { encode::outboard(&input) };
             let mut output = Vec::new();
-            let mut reader = Reader::new_outboard(&input[..], &outboard[..], &hash);
+            let mut reader = Decoder::new_outboard(&input[..], &outboard[..], &hash);
             reader.read_to_end(&mut output).unwrap();
             assert_eq!(input, output);
         }
@@ -994,7 +994,7 @@ mod test {
                 seek_froms.push(SeekFrom::Current(seek as i64));
                 for seek_from in seek_froms {
                     println!("seek_from {:?}", seek_from);
-                    let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
+                    let mut decoder = Decoder::new(Cursor::new(&encoded), &hash);
                     let mut output = Vec::new();
                     decoder.seek(seek_from).expect("seek error");
                     decoder.read_to_end(&mut output).expect("decoder error");
@@ -1018,7 +1018,7 @@ mod test {
         let mut prng = ChaChaRng::from_seed([0; 32]);
         let input = make_test_input(input_len);
         let (encoded, hash) = encode::encode(&input);
-        let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
+        let mut decoder = Decoder::new(Cursor::new(&encoded), &hash);
         // Do a thousand random seeks and chunk-sized reads.
         for _ in 0..1000 {
             let seek = prng.gen_range(0, input_len + 1);
@@ -1056,13 +1056,13 @@ mod test {
 
         // Decoding the empty tree with the right hash should succeed.
         let mut output = Vec::new();
-        let mut decoder = Reader::new(&*zero_encoded, &zero_hash);
+        let mut decoder = Decoder::new(&*zero_encoded, &zero_hash);
         decoder.read_to_end(&mut output).unwrap();
         assert_eq!(&output, &[]);
 
         // Decoding the empty tree with any other hash should fail.
         let mut output = Vec::new();
-        let mut decoder = Reader::new(&*zero_encoded, &one_hash);
+        let mut decoder = Decoder::new(&*zero_encoded, &one_hash);
         let result = decoder.read_to_end(&mut output);
         assert!(result.is_err(), "a bad hash is supposed to fail!");
         assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
@@ -1101,7 +1101,7 @@ mod test {
 
             // Read all the bits up to that tweak. Because it's right after a chunk boundary, the
             // read should succeed.
-            let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
+            let mut decoder = Decoder::new(Cursor::new(&encoded), &hash);
             let mut output = vec![0; tweak_position as usize];
             decoder.read_exact(&mut output).unwrap();
             assert_eq!(&input[..tweak_position], &*output);
@@ -1130,7 +1130,7 @@ mod test {
 
             // Seeking to EOF should succeed with the right hash.
             let mut output = Vec::new();
-            let mut decoder = Reader::new(Cursor::new(&encoded), &hash);
+            let mut decoder = Decoder::new(Cursor::new(&encoded), &hash);
             decoder.seek(SeekFrom::Start(case as u64)).unwrap();
             decoder.read_to_end(&mut output).unwrap();
             assert_eq!(&output, &[]);
@@ -1139,7 +1139,7 @@ mod test {
             let mut bad_hash_bytes = *hash.as_bytes();
             bad_hash_bytes[0] ^= 1;
             let bad_hash = bad_hash_bytes.into();
-            let mut decoder = Reader::new(Cursor::new(&encoded), &bad_hash);
+            let mut decoder = Decoder::new(Cursor::new(&encoded), &bad_hash);
             let result = decoder.seek(SeekFrom::Start(case as u64));
             assert!(result.is_err(), "a bad hash is supposed to fail!");
             assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
@@ -1148,7 +1148,7 @@ mod test {
             if case > 0 {
                 let mut bad_encoded = encoded.clone();
                 *bad_encoded.last_mut().unwrap() ^= 1;
-                let mut decoder = Reader::new(Cursor::new(&bad_encoded), &hash);
+                let mut decoder = Decoder::new(Cursor::new(&bad_encoded), &hash);
                 let result = decoder.seek(SeekFrom::Start(case as u64));
                 assert!(result.is_err(), "a bad hash is supposed to fail!");
                 assert_eq!(result.unwrap_err().kind(), io::ErrorKind::InvalidData);
@@ -1217,7 +1217,7 @@ mod test {
                     }
                     let mut output = Vec::new();
                     let mut reader =
-                        SliceReader::new(&*slice, &hash, slice_start as u64, slice_len as u64);
+                        SliceDecoder::new(&*slice, &hash, slice_start as u64, slice_len as u64);
                     reader.read_to_end(&mut output).unwrap();
                     assert_eq!(expected_output, &*output);
                 }
@@ -1245,7 +1245,7 @@ mod test {
 
         // First confirm that the regular decode works.
         let mut output = Vec::new();
-        let mut reader = SliceReader::new(&*slice, &hash, slice_start as u64, slice_len as u64);
+        let mut reader = SliceDecoder::new(&*slice, &hash, slice_start as u64, slice_len as u64);
         reader.read_to_end(&mut output).unwrap();
         assert_eq!(&input[slice_start..][..slice_len], &*output);
 
@@ -1274,7 +1274,7 @@ mod test {
             let mut slice_clone = slice.clone();
             slice_clone[i] ^= 1;
             let mut reader =
-                SliceReader::new(&*slice_clone, &hash, slice_start as u64, slice_len as u64);
+                SliceDecoder::new(&*slice_clone, &hash, slice_start as u64, slice_len as u64);
             output.clear();
             let err = reader.read_to_end(&mut output).unwrap_err();
             assert_eq!(io::ErrorKind::InvalidData, err.kind());

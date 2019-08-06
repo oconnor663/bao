@@ -16,7 +16,7 @@
 //! ```
 //! let hash_at_once = bao::hash::hash(b"input bytes");
 //!
-//! let mut hasher = bao::hash::Writer::new();
+//! let mut hasher = bao::hash::Hasher::new();
 //! hasher.update(b"input");
 //! hasher.update(b" ");
 //! hasher.update(b"bytes");

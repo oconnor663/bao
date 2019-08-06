@@ -72,169 +72,169 @@ fn bench_bao_hash_slice_long(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_hash_writer_short(b: &mut Bencher) {
+fn bench_bao_hasher_short(b: &mut Bencher) {
     let mut input = RandomInput::new(b, SHORT);
     b.iter(|| {
-        let mut writer = hash::Writer::new();
-        writer.write_all(input.get()).unwrap();
-        writer.finalize()
+        let mut hasher = hash::Hasher::new();
+        hasher.write_all(input.get()).unwrap();
+        hasher.finalize()
     });
 }
 
 #[bench]
-fn bench_bao_hash_writer_medium(b: &mut Bencher) {
+fn bench_bao_hasher_medium(b: &mut Bencher) {
     let mut input = RandomInput::new(b, MEDIUM);
     b.iter(|| {
-        let mut writer = hash::Writer::new();
-        writer.write_all(input.get()).unwrap();
-        writer.finalize()
+        let mut hasher = hash::Hasher::new();
+        hasher.write_all(input.get()).unwrap();
+        hasher.finalize()
     });
 }
 
 #[bench]
-fn bench_bao_hash_writer_long(b: &mut Bencher) {
+fn bench_bao_hasher_long(b: &mut Bencher) {
     let mut input = RandomInput::new(b, LONG);
     b.iter(|| {
-        let mut writer = hash::Writer::new();
-        writer.write_all(input.get()).unwrap();
-        writer.finalize()
+        let mut hasher = hash::Hasher::new();
+        hasher.write_all(input.get()).unwrap();
+        hasher.finalize()
     });
 }
 
 #[bench]
-fn bench_bao_encode_writer_combined_short(b: &mut Bencher) {
+fn bench_bao_encoder_combined_short(b: &mut Bencher) {
     let mut input = RandomInput::new(b, SHORT);
     let mut output = Vec::with_capacity(encode::encoded_size(SHORT as u64) as usize);
     b.iter(|| {
         output.clear();
-        let mut writer = encode::Writer::new(Cursor::new(&mut output));
-        writer.write_all(input.get()).unwrap();
-        writer.finalize().unwrap()
+        let mut encoder = encode::Encoder::new(Cursor::new(&mut output));
+        encoder.write_all(input.get()).unwrap();
+        encoder.finalize().unwrap()
     });
 }
 
 #[bench]
-fn bench_bao_encode_writer_combined_medium(b: &mut Bencher) {
+fn bench_bao_encoder_combined_medium(b: &mut Bencher) {
     let mut input = RandomInput::new(b, MEDIUM);
     let mut output = Vec::with_capacity(encode::encoded_size(MEDIUM as u64) as usize);
     b.iter(|| {
         output.clear();
-        let mut writer = encode::Writer::new(Cursor::new(&mut output));
-        writer.write_all(input.get()).unwrap();
-        writer.finalize().unwrap()
+        let mut encoder = encode::Encoder::new(Cursor::new(&mut output));
+        encoder.write_all(input.get()).unwrap();
+        encoder.finalize().unwrap()
     });
 }
 
 #[bench]
-fn bench_bao_encode_writer_combined_long(b: &mut Bencher) {
+fn bench_bao_encoder_combined_long(b: &mut Bencher) {
     let mut input = RandomInput::new(b, LONG);
     let mut output = Vec::with_capacity(encode::encoded_size(LONG as u64) as usize);
     b.iter(|| {
         output.clear();
-        let mut writer = encode::Writer::new(Cursor::new(&mut output));
-        writer.write_all(input.get()).unwrap();
-        writer.finalize().unwrap()
+        let mut encoder = encode::Encoder::new(Cursor::new(&mut output));
+        encoder.write_all(input.get()).unwrap();
+        encoder.finalize().unwrap()
     });
 }
 
 #[bench]
-fn bench_bao_encode_writer_outboard_short(b: &mut Bencher) {
+fn bench_bao_encoder_outboard_short(b: &mut Bencher) {
     let mut input = RandomInput::new(b, SHORT);
     let mut output = Vec::with_capacity(encode::outboard_size(SHORT as u64) as usize);
     b.iter(|| {
         output.clear();
-        let mut writer = encode::Writer::new_outboard(Cursor::new(&mut output));
-        writer.write_all(input.get()).unwrap();
-        writer.finalize().unwrap()
+        let mut encoder = encode::Encoder::new_outboard(Cursor::new(&mut output));
+        encoder.write_all(input.get()).unwrap();
+        encoder.finalize().unwrap()
     });
 }
 
 #[bench]
-fn bench_bao_encode_writer_outboard_medium(b: &mut Bencher) {
+fn bench_bao_encoder_outboard_medium(b: &mut Bencher) {
     let mut input = RandomInput::new(b, MEDIUM);
     let mut output = Vec::with_capacity(encode::outboard_size(MEDIUM as u64) as usize);
     b.iter(|| {
         output.clear();
-        let mut writer = encode::Writer::new_outboard(Cursor::new(&mut output));
-        writer.write_all(input.get()).unwrap();
-        writer.finalize().unwrap()
+        let mut encoder = encode::Encoder::new_outboard(Cursor::new(&mut output));
+        encoder.write_all(input.get()).unwrap();
+        encoder.finalize().unwrap()
     });
 }
 
 #[bench]
-fn bench_bao_encode_writer_outboard_long(b: &mut Bencher) {
+fn bench_bao_encoder_outboard_long(b: &mut Bencher) {
     let mut input = RandomInput::new(b, LONG);
     let mut output = Vec::with_capacity(encode::outboard_size(LONG as u64) as usize);
     b.iter(|| {
         output.clear();
-        let mut writer = encode::Writer::new_outboard(Cursor::new(&mut output));
-        writer.write_all(input.get()).unwrap();
-        writer.finalize().unwrap()
+        let mut encoder = encode::Encoder::new_outboard(Cursor::new(&mut output));
+        encoder.write_all(input.get()).unwrap();
+        encoder.finalize().unwrap()
     });
 }
 
 #[bench]
-fn bench_bao_decode_reader_combined_short(b: &mut Bencher) {
+fn bench_bao_decoder_combined_short(b: &mut Bencher) {
     let input = RandomInput::new(b, SHORT).get().to_vec();
     let (encoded, hash) = encode::encode(&input);
     let mut output = [1; hash::BUF_SIZE];
     b.iter(|| {
-        let mut decoder = decode::Reader::new(&*encoded, &hash);
+        let mut decoder = decode::Decoder::new(&*encoded, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
 
 #[bench]
-fn bench_bao_decode_reader_combined_medium(b: &mut Bencher) {
+fn bench_bao_decoder_combined_medium(b: &mut Bencher) {
     let input = RandomInput::new(b, MEDIUM).get().to_vec();
     let (encoded, hash) = encode::encode(&input);
     let mut output = [1; hash::BUF_SIZE];
     b.iter(|| {
-        let mut decoder = decode::Reader::new(&*encoded, &hash);
+        let mut decoder = decode::Decoder::new(&*encoded, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
 
 #[bench]
-fn bench_bao_decode_reader_combined_long(b: &mut Bencher) {
+fn bench_bao_decoder_combined_long(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();
     let (encoded, hash) = encode::encode(&input);
     let mut output = [1; hash::BUF_SIZE];
     b.iter(|| {
-        let mut decoder = decode::Reader::new(&*encoded, &hash);
+        let mut decoder = decode::Decoder::new(&*encoded, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
 
 #[bench]
-fn bench_bao_decode_reader_outboard_short(b: &mut Bencher) {
+fn bench_bao_decoder_outboard_short(b: &mut Bencher) {
     let input = RandomInput::new(b, SHORT).get().to_vec();
     let (outboard, hash) = encode::outboard(&input);
     let mut output = [1; hash::BUF_SIZE];
     b.iter(|| {
-        let mut decoder = decode::Reader::new_outboard(&*input, &*outboard, &hash);
+        let mut decoder = decode::Decoder::new_outboard(&*input, &*outboard, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
 
 #[bench]
-fn bench_bao_decode_reader_outboard_medium(b: &mut Bencher) {
+fn bench_bao_decoder_outboard_medium(b: &mut Bencher) {
     let input = RandomInput::new(b, MEDIUM).get().to_vec();
     let (outboard, hash) = encode::outboard(&input);
     let mut output = [1; hash::BUF_SIZE];
     b.iter(|| {
-        let mut decoder = decode::Reader::new_outboard(&*input, &*outboard, &hash);
+        let mut decoder = decode::Decoder::new_outboard(&*input, &*outboard, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
 
 #[bench]
-fn bench_bao_decode_reader_outboard_long(b: &mut Bencher) {
+fn bench_bao_decoder_outboard_long(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();
     let (outboard, hash) = encode::outboard(&input);
     let mut output = [1; hash::BUF_SIZE];
     b.iter(|| {
-        let mut decoder = decode::Reader::new_outboard(&*input, &*outboard, &hash);
+        let mut decoder = decode::Decoder::new_outboard(&*input, &*outboard, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
@@ -245,10 +245,10 @@ fn bench_bao_seek_memory(b: &mut Bencher) {
     b.bytes = 0;
     let (encoded, hash) = encode::encode(&input);
     let mut rng = rand_xorshift::XorShiftRng::from_seed(Default::default());
-    let mut reader = decode::Reader::new(Cursor::new(&encoded), &hash);
+    let mut decoder = decode::Decoder::new(Cursor::new(&encoded), &hash);
     b.iter(|| {
         let seek_offset = rng.gen_range(0, input.len() as u64);
-        reader.seek(Start(seek_offset)).unwrap();
+        decoder.seek(Start(seek_offset)).unwrap();
     });
 }
 
@@ -264,9 +264,9 @@ fn bench_bao_seek_file(b: &mut Bencher) {
     file.seek(Start(0)).expect("file seek error");
 
     let mut rng = rand_xorshift::XorShiftRng::from_seed(Default::default());
-    let mut reader = decode::Reader::new(file, &hash);
+    let mut decoder = decode::Decoder::new(file, &hash);
     b.iter(|| {
         let seek_offset = rng.gen_range(0, input.len() as u64);
-        reader.seek(Start(seek_offset)).expect("seek error");
+        decoder.seek(Start(seek_offset)).expect("seek error");
     });
 }

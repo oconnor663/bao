@@ -77,9 +77,9 @@ fn hash_one(maybe_path: &Option<PathBuf>, args: &Args) -> Result<bao::hash::Hash
     } else if let Some(map) = maybe_memmap_input(&input)? {
         bao::hash::hash(&map)
     } else {
-        let mut writer = bao::hash::Writer::new();
-        io::copy(&mut input, &mut writer)?;
-        writer.finalize()
+        let mut encoder = bao::hash::Hasher::new();
+        io::copy(&mut input, &mut encoder)?;
+        encoder.finalize()
     })
 }
 
@@ -120,13 +120,13 @@ fn encode(args: &Args) -> Result<(), Error> {
         &args.arg_output
     };
     let output = open_output(out_maybe_path)?;
-    let mut writer = if args.flag_outboard.is_some() {
-        bao::encode::Writer::new_outboard(output.require_file()?)
+    let mut encoder = if args.flag_outboard.is_some() {
+        bao::encode::Encoder::new_outboard(output.require_file()?)
     } else {
-        bao::encode::Writer::new(output.require_file()?)
+        bao::encode::Encoder::new(output.require_file()?)
     };
-    io::copy(&mut input, &mut writer)?;
-    writer.finalize()?;
+    io::copy(&mut input, &mut encoder)?;
+    encoder.finalize()?;
     Ok(())
 }
 
@@ -135,38 +135,38 @@ fn decode(args: &Args) -> Result<(), Error> {
     let mut output = open_output(&args.arg_output)?;
     let hash = parse_hash(args)?;
     let outboard;
-    let mut generic_reader;
-    let mut file_reader;
-    let mut reader: &mut dyn Read;
+    let mut generic_decoder;
+    let mut file_decoder;
+    let mut decoder: &mut dyn Read;
     if args.flag_outboard.is_some() {
         outboard = open_input(&args.flag_outboard)?;
         if let Some(offset) = args.flag_start {
-            file_reader = bao::decode::Reader::new_outboard(
+            file_decoder = bao::decode::Decoder::new_outboard(
                 input.require_file()?,
                 outboard.require_file()?,
                 &hash,
             );
-            file_reader.seek(io::SeekFrom::Start(offset))?;
-            reader = &mut file_reader;
+            file_decoder.seek(io::SeekFrom::Start(offset))?;
+            decoder = &mut file_decoder;
         } else {
-            generic_reader = bao::decode::Reader::new_outboard(input, outboard, &hash);
-            reader = &mut generic_reader;
+            generic_decoder = bao::decode::Decoder::new_outboard(input, outboard, &hash);
+            decoder = &mut generic_decoder;
         }
     } else {
         if let Some(offset) = args.flag_start {
-            file_reader = bao::decode::Reader::new(input.require_file()?, &hash);
-            file_reader.seek(io::SeekFrom::Start(offset))?;
-            reader = &mut file_reader;
+            file_decoder = bao::decode::Decoder::new(input.require_file()?, &hash);
+            file_decoder.seek(io::SeekFrom::Start(offset))?;
+            decoder = &mut file_decoder;
         } else {
-            generic_reader = bao::decode::Reader::new(input, &hash);
-            reader = &mut generic_reader;
+            generic_decoder = bao::decode::Decoder::new(input, &hash);
+            decoder = &mut generic_decoder;
         }
     }
     if let Some(count) = args.flag_count {
-        let mut taker = reader.take(count);
+        let mut taker = decoder.take(count);
         allow_broken_pipe(io::copy(&mut taker, &mut output))?;
     } else {
-        allow_broken_pipe(io::copy(&mut reader, &mut output))?;
+        allow_broken_pipe(io::copy(&mut decoder, &mut output))?;
     }
     Ok(())
 }
@@ -197,8 +197,8 @@ fn decode_slice(args: &Args) -> Result<(), Error> {
     let input = open_input(&args.arg_input)?;
     let mut output = open_output(&args.arg_output)?;
     let hash = parse_hash(&args)?;
-    let mut reader = bao::decode::SliceReader::new(input, &hash, args.arg_start, args.arg_count);
-    allow_broken_pipe(io::copy(&mut reader, &mut output))?;
+    let mut decoder = bao::decode::SliceDecoder::new(input, &hash, args.arg_start, args.arg_count);
+    allow_broken_pipe(io::copy(&mut decoder, &mut output))?;
     Ok(())
 }
 
