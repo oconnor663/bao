@@ -607,13 +607,14 @@ restricted](https://doc.rust-lang.org/std/io/enum.SeekFrom.html) to 64-bit
 sizes and offsets. If Bao supported longer streams in theory, implementations
 would need to handle more unrepresentable edge cases. (Though even with a
 64-bit counter, the maximum _encoded_ file size can exceed 64 bits, and a
-perfect decoder implementation needs to seek twice to reach bytes near the end
-of max-size encodings. In practice the decoder returns an overflow error.)
+perfect decoder implementation would need to seek twice to reach bytes near the
+end of max-size encodings. In practice the reference implementation returns an
+overflow error in that unlikely case.)
 
 Implementations also need to decide how much storage overhead is reasonable. If
-the counter was 128 bits, it would still make almost no sense to allocate space
-for a 128-level tree. The recommended default would probably be to assume a
-maximum of 52 levels like today, but it would put the burden of choice on each
+the counter were larger, it would still make almost no sense to allocate space
+for a larger tree. The recommendation would probably be to assume a maximum
+stack depth of 52 as we do now, but it would put the burden of choice on each
 implementation.
 
 ### Could a similar design be based on a different underlying hash function?
