@@ -197,8 +197,8 @@ decoder might expose the length, some of which are less obvious than others:
   thereby exposing the length (zero). The decoder must verify that the final
   chunk (that is, the empty chunk) matches the root hash. Most implementations
   will naturally satisfy this requirement for non-empty encodings as part of
-  reading chunk bytes, but it's easy to forget it in the empty case if you
-  write code like "current position equals content length therefore EOF."
+  reading chunk bytes, but it's easy to forget it in the empty case by assuming
+  that you're finished whenever the current position equals the content length.
 - Seeking past the end. If I seek to an offset greater than or equal to the
   content length, the next read will return EOF, exposing the length. That
   means either the seek itself or the following read must have validated the
@@ -212,19 +212,22 @@ For decoders that don't expose a `.length()` method and don't support seeking,
 the security requirements can be simplified to "verify the hash of every node
 you read, and don't skip the empty chunk." But decoders that do support seeking
 need to consider the final chunk requirement very carefully. The decoder is
-expected to maintain these guarantees:
+expected to maintain these guarantees, even in the face of a man-in-the-middle
+attacker who modifies the encoded bytes:
 
-- Any byte returned to the caller matches the corresponding byte of the
-  original input.
+- Any output byte returned by the decoder matches the corresponding input byte
+  from the original input.
 - If EOF is indicated to the caller in any way, either through a read or
   through a seek, it matches the length of the original input.
-- If the decoder returns a complete input, the decoding hash must be the unique
-  hash of that input.
+- If the decoder reads a complete output to EOF, the decoding hash must be the
+  Bao hash of that output. There are no "decoding collisions" where two
+  different hashes decode the same output to EOF. (Though two different hashes
+  may decode the same output, if at least one of the decodings encounters an
+  error before EOF.)
 
-Note one non-guarantee in particular: The encoding itself may be mutable.
+Note one non-guarantee in particular: The encoding itself may be malleable.
 Multiple "different" encodings may decode to the same input, under the same
-hash. For example, appending extra bytes to a valid encoding may have no effect
-on decoding.
+hash. See the design rationales for more on this.
 
 ## Security
 
@@ -247,9 +250,10 @@ requirements. They are:
 1. **Tree decodability.** The exact definition of this property is fairly
    technical, but the gist of it is that it needs to be impossible to take a
    valid tree, add more child nodes to it somewhere, and wind up with another
-   valid tree.
+   valid tree. That is, it shouldn't be possible to interpret a leaf node as a
+   parent node, or to add more children to an existing parent node.
 2. **Message completeness.** It needs to be possible to reconstruct the
-   original message from the tree.
+   original message unambiguously from the tree.
 3. **Final-node separability.** Again the exact definition is fairly technical,
    but the gist is that it needs to be impossible for any root node and any
    non-root node to have the same hash.
@@ -265,15 +269,32 @@ parent nodes are always full and never have room for more children, means that
 adding nodes to a valid tree is always invalid.
 
 **Message completeness** is of course a basic design requirement of the
-encoding format, and all the bits of the format are included in the tree.
+encoding format. Concatenating the chunks in order gives the original message.
 
 We ensure **final-node separability** by domain-separating the root node from
-the rest of the tree with the **final node flag**. BLAKE2's final node flag is
+the rest of the tree with the **last node flag**. BLAKE2's last node flag is
 similar to its other parameters, except that it's an input to the last call to
-the compression function rather than a tweak to the IVs. In practice, that
+the compression function rather than a tweak to the IV. In practice, that
 allows an implementation to start hashing the first chunk immediately rather
-than buffering it, and to set the final node flag at the end if the first chunk
+than buffering it, and to set the last node flag at the end if the first chunk
 turns out to be the only chunk and therefore the root.
+
+That framework concerns the security of the hash function. To reason about the
+security of the decoder, we can start by observing that decoding verifies the
+hash of almost every part of the encoded file. If the hash function is
+collision resistant, then these parts of the encoding can't be mutated without
+leading to a hash mismatch. The one part that isn't directly verified is the
+length header. The possibility that the length header might be mutated leads to
+the final chunk requirement above. If the length is increased, that's
+guaranteed to either lengthen the final chunk, or to replace the final chunk
+with another parent node. Likewise if the length is decreased, that's
+guaranteed to either shorten the final chunk, or to replace one of the parent
+nodes along the right edge of the tree with a chunk. All four of those
+scenarios are guaranteed to cause a hash mismatch, because of the collision
+resistance of BLAKE2s and because of the domain separation between parents and
+chunks, as long as the decoder validates the final chunk. The design rationales
+discuss further why we prefer to rely on this final chunk requirement rather
+than hashing the length as associated data.
 
 ## Storage Requirements
 
@@ -477,9 +498,9 @@ problem, because the interior subtree hashes are always 32 bytes.
 **To discourage implementers from making non-constant-time optimizations.** One
 of the important security properties of a cryptographic hash is that it runs in
 the same amount of time for any two inputs of the same size. Otherwise it would
-leak information about its input through a timing "side-channel". BLAKE2s was
-designed to be constant time, so a straightforward implementation of Bao would
-also be constant time by default. However, consider the following dangerous
+leak information about its input through the timing side-channel. BLAKE2s was
+designed to be constant time, so a straightforward implementation of Bao is
+also constant time by default. However, consider the following dangerous
 optimization:
 
 > For each chunk, before hashing it, check to see whether it's all zero. If so,
@@ -488,34 +509,45 @@ optimization:
 For inputs that are known to contain mostly zeros, this optimization could lead
 to a huge speedup, by letting Bao skip almost all of its work. But it would
 violate the constant time property and leak lots of information about the
-structure of its input. This is the sort of mistake the node offset parameter
+structure of its input. This sort of mistake is what the node offset parameter
 is preventing. Because each chunk uses a different node offset, optimizations
 like this one don't work, and so implementations will tend to preserve constant
-time execution (the ["pit of
+time execution (a ["pit of
 success"](https://blog.codinghorror.com/falling-into-the-pit-of-success/)).
 
-The maximum value for node offset in BLAKE2s is 2<sup>48</sup>-1, which is less
-than Bao's maximum input length of 2<sup>64</sup>-1. That means that node
-offsets wrap around and repeat given an extremely-but-not-impossibly large
-input (256 TiB). However, note that the Security section above doesn't rely on
-the node offset parameter. The implementation details that provide security
-under the [*Sufficient conditions*](https://eprint.iacr.org/2009/210.pdf)
-framework are the node depth parameter and the final node flag, which domain
-separate chunk/parent nodes and root/non-root nodes respectively. Since we
-don't rely on the node offset for security, its range only needs to be large
-enough to deter dangerous optimizations.
+The maximum value for the node offset in BLAKE2s is 2<sup>48</sup>-1, which is
+smaller than Bao's maximum input length of 2<sup>64</sup>-1 bytes or
+2<sup>52</sup> chunks. That means that node offsets will repeat given a very
+large input (1 EiB). However, note that the Security section above doesn't rely
+on the node offset parameter. The implementation details that prevent
+collisions and length extensions under the [*Sufficient
+conditions*](https://eprint.iacr.org/2009/210.pdf) framework are the node depth
+parameter and the last node flag, which domain separate chunk/parent nodes and
+root/non-root nodes respectively. Since we don't rely on the node offset for
+security in general, its range only needs to be large enough to discourage the
+optimizations we want to discourage. An exabyte is large enough.
 
 By not setting the node offset for parent nodes, and by using only 0 and 1 for
 the node depth parameter, Bao breaks the conventions of the [BLAKE2
-spec](https://blake2.net/blake2.pdf). Some breakage was already required for
-security, though, because we can't set the last node flag for any node other
-than the root. (And we have to use the last node flag to distinguish the root,
-rather than any other parameter, because it's the only one that we can set
-after some bytes have already been hashed.) Setting more parameters for parent
-nodes would require some tricky math to tell which parents are being merged,
-which we don't currently need to know. Since there's not much value in sticking
-closer-but-not-completely to the original conventions, the Bao design
-prioritizes simplifying the implementation.
+spec](https://blake2.net/blake2.pdf). Some breakage was necessary, though,
+because we use the last node flag as a root distinguisher, while the spec uses
+it on every level of the tree. I believe this is a mistake in the original
+spec, because distinguishing the root is necessary to prevent generalized
+length extensions. The spec's root distinguisher is the combination of the last
+node flag and the zero value of the node offset. However, as noted above, the
+node offset might wrap for very large inputs. If you have a tree hash based on
+BLAKE2s according to the conventions of the spec, and the node offset is
+defined to wrap, you can "extend" that hash by prepending 1 EiB of arbitrary
+data (or less if the chunk size is smaller). That's not a very pratical attack,
+and the spec could mitigate it by requiring that the node offset saturate
+instead of wrapping, but ultimately it's better to prevent it by using the last
+node flag exclusively for the root.
+
+Apart from that, setting the node offset and node depth for parent nodes as in
+the spec would require some extra math to tell which subtrees are being merged
+in the subtree stack, which we don't currently need to know. Since there's not
+much value in sticking closer-but-still-not-fully to the original conventions,
+the Bao design prioritizes simplifying the implementation.
 
 ### Could we use a simpler tree mode, like KangarooTwelve does?
 
@@ -797,9 +829,45 @@ much space savings is needed. And applications with extremely tight storage
 requirements already have the option of constraining the maximum input size, as
 noted above.
 
-### Should Bao use the node offset parameter to forbid memoizing subtrees?
+### Why is the encoding format malleable?
 
-**Open question.**
+**Because the decoder doesn't read EOF from the encoding.** For example, if the
+decoder reads the 8-byte length header and parses a length of 10 bytes, its
+next read will be exactly 10 bytes. Since that's the final and only chunk,
+decoding is finished, and the decoder won't do any more reads. Typically the
+encoded file would have EOF after 18 bytes, so that another read would have
+returned zero bytes anyway. However, the encoded file may also have "trailing
+garbage" after byte 18. Since the decoder never looks at those bytes, they have
+no effect on decoding. That means that two "different looking" encoded files,
+which differ in their trailing garbage, can successfully decode to the same
+output.
+
+Note that this only concerns decoding, not hashing. There's no such thing as
+trailing garbage in the context of hashing, because hashing operates on raw
+input bytes rather than on the encoding format, and because hashing necessarily
+reads its input to EOF. Rather, this concerns applications that might want to
+compare two encoded files byte-for-byte, maybe as a shortcut to predict whether
+decoding them would give the same result. That logic would be broken in the
+presence of trailing garbage added by a bug or by an attacker. The only valid
+way to learn anything about the contents of an encoded file is to decode it.
+
+Another scenario that might lead to malleability is that a decoder might not
+verify all parent nodes. For example, if the decoder sees that an encoding is 8
+chunks long, and it can buffer all 8 chunks and hash them in parallel, it might
+chose to ignore the parent nodes and just reconstruct the root hash from those
+8 chunks. The reference decoder doesn't do this, in part because it would hide
+encoder bugs that lead to incorrect parent nodes. But if the decoder is careful
+not to emit any chunk bytes to the caller until all of them have been verified,
+it can technically skip some parent nodes like this without violating the
+security requirements. In this case, those parent nodes would be malleable.
+
+As discussed above, a "sloppy" decoder might also ignore some mutations in the
+length header, without failing decoding. That's strictly incorrect, and it
+violates security requirements related to the original input length, but the
+possibility that a buggy implementation might do that is yet another reason to
+assume that encoded bytes are malleable. To be clear though, none of the
+scenarios discussed in this section violate the guarantee that decoded output
+matches the original input.
 
 ## Other Related Work
 
