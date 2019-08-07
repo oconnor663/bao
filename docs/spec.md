@@ -598,11 +598,7 @@ would also complicate encoding and decoding.
 ### Is 64 bits large enough for the encoded length?
 
 **Yes.** Every filesystem in use today has a maximum file size of
-2<sup>64</sup> bytes or less. It's possible that some trickery with sparse
-files (more discussion above) might let you effectively hash something that
-large, but at that point there's no practical limit to your input size and no
-particular reason to assume that 2<sup>128</sup> or 2<sup>256</sup> bytes would
-be enough.
+2<sup>64</sup> bytes or less.
 
 Bao's decoding features are designed to work with the IO interfaces of
 mainstream programming languages, particularly around streaming and seeking.
