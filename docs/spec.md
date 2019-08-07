@@ -9,6 +9,7 @@
 * [Combined Encoding Format](#combined-encoding-format)
 * [Outboard Encoding Format](#outboard-encoding-format)
 * [Slice Format](#slice-format)
+* [Decoder](#decoder)
 * [Security](#security)
 * [Storage Requirements](#storage-requirements)
 * [Performance Notes](#performance-notes)
@@ -127,7 +128,7 @@ nodes of the tree concatenated together in pre-order (that is a parent,
 followed by its left subtree, followed by its right subtree), with the 8-byte
 little-endian unsigned input length prepended to the very front. This makes the
 order of nodes on disk the same as the order in which a depth-first traversal
-would encounter them, so a reader decoding the tree from beginning to end
+would encounter them, so a decoder reading the tree from beginning to end
 doesn't need to do any seeking. Here's the same example tree above, formatted
 as an encoded file:
 
@@ -135,6 +136,46 @@ as an encoded file:
 input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
 0120000000000000|7b34f3...57e13c...|1f889c...48d13f...|000000...  |000000...   |00
 ```
+
+## Outboard Encoding Format
+
+The outboard encoding format is the same as the combined encoding format,
+except that all the chunks are omitted. In outboard mode, whenever the decoder
+would read a chunk, it instead reads it from the original input file. This
+makes the encoding much smaller than the input, with the downside that the
+decoder needs to read from two streams.
+
+## Slice Format
+
+The slice format is very similar to the combined encoding format above. The
+only difference is that chunks and parent nodes that wouldn't be read in a
+given traversal are omitted. For example, if we slice the tree above starting
+at input byte 4096 (the beginning of the second chunk), and request any count
+of bytes less than or equal to 4096 (up to the end of that chunk), the
+resulting slice will be this:
+
+```
+input length    |root parent node  |left parent node  |second chunk
+0120000000000000|7b34f3...57e13c...|1f889c...48d13f...|000000...
+```
+
+Although slices can be extracted from both combined and outboard encodings,
+there is no such thing as an "outboard slice". Slices always include chunks
+inline, as the combined encoding does. A slice that includes the entire input
+is exactly the same as the combined encoding of that input.
+
+Decoding a slice works just like decoding a combined encoding. The only
+difference is that in cases where the decoder would normally seek forward to
+skip over a subtree, the slice decoder keeps reading without a seek, since the
+subtree was already skipped by the slice extractor.
+
+There are some unspecified edge cases in the slice parameters:
+
+- A starting point past the end of the input.
+- A byte count larger than the available input after the starting point.
+- A byte count of zero.
+
+A future version of the spec will settle on the behavior in these cases.
 
 ## Decoder
 
@@ -184,46 +225,6 @@ Note one non-guarantee in particular: The encoding itself may be mutable.
 Multiple "different" encodings may decode to the same input, under the same
 hash. For example, appending extra bytes to a valid encoding may have no effect
 on decoding.
-
-## Outboard Encoding Format
-
-The outboard encoding format is the same as the combined encoding format,
-except that all the chunks are omitted. Whenever the decoder would read a
-chunk, it instead reads the corresponding offset from the original input file.
-This is intended for situations where the benefit of retaining the unmodified
-input file is worth the complexity of reading two separate files to decode.
-
-## Slice Format
-
-The slice format is very similar to the combined encoding format above. The
-only difference is that chunks and parent nodes that wouldn't be encountered in
-a given traversal are omitted. For example, if we slice the tree above starting
-at input byte 4096 (the beginning of the second chunk), and request any count
-of bytes less than or equal to 4096 (up to the end of that chunk), the
-resulting slice will be this:
-
-```
-input length    |root parent node  |left parent node  |second chunk
-0120000000000000|7b34f3...57e13c...|1f889c...48d13f...|000000...
-```
-
-Although slices can be extracted from either a combined encoding or an outboard
-encoding, there is no such thing as an "outboard slice". Slices always include
-chunks inline, as the combined encoding does. A slice that includes the entire
-input is exactly the same as the combined encoding of that input.
-
-Decoding a slice works just like decoding a combined encoding. The only
-difference is that in cases where the decoder would normally seek forward, the
-slice decoder continues reading in series, since all the seeking has been taken
-care of by the slice extractor.
-
-There are some unspecified edge cases in the slice parameters:
-
-- A starting point past the end of the input.
-- A byte count larger than the available input after the starting point.
-- A byte count of zero.
-
-A future version of the spec will settle on the behavior in these cases.
 
 ## Security
 
