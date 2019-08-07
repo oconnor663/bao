@@ -50,7 +50,9 @@ Hashing nodes is done with BLAKE2s, using the following parameters:
 - **Max depth** is 255.
 - **Max leaf length** is 4096.
 - **Inner hash length** is 32.
-- **Node offset** is always 0 (the default).
+- **Node offset** is incremented for each chunk, 0 for the first chunk, 1 for
+  the second chunk, etc. This counter wraps to zero after reaching the maximum
+  BLAKE2s node offset, 2<sup>48</sup>-1. It's 0 for all parent nodes.
 - **Node depth** is 0 for all chunks and 1 for all parent nodes.
 
 In addition, the root node -- whether it's a chunk or a parent -- has the
@@ -62,15 +64,15 @@ That root node hash is the output of Bao. Here's an example tree, with 8193
 bytes of input that are all zero:
 
 ```
-                        root parent hash=12ea5e...
-                        <410093...2f7dbf...>
+                        root parent hash=96e2ab...
+                        <7b34f3...57e13c...>
                                 /   \
                                /     \
-            parent hash=410093...   chunk hash=2f7dbf...
-            <1f889c...1f889c...>    [\x00]
+            parent hash=7b34f3...   chunk hash=57e13c...
+            <1f889c...48d13f...>    [\x00]
                     /   \
                    /     \
-chunk hash: 1f889c...   chunk hash: 1f889c...
+chunk hash: 1f889c...   chunk hash: 48d13f...
 [\x00 * 4096]           [\x00 * 4096]
 ```
 
@@ -86,31 +88,36 @@ $ alias hash_node="blake2 -s --fanout=2 --max-depth=255 --max-leaf-length=4096 -
 $ alias hash_chunk="hash_node --node-depth=0"
 $ alias hash_parent="hash_node --node-depth=1"
 
-# Compute the hash of the first and second chunks, which are the same.
-$ big_chunk_hash=`head -c 4096 /dev/zero | hash_chunk`
-$ echo $big_chunk_hash
+# Hash the first chunk.
+$ first_chunk_hash=`head -c 4096 /dev/zero | hash_chunk --node-offset 0`
+$ echo $first_chunk_hash
 1f889cb45b1901ce01bba35537ede436e5b84e00327eced603a46a9b2b029506
 
-# Compute the hash of the third chunk, which is different.
-$ small_chunk_hash=`head -c 1 /dev/zero | hash_chunk`
-$ echo $small_chunk_hash
-2f7dbf8f3a34d18b3f0dc65613b2e98452522327e8545607ead70eb5824c7bf1
+# Hash the second chunk.
+$ second_chunk_hash=`head -c 4096 /dev/zero | hash_chunk --node-offset 1`
+$ echo $second_chunk_hash
+48d13f5d36b8c94c2d7ce8d59bf7053873f5f2cff8fbccd5c239f4fc752b2f88
+
+# Hash the third chunk.
+$ third_chunk_hash=`head -c 1 /dev/zero | hash_chunk --node-offset 2`
+$ echo $third_chunk_hash
+57e13cda44cdd714424d8ca9c1ae37c3c075ee5c872646eb40c5f58a4ee7cc87
 
 # Define an alias for parsing hex.
 $ alias unhex='python3 -c "import sys, binascii; sys.stdout.buffer.write(binascii.unhexlify(sys.argv[1]))"'
 
-# Compute the hash of the first two chunks' parent node.
-$ left_parent_hash=`unhex $big_chunk_hash$big_chunk_hash | hash_parent`
+# Hash the first two chunks' parent node.
+$ left_parent_hash=`unhex $first_chunk_hash$second_chunk_hash | hash_parent`
 $ echo $left_parent_hash
-41009392bac4b7aae4039a4586fddd194fe0b8dae1480d05b7d258ac003e0a1d
+7b34f3ebe21be2e02acf0da236f5fa5494653fbf465505e783f43b2dbb826885
 
-# Compute the hash of the root node, with the last node flag.
-$ unhex $left_parent_hash$small_chunk_hash | hash_parent --last-node
-12ea5e2e91c21f4a4658fcaa08cc5aa6d2126aa72ca05742784aa718493e720f
+# Hash the root node, with the last node flag.
+$ unhex $left_parent_hash$third_chunk_hash | hash_parent --last-node
+96e2ab1a5486faeaecd306cd7fd7eed78bb48d33de4234b4dd019d481e790c4e
 
 # Verify that this matches the Bao hash of the same input.
 $ head -c 8193 /dev/zero | bao hash
-12ea5e2e91c21f4a4658fcaa08cc5aa6d2126aa72ca05742784aa718493e720f
+96e2ab1a5486faeaecd306cd7fd7eed78bb48d33de4234b4dd019d481e790c4e
 ```
 
 ## Combined Encoding Format
@@ -126,7 +133,7 @@ as an encoded file:
 
 ```
 input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
-0120000000000000|410093...2f7dbf...|1f889c...1f889c...|000000...  |000000...   |00
+0120000000000000|7b34f3...57e13c...|1f889c...48d13f...|000000...  |000000...   |00
 ```
 
 ## Decoder
@@ -197,7 +204,7 @@ resulting slice will be this:
 
 ```
 input length    |root parent node  |left parent node  |second chunk
-0120000000000000|410093...2f7dbf...|1f889c...1f889c...|000000...
+0120000000000000|7b34f3...57e13c...|1f889c...48d13f...|000000...
 ```
 
 Although slices can be extracted from either a combined encoding or an outboard
@@ -464,30 +471,50 @@ for all nodes. That's again impossible in the Python API, where the output
 length and the hash length parameter are always set together. Bao has the same
 problem, because the interior subtree hashes are always 32 bytes.
 
-### Should we stick closer to the BLAKE2 spec when setting node offset and node depth?
+### Why does Bao set the node offset parameter for each chunk?
 
-TODO: rework this section
+**To discourage implementers from making non-constant-time optimizations.** One
+of the important security properties of a cryptographic hash is that it runs in
+the same amount of time for any two inputs of the same size. Otherwise it would
+leak information about its input through a timing "side-channel". BLAKE2s was
+designed to be constant time, so a straightforward implementation of Bao would
+also be constant time by default. However, consider the following dangerous
+optimization:
 
-**Probaby not.** In the [BLAKE2 spec](https://blake2.net/blake2.pdf), it was
-originally intended that each node would use its unique depth/offset pair as
-parameters to the hash function. The Security section above made the case that
-that approach isn't necessary to prevent collisions, but there could still be
-some value in sticking to the letter of the spec. There are a few reasons Bao
-doesn't.
+> For each chunk, before hashing it, check to see whether it's all zero. If so,
+> skip the work of hashing it, and use a hardcoded hash of the zero chunk.
 
-One reason is that, by allowing identical subtrees to produce the same hash,
-Bao makes it possible to do interesting things with sparse files. For example,
-imagine you need to compute the hash of an entire disk, but you know that most
-of the disk contains all zeros. You can skip most of the work of hashing it, by
-memoizing the hashes of all-zero subtrees. That approach works with any pattern
-of bytes that repeats on a subtree boundary. But if we set the node offset
-parameter differently in every subtree, memoizing no longer helps.
+For inputs that are known to contain mostly zeros, this optimization could lead
+to a huge speedup, by letting Bao skip almost all of its work. But it would
+violate the constant time property and leak lots of information about the
+structure of its input. This is the sort of mistake the node offset parameter
+is preventing. Because each chunk uses a different node offset, optimizations
+like this one don't work, and so implementations will tend to preserve constant
+time execution (the ["pit of
+success"](https://blog.codinghorror.com/falling-into-the-pit-of-success/)).
 
-Also, we're already departing from the BLAKE2 spec in our use of the last node
-flag. The spec intended it to be set for all nodes on the right edge of the
-tree, but we only set it for the root node. It doesn't seem worth it to make
-implementations do more bookkeeping to be slightly-more-but-still-not-entirely
-compliant with the spec.
+The maximum value for node offset in BLAKE2s is 2<sup>48</sup>-1, which is less
+than Bao's maximum input length of 2<sup>64</sup>-1. That means that node
+offsets wrap around and repeat given an extremely-but-not-impossibly large
+input (256 TiB). However, note that the Security section above doesn't rely on
+the node offset parameter. The implementation details that provide security
+under the [*Sufficient conditions*](https://eprint.iacr.org/2009/210.pdf)
+framework are the node depth parameter and the final node flag, which domain
+separate chunk/parent nodes and root/non-root nodes respectively. Since we
+don't rely on the node offset for security, its range only needs to be large
+enough to deter dangerous optimizations.
+
+By not setting the node offset for parent nodes, and by using only 0 and 1 for
+the node depth parameter, Bao breaks the conventions of the [BLAKE2
+spec](https://blake2.net/blake2.pdf). Some breakage was already required for
+security, though, because we can't set the last node flag for any node other
+than the root. (And we have to use the last node flag to distinguish the root,
+rather than any other parameter, because it's the only one that we can set
+after some bytes have already been hashed.) Setting more parameters for parent
+nodes would require some tricky math to tell which parents are being merged,
+which we don't currently need to know. Since there's not much value in sticking
+closer-but-not-completely to the original conventions, the Bao design
+prioritizes simplifying the implementation.
 
 ### Could we use a simpler tree mode, like KangarooTwelve does?
 
