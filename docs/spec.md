@@ -313,10 +313,10 @@ size, Bao's storage overhead would be 20 hashes or 640 bytes.
 
 ## Performance Notes
 
-To get the highest possible throughput, the Bao implementation uses both
-threads and SIMD. Threads let the computation take advantage of multiple CPU
-cores, and SIMD gives each thread a higher overall throughput by hashing
-multiple chunks at once.
+To get the highest possible throughput, the reference implementation uses both
+multithreading and SIMD instructions. Threading exploits the multiple cores
+available on modern CPUs, and SIMD allows each thread to hash multiple chunks
+in parallel for much higher throughput per thread.
 
 Multithreading in the current implementation is done with the
 [`join`](https://docs.rs/rayon/latest/rayon/fn.join.html) function from the
@@ -327,16 +327,16 @@ the global thread pool is initialized, this approach doesn't require any heap
 allocations.
 
 There are two different approaches to using SIMD to speed up BLAKE2. The more
-common way is to optimize a single instance, and that's the approach that eeks
-past SHA-1 in the [BLAKE2b benchmarks](https://blake2.net/). But the more
+common way is to optimize a single instance, and that's the approach that just
+beats SHA-1 in the [BLAKE2b benchmarks](https://blake2.net/). But the more
 efficient way, when you have multiple inputs, is to run multiple instances in
 parallel on a single thread. Samuel Neves discussed the second approach in [a
 2012 paper](https://eprint.iacr.org/2012/275.pdf) and implemented it in the
 [reference AVX2 implementation of
-BLAKE2s](https://github.com/sneves/blake2-avx2/blob/master/blake2sp.c). The
-overall throughput is about quadruple that of a single BLAKE2s instance. The
-[`blake2s_simd`](https://github.com/oconnor663/blake2_simd) implementation
-includes a
+BLAKE2sp](https://github.com/sneves/blake2-avx2/blob/master/blake2sp.c). The
+overall throughput is more than triple that of a single optimized BLAKE2s
+instance. The [`blake2s_simd`](https://github.com/oconnor663/blake2_simd)
+implementation includes a
 [`hash_many`](https://docs.rs/blake2s_simd/0.5.1/blake2s_simd/many/fn.hash_many.html)
 interface, which provides the same speedup for multiple instances of BLAKE2s,
 and Bao uses that interface to make each worker thread hash multiple chunks in
@@ -371,10 +371,10 @@ parallel, the effect of SIMD is different. In the parallel mode, both BLAKE2b
 and BLAKE2s can use vectors of any size, by accumulating words from a
 corresponding number of different inputs. Besides being more flexible, this
 approach is also substantially more efficient, because the diagonalization step
-in the BLAKE2 compression function disappears. With 32-bit words and 64-bit
-words on a level playing field in terms of SIMD throughput, the remaining
-performance difference between the two functions is that BLAKE2s does fewer
-rounds, which makes it faster.
+in the compression function disappears. With 32-bit words and 64-bit words on a
+level playing field in terms of SIMD throughput, the remaining performance
+difference between the two functions is that BLAKE2s does fewer rounds, which
+makes it faster.
 
 That's the story for long inputs, but for short inputs there are more factors
 to consider. With just a few bytes of input, both BLAKE2s and BLAKE2b will
@@ -397,10 +397,10 @@ use of any given SIMD vector width. However, this advantage for BLAKE2b comes
 with several caveats:
 
 - It assumes a constant chunk size, but the chunk size is a free parameter in
-  the Bao design. Bao could make up the difference by halving the chunk size,
-  probably with only a few percentage points of overall throughput sacrificed
-  to parent node overhead. See the next section.
-- Performance differences matter more at the extremes. For extremely large
+  the Bao design. If medium-length input parallelism was our biggest concern,
+  we could make up the difference by halving the chunk size, probably with only
+  a few percentage points of long-length throughput lost.
+- Performance differences matter more at the extremes. For extremely long
   inputs, BLAKE2s wins because its lower round count leads to higher overall
   throughput. For extremely limited hardware without 64-bit arithmetic or SIMD,
   BLAKE2s wins because of its 32-bit words.
@@ -409,8 +409,8 @@ with several caveats:
   long are just a single BLAKE2s hash, and the parallel BLAKE2s implementation
   could be reused as-is to parallelize the Bao hashes of those short inputs.
   It's unlikely that anyone will go through the trouble of implementing this in
-  practice, but an application with a critical bottleneck hashing
-  moderate-length inputs has this option.
+  practice, but an application with a critical bottleneck hashing medium-length
+  inputs has this option.
 
 ### What's the best way to choose the chunk size?
 
