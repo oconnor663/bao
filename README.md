@@ -54,24 +54,19 @@ project.)
 f       1000000
 f.bao   1015624
 
-# Note that the `bao hash` of the input file is the same as the
-# `bao hash --encoded` of the encoded file, but the latter is faster.
-> bao hash f
-[some hash...]
-> bao hash --encoded f.bao
-[the same hash...]
-> hash=`bao hash --encoded f.bao`
+# Compute the hash of the original file.
+> hash=`bao hash f`
 
 # Stream decoded bytes from the encoded file, using the hash above.
-> cmp f <(bao decode $hash f.bao)
+> bao decode $hash f.bao f2
+> cmp f f2
 
 # Observe that using the wrong hash to decode results in an error. This
 # is also what will happen if we use the right hash but corrupt some
 # bytes in the encoded file.
-> bad_hash=`echo $hash | sed s/a/b/`
-> cmp f <(bao decode $bad_hash f.bao)
+> bad_hash="0000000000000000000000000000000000000000000000000000000000000000"
+> bao decode $bad_hash f.bao f3
 Error: Custom { kind: InvalidData, error: StringError("hash mismatch") }
-cmp: EOF on /proc/self/fd/11 which is empty
 ```
 
 ## Encoded slices
