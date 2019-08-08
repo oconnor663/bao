@@ -95,13 +95,13 @@ def hash_node(node_bytes, is_chunk, finalization, offset):
     # The BLAKE2s node_offset parameter maxes out at 2^48-1. Just take the
     # lower 48 bits of the offset, and allow that the offset might wrap in a
     # very large tree.
-    capped_offset = offset & ((2 ** 48) - 1)
+    OFFSET_UPPER_BOUND = 2**48
     state = hashlib.blake2s(
         digest_size=HASH_SIZE,
         fanout=2,
         depth=255,
         leaf_size=4096,
-        node_offset=capped_offset,
+        node_offset=offset % OFFSET_UPPER_BOUND,
         node_depth=0 if is_chunk else 1,
         inner_size=HASH_SIZE,
         last_node=finalization is ROOT,

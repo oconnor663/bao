@@ -164,8 +164,8 @@ pub(crate) fn chunk_params(finalization: Finalization, offset: u64) -> blake2s_s
     // The BLAKE2s node_offset parameter maxes out at 2^48-1. Just take the
     // lower 48 bits of the offset, and allow that the offset might wrap in a
     // very large tree.
-    let capped_offset = offset & ((1 << 48) - 1);
-    params.node_offset(capped_offset);
+    const OFFSET_UPPER_BOUND: u64 = 1 << 48;
+    params.node_offset(offset % OFFSET_UPPER_BOUND);
     if let Root = finalization {
         params.last_node(true);
     }
