@@ -23,11 +23,8 @@
 //!
 //! // Also decode them incrementally.
 //! let mut decoded_incrementally = Vec::new();
-//! {
-//!     let mut decoder = bao::decode::Decoder::new(&*encoded, &hash);
-//!     // The inner block here limits the lifetime of this mutable borrow.
-//!     decoder.read_to_end(&mut decoded_incrementally)?;
-//! }
+//! let mut decoder = bao::decode::Decoder::new(&*encoded, &hash);
+//! decoder.read_to_end(&mut decoded_incrementally)?;
 //!
 //! // Assert that we got the same results both times.
 //! assert_eq!(decoded_at_once, decoded_incrementally);
@@ -643,17 +640,13 @@ impl<T: Read, O: Read> fmt::Debug for DecoderShared<T, O> {
 ///
 /// // Decode the combined mode.
 /// let mut combined_output = Vec::new();
-/// {
-///     let mut decoder = bao::decode::Decoder::new(&*encoded, &hash);
-///     decoder.read_to_end(&mut combined_output)?;
-/// }
+/// let mut decoder = bao::decode::Decoder::new(&*encoded, &hash);
+/// decoder.read_to_end(&mut combined_output)?;
 ///
 /// // Decode the outboard mode.
 /// let mut outboard_output = Vec::new();
-/// {
-///     let mut decoder = bao::decode::Decoder::new_outboard(&input[..], &*outboard, &hash);
-///     decoder.read_to_end(&mut outboard_output)?;
-/// }
+/// let mut decoder = bao::decode::Decoder::new_outboard(&input[..], &*outboard, &hash);
+/// decoder.read_to_end(&mut outboard_output)?;
 ///
 /// assert_eq!(input, &*combined_output);
 /// assert_eq!(input, &*outboard_output);
@@ -785,9 +778,7 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 /// // a portion of the input and wind up with a different hash, we wouldn't need slicing.
 /// let mut decoded = Vec::new();
 /// let mut decoder = bao::decode::SliceDecoder::new(&*slice, &hash, slice_start, slice_len);
-/// {
-///     decoder.read_to_end(&mut decoded)?;
-/// }
+/// decoder.read_to_end(&mut decoded)?;
 /// assert_eq!(&input[slice_start as usize..][..slice_len as usize], &*decoded);
 ///
 /// // Like regular decoding, slice decoding will fail if the hash doesn't match.

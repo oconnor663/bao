@@ -17,15 +17,15 @@
 //! # Example
 //!
 //! ```
-//! let hash_at_once = bao::hash::hash(b"input bytes");
+//! let expected = "6d1128fa367a8d7f6f8dc946ede523e61b881a8b3463014520ad946dad75f820";
+//! let hash = bao::hash::hash(b"input bytes");
+//! assert_eq!(expected, &hash.to_hex());
 //!
 //! let mut hasher = bao::hash::Hasher::new();
 //! hasher.update(b"input");
 //! hasher.update(b" ");
 //! hasher.update(b"bytes");
-//! let hash_incremental = hasher.finalize();
-//!
-//! assert_eq!(hash_at_once, hash_incremental);
+//! assert_eq!(hash, hasher.finalize());
 //! ```
 
 #![cfg_attr(not(feature = "std"), no_std)]
