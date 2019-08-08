@@ -76,7 +76,7 @@ fn bench_bao_hasher_short(b: &mut Bencher) {
     let mut input = RandomInput::new(b, SHORT);
     b.iter(|| {
         let mut hasher = hash::Hasher::new();
-        hasher.write_all(input.get()).unwrap();
+        hasher.update(input.get());
         hasher.finalize()
     });
 }
@@ -86,7 +86,7 @@ fn bench_bao_hasher_medium(b: &mut Bencher) {
     let mut input = RandomInput::new(b, MEDIUM);
     b.iter(|| {
         let mut hasher = hash::Hasher::new();
-        hasher.write_all(input.get()).unwrap();
+        hasher.update(input.get());
         hasher.finalize()
     });
 }
@@ -96,11 +96,12 @@ fn bench_bao_hasher_long(b: &mut Bencher) {
     let mut input = RandomInput::new(b, LONG);
     b.iter(|| {
         let mut hasher = hash::Hasher::new();
-        hasher.write_all(input.get()).unwrap();
+        hasher.update(input.get());
         hasher.finalize()
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_encoder_combined_short(b: &mut Bencher) {
     let mut input = RandomInput::new(b, SHORT);
@@ -113,6 +114,7 @@ fn bench_bao_encoder_combined_short(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_encoder_combined_medium(b: &mut Bencher) {
     let mut input = RandomInput::new(b, MEDIUM);
@@ -125,6 +127,7 @@ fn bench_bao_encoder_combined_medium(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_encoder_combined_long(b: &mut Bencher) {
     let mut input = RandomInput::new(b, LONG);
@@ -137,6 +140,7 @@ fn bench_bao_encoder_combined_long(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_encoder_outboard_short(b: &mut Bencher) {
     let mut input = RandomInput::new(b, SHORT);
@@ -149,6 +153,7 @@ fn bench_bao_encoder_outboard_short(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_encoder_outboard_medium(b: &mut Bencher) {
     let mut input = RandomInput::new(b, MEDIUM);
@@ -161,6 +166,7 @@ fn bench_bao_encoder_outboard_medium(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_encoder_outboard_long(b: &mut Bencher) {
     let mut input = RandomInput::new(b, LONG);
@@ -173,6 +179,7 @@ fn bench_bao_encoder_outboard_long(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_combined_short(b: &mut Bencher) {
     let input = RandomInput::new(b, SHORT).get().to_vec();
@@ -184,6 +191,7 @@ fn bench_bao_decoder_combined_short(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_combined_medium(b: &mut Bencher) {
     let input = RandomInput::new(b, MEDIUM).get().to_vec();
@@ -195,6 +203,7 @@ fn bench_bao_decoder_combined_medium(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_combined_long(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();
@@ -206,6 +215,7 @@ fn bench_bao_decoder_combined_long(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_outboard_short(b: &mut Bencher) {
     let input = RandomInput::new(b, SHORT).get().to_vec();
@@ -217,6 +227,7 @@ fn bench_bao_decoder_outboard_short(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_outboard_medium(b: &mut Bencher) {
     let input = RandomInput::new(b, MEDIUM).get().to_vec();
@@ -228,6 +239,7 @@ fn bench_bao_decoder_outboard_medium(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_outboard_long(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();
@@ -239,6 +251,7 @@ fn bench_bao_decoder_outboard_long(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_seek_memory(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();
@@ -252,6 +265,7 @@ fn bench_bao_seek_memory(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_seek_file(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();

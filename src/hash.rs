@@ -664,7 +664,6 @@ pub(crate) const TEST_CASES: &[usize] = &[
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::io::prelude::*;
 
     #[test]
     fn test_power_of_two() {
@@ -697,7 +696,6 @@ mod test {
         let s = CHUNK_SIZE as u64;
         let input_output = &[(s + 1, s), (2 * s - 1, s), (2 * s, s), (2 * s + 1, 2 * s)];
         for &(input, output) in input_output {
-            println!("testing {} and {}", input, output);
             assert_eq!(left_len(input), output);
         }
     }
@@ -731,9 +729,9 @@ mod test {
 
     #[test]
     fn test_state() {
+        let buf = [0x42; 65537];
         for &case in TEST_CASES {
-            println!("case {}", case);
-            let input = vec![0x42; case];
+            let input = &buf[..case];
             let expected = hash(&input);
             let found = drive_state(&input);
             assert_eq!(expected, found, "hashes don't match");
@@ -742,13 +740,12 @@ mod test {
 
     #[test]
     fn test_hasher() {
+        let buf = [0x42; 65537];
         for &case in TEST_CASES {
-            println!("case {}", case);
-            let input = vec![0x42; case];
+            let input = &buf[..case];
             let expected = hash(&input);
-
             let mut hasher = Hasher::new();
-            hasher.write_all(&input).unwrap();
+            hasher.update(&input);
             let found = hasher.finalize();
             assert_eq!(expected, found, "hashes don't match");
         }

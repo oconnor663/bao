@@ -98,9 +98,9 @@ fn test_hash_vectors() {
         assert_eq!(case.bao_hash, hash.to_hex().to_string());
 
         // Make sure the Hasher gives the same answer.
-        let mut writer = bao::hash::Hasher::new();
-        writer.write_all(&input).unwrap();
-        let writer_hash = writer.finalize();
+        let mut hasher = bao::hash::Hasher::new();
+        hasher.update(&input);
+        let writer_hash = hasher.finalize();
         assert_eq!(hash, writer_hash);
     }
 }
@@ -111,6 +111,7 @@ fn corrupt_hash(hash: &Hash) -> Hash {
     bad_bytes.into()
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn test_encode_vectors() {
     for case in &TEST_VECTORS.encode {
@@ -143,6 +144,7 @@ fn test_encode_vectors() {
     }
 }
 
+#[cfg(feature = "std")]
 fn decode_outboard(input: &[u8], outboard: &[u8], hash: &Hash) -> io::Result<Vec<u8>> {
     let mut reader = bao::decode::Decoder::new_outboard(input, outboard, hash);
     let mut output = Vec::with_capacity(input.len());
@@ -150,6 +152,7 @@ fn decode_outboard(input: &[u8], outboard: &[u8], hash: &Hash) -> io::Result<Vec
     Ok(output)
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn test_outboard_vectors() {
     for case in &TEST_VECTORS.outboard {
@@ -191,6 +194,7 @@ fn test_outboard_vectors() {
     }
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn test_seek_vectors() {
     for case in &TEST_VECTORS.seek {
@@ -271,6 +275,7 @@ fn test_seek_vectors() {
     }
 }
 
+#[cfg(feature = "std")]
 fn decode_slice(slice: &[u8], hash: &Hash, start: u64, len: u64) -> io::Result<Vec<u8>> {
     let mut reader = bao::decode::SliceDecoder::new(slice, hash, start, len);
     let mut output = Vec::new();
@@ -278,6 +283,7 @@ fn decode_slice(slice: &[u8], hash: &Hash, start: u64, len: u64) -> io::Result<V
     Ok(output)
 }
 
+#[cfg(feature = "std")]
 #[test]
 fn test_slice_vectors() {
     for case in &TEST_VECTORS.slice {
