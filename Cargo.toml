@@ -5,6 +5,7 @@ authors = ["Jack O'Connor"]
 description = "a general-purpose cryptographic tree hash"
 license = "MIT"
 repository = "https://github.com/oconnor663/bao"
+documentation = "https://docs.rs/bao"
 readme = "README.md"
 edition = "2018"
 
