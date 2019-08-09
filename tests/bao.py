@@ -247,6 +247,10 @@ def bao_slice(input_stream,
     content_len_bytes = read_exact(tree_stream, HEADER_SIZE)
     output_stream.write(content_len_bytes)
     content_len = decode_len(content_len_bytes)
+
+    # Slicing try to read at least one byte.
+    if slice_len == 0:
+        slice_len = 1
     slice_end = slice_start + slice_len
 
     # Seeking past EOF still needs to validate the final chunk. The easiest way
@@ -291,13 +295,18 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
                      slice_len):
     content_len_bytes = read_exact(input_stream, HEADER_SIZE)
     content_len = decode_len(content_len_bytes)
+
+    # Always try to verify at least one byte. But don't output it unless the
+    # caller asked for it.
+    skip_output = False
+    if slice_len == 0:
+        slice_len = 1
+        skip_output = True
     slice_end = slice_start + slice_len
 
     # As above, if slice_start is past EOF, we repoint it to the last byte of
-    # the encoding, to make sure that the final chunk gets validated. However,
-    # we don't want to emit any bytes to the caller in that case, so we set a
-    # flag to suppress writing output.
-    skip_output = False
+    # the encoding, to make sure that the final chunk gets validated. But
+    # again, don't emit bytes unless the caller asked for them.
     if slice_start >= content_len:
         slice_start = content_len - 1 if content_len > 0 else 0
         skip_output = True

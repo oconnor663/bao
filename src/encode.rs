@@ -993,7 +993,6 @@ impl<T: Read + Seek> SliceExtractor<T, T> {
     /// `slice_len` are with respect to the *content* of the encoding, that is, the *original*
     /// input bytes. This corresponds to `bao slice slice_start slice_len`.
     pub fn new(input: T, slice_start: u64, slice_len: u64) -> Self {
-        // TODO: normalize zero-length slices?
         Self::new_inner(input, None, slice_start, slice_len)
     }
 }
@@ -1013,7 +1012,8 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
             input,
             outboard,
             slice_start,
-            slice_len,
+            // Always try to include at least one byte.
+            slice_len: cmp::max(slice_len, 1),
             slice_bytes_read: 0,
             parser: ParseState::new(),
             buf: [0; CHUNK_SIZE],

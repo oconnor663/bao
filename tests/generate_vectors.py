@@ -174,19 +174,20 @@ def slices():
         encoded, hash_ = bao.bao_encode(b)
         slices = []
         for offset in offsets:
-            slice_bytes = io.BytesIO()
-            slice_len = 2 * CHUNK_SIZE
-            bao.bao_slice(io.BytesIO(encoded), slice_bytes, offset, slice_len)
-            slice_hash = blake2s_hash(slice_bytes.getbuffer())
-            fields = [
-                ("start", offset),
-                ("len", slice_len),
-                ("output_len", len(slice_bytes.getbuffer())),
-                ("output_blake2s", slice_hash),
-                ("corruptions",
-                 slice_corruption_points(size, offset, slice_len)),
-            ]
-            slices.append(OrderedDict(fields))
+            for slice_len in [0, CHUNK_SIZE]:
+                slice_bytes = io.BytesIO()
+                bao.bao_slice(io.BytesIO(encoded), slice_bytes, offset,
+                              slice_len)
+                slice_hash = blake2s_hash(slice_bytes.getbuffer())
+                fields = [
+                    ("start", offset),
+                    ("len", slice_len),
+                    ("output_len", len(slice_bytes.getbuffer())),
+                    ("output_blake2s", slice_hash),
+                    ("corruptions",
+                     slice_corruption_points(size, offset, slice_len)),
+                ]
+                slices.append(OrderedDict(fields))
         fields = [
             ("input_len", size),
             ("bao_hash", hash_.hex()),

@@ -148,11 +148,12 @@ decoder needs to read from two streams.
 ## Slice Format
 
 The slice format is very similar to the combined encoding format above. The
-only difference is that chunks and parent nodes that wouldn't be read in a
-given traversal are omitted. For example, if we slice the tree above starting
-at input byte 4096 (the beginning of the second chunk), and request any count
-of bytes less than or equal to 4096 (up to the end of that chunk), the
-resulting slice will be this:
+difference is that the caller requests a specific start point and byte count,
+and chunks and parent nodes that wouldn't be encountered when seeking to that
+start point and reading that many bytes are omitted. For example, if we slice
+the tree above starting at input byte 4096 (the beginning of the second chunk),
+and request any count of bytes less than or equal to 4096 (up to the end of
+that chunk), the resulting slice will be this:
 
 ```
 input length    |root parent node  |left parent node  |second chunk
@@ -169,13 +170,16 @@ difference is that in cases where the decoder would normally seek forward to
 skip over a subtree, the slice decoder keeps reading without a seek, since the
 subtree was already skipped by the slice extractor.
 
-There are some unspecified edge cases in the slice parameters:
-
-- A starting point past the end of the input.
-- A byte count larger than the available input after the starting point.
-- A byte count of zero.
-
-A future version of the spec will settle on the behavior in these cases.
+A slice always includes at least one chunk, though in the empty encoding case
+that chunk is empty. If the requested byte count is zero, that's equivalent to
+a byte count of one, such that the chunk containing the start point is included
+in the slice. If the requested start point is at or past the end of the
+content, the final chunk is included. (See also the "final chunk requirement"
+below.) Apart from that, no parents or chunks after the end of the requested
+bytes are included. Either the slice extractor or the slice decoder may return
+an error if the requested bytes exceed the end of the content (strict bounds
+checking), or they may cap the requested bytes (permissive bounds checking).
+The reference implementation is permissive.
 
 ## Decoder
 

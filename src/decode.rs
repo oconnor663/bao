@@ -795,6 +795,10 @@ pub struct SliceDecoder<T: Read> {
     shared: DecoderShared<T, T>,
     slice_start: u64,
     slice_remaining: u64,
+    // If the caller requested no bytes, the extractor is still required to
+    // include a chunk. We're not required to verify it, but we want to
+    // aggressively check for extractor bugs.
+    need_fake_read: bool,
 }
 
 impl<T: Read> SliceDecoder<T> {
@@ -803,6 +807,7 @@ impl<T: Read> SliceDecoder<T> {
             shared: DecoderShared::new(inner, None, hash),
             slice_start,
             slice_remaining: slice_len,
+            need_fake_read: slice_len == 0,
         }
     }
 }
@@ -832,11 +837,18 @@ impl<T: Read> Read for SliceDecoder<T> {
         // We either just finished the seek (if any), or already did it during
         // a previous call. Continue the read. Cap the output buffer to be at
         // most the slice bytes remaining.
-        let cap = cmp::min(self.slice_remaining, output.len() as u64) as usize;
-        let capped_output = &mut output[..cap];
-        let n = self.shared.read(capped_output)?;
-        self.slice_remaining -= n as u64;
-        Ok(n)
+        if self.need_fake_read {
+            // Read one byte and throw it away, just to verify a chunk.
+            self.shared.read(&mut [0])?;
+            self.need_fake_read = false;
+            Ok(0)
+        } else {
+            let cap = cmp::min(self.slice_remaining, output.len() as u64) as usize;
+            let capped_output = &mut output[..cap];
+            let n = self.shared.read(capped_output)?;
+            self.slice_remaining -= n as u64;
+            Ok(n)
+        }
     }
 }
 
