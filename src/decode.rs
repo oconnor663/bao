@@ -1133,26 +1133,24 @@ mod test {
                     let expected_end = cmp::min(input.len(), slice_start + slice_len);
                     let expected_output = &input[expected_start..expected_end];
                     let mut slice = Vec::new();
-                    {
-                        let mut extractor = encode::SliceExtractor::new(
-                            Cursor::new(&encoded),
-                            slice_start as u64,
-                            slice_len as u64,
-                        );
-                        extractor.read_to_end(&mut slice).unwrap();
-                    }
+                    let mut extractor = encode::SliceExtractor::new(
+                        Cursor::new(&encoded),
+                        slice_start as u64,
+                        slice_len as u64,
+                    );
+                    extractor.read_to_end(&mut slice).unwrap();
+
                     // Make sure the outboard extractor produces the same output.
-                    {
-                        let mut slice_from_outboard = Vec::new();
-                        let mut extractor = encode::SliceExtractor::new_outboard(
-                            Cursor::new(&input),
-                            Cursor::new(&outboard),
-                            slice_start as u64,
-                            slice_len as u64,
-                        );
-                        extractor.read_to_end(&mut slice_from_outboard).unwrap();
-                        assert_eq!(slice, slice_from_outboard);
-                    }
+                    let mut slice_from_outboard = Vec::new();
+                    let mut extractor = encode::SliceExtractor::new_outboard(
+                        Cursor::new(&input),
+                        Cursor::new(&outboard),
+                        slice_start as u64,
+                        slice_len as u64,
+                    );
+                    extractor.read_to_end(&mut slice_from_outboard).unwrap();
+                    assert_eq!(slice, slice_from_outboard);
+
                     let mut output = Vec::new();
                     let mut reader =
                         SliceDecoder::new(&*slice, &hash, slice_start as u64, slice_len as u64);
@@ -1172,14 +1170,12 @@ mod test {
 
         // Slice out the middle 10_000 bytes;
         let mut slice = Vec::new();
-        {
-            let mut extractor = encode::SliceExtractor::new(
-                Cursor::new(&encoded),
-                slice_start as u64,
-                slice_len as u64,
-            );
-            extractor.read_to_end(&mut slice).unwrap();
-        }
+        let mut extractor = encode::SliceExtractor::new(
+            Cursor::new(&encoded),
+            slice_start as u64,
+            slice_len as u64,
+        );
+        extractor.read_to_end(&mut slice).unwrap();
 
         // First confirm that the regular decode works.
         let mut output = Vec::new();
@@ -1188,19 +1184,17 @@ mod test {
         assert_eq!(&input[slice_start..][..slice_len], &*output);
 
         // Also confirm that the outboard slice extractor gives the same slice.
-        {
-            let (outboard, outboard_hash) = encode::outboard(&input);
-            assert_eq!(hash, outboard_hash);
-            let mut slice_from_outboard = Vec::new();
-            let mut extractor = encode::SliceExtractor::new_outboard(
-                Cursor::new(&input),
-                Cursor::new(&outboard),
-                slice_start as u64,
-                slice_len as u64,
-            );
-            extractor.read_to_end(&mut slice_from_outboard).unwrap();
-            assert_eq!(slice, slice_from_outboard);
-        }
+        let (outboard, outboard_hash) = encode::outboard(&input);
+        assert_eq!(hash, outboard_hash);
+        let mut slice_from_outboard = Vec::new();
+        let mut extractor = encode::SliceExtractor::new_outboard(
+            Cursor::new(&input),
+            Cursor::new(&outboard),
+            slice_start as u64,
+            slice_len as u64,
+        );
+        extractor.read_to_end(&mut slice_from_outboard).unwrap();
+        assert_eq!(slice, slice_from_outboard);
 
         // Now confirm that flipping bits anywhere in the slice other than the
         // length header will corrupt it. Tweaking the length header doesn't
@@ -1232,15 +1226,13 @@ mod test {
             let (encoded, _) = encode::encode(&input);
             let (outboard, _) = encode::outboard(&input);
             let mut slice = Vec::new();
-            {
-                let mut extractor = encode::SliceExtractor::new_outboard(
-                    Cursor::new(&input),
-                    Cursor::new(&outboard),
-                    0,
-                    case as u64,
-                );
-                extractor.read_to_end(&mut slice).unwrap();
-            }
+            let mut extractor = encode::SliceExtractor::new_outboard(
+                Cursor::new(&input),
+                Cursor::new(&outboard),
+                0,
+                case as u64,
+            );
+            extractor.read_to_end(&mut slice).unwrap();
             assert_eq!(encoded, slice);
         }
     }
