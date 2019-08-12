@@ -590,6 +590,24 @@ benchmarks](https://github.com/oconnor663/blake2s_simd/issues/1#issuecomment-484
 will hash 16 chunks in parallel per thread. That machine supports parallelism
 degree 768 today.
 
+A two-level tree also creates a specific problem for multithreading.
+Multithreaded parallelism is "coarse-grained", in that it works best when each
+thread can execute a long-running task without needing to communicate, because
+communication between threads is relatively expensive. For example, with two
+threads working on a binary tree, we can split the output approximately in
+half, with each thread computing a single subtree hash over its half without
+communicating at all with the other. This doesn't work as well with a two-level
+tree, though, because each thread (or at least each thread besides the first)
+would need to return a long list of leaf hashes, which would mean allocating
+memory. To avoid storing leaf hashes, the threads could instead work on
+alternating even and odd leaves, both starting at the beginning of the input.
+That would allow each leaf hash to be incorporated into the root immediately,
+at the cost of communicating between threads after each leaf, and possibly some
+smaller unavoidable heap allocations. That cost can be amortized over a large
+leaf size, or over a larger group of leaves, down to a level that's acceptible
+on a single machine. But when the cost of communication is even higher, like in
+a MapReduce job or some other distributed setting, it becomes a problem again.
+
 ### Should we fall back to serial hashing for messages above some maximum size?
 
 **No.** Many tree modes, including some described in the [BLAKE2
