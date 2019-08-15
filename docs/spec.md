@@ -53,7 +53,8 @@ Hashing nodes is done with BLAKE2s, using the following parameters:
 - **Inner hash length** is 32.
 - **Node offset** is incremented for each chunk, 0 for the first chunk, 1 for
   the second chunk, etc. This counter wraps to zero after reaching the maximum
-  BLAKE2s node offset, 2<sup>48</sup>-1. It's 0 for all parent nodes.
+  [BLAKE2X](https://blake2.net/blake2x.pdf) node offset, 2<sup>32</sup>-1. It's
+  0 for all parent nodes.
 - **Node depth** is 0 for all chunks and 1 for all parent nodes.
 
 In addition, the root node -- whether it's a chunk or a parent -- has the
@@ -519,17 +520,18 @@ like this one don't work, and so implementations will tend to preserve constant
 time execution (a ["pit of
 success"](https://blog.codinghorror.com/falling-into-the-pit-of-success/)).
 
-The maximum value for the node offset in BLAKE2s is 2<sup>48</sup>-1, which is
-smaller than Bao's maximum input length of 2<sup>64</sup>-1 bytes or
-2<sup>52</sup> chunks. That means that node offsets will repeat given a very
-large input (1 EiB). However, note that the Security section above doesn't rely
-on the node offset parameter. The implementation details that prevent
-collisions and length extensions under the [*Sufficient
-conditions*](https://eprint.iacr.org/2009/210.pdf) framework are the node depth
-parameter and the last node flag, which domain separate chunk/parent nodes and
-root/non-root nodes respectively. Since we don't rely on the node offset for
-security in general, its range only needs to be large enough to discourage the
-optimizations we want to discourage. An exabyte is large enough.
+The maximum node offset in [BLAKE2X](https://blake2.net/blake2x.pdf) (reduced
+from the original BLAKE2 spec) is 2<sup>32</sup>-1, which is smaller than Bao's
+maximum input length of 2<sup>64</sup>-1 bytes or 2<sup>52</sup> chunks. That
+means that node offsets will repeat given a very large input (16 TiB). However,
+note that the Security section above doesn't rely on the node offset parameter.
+The implementation details that prevent collisions and length extensions under
+the [*Sufficient conditions*](https://eprint.iacr.org/2009/210.pdf) framework
+are the node depth parameter and the last node flag, which domain separate
+chunk/parent nodes and root/non-root nodes respectively. Since we don't rely on
+the node offset for security in general, its range only needs to be large
+enough to discourage the optimizations we want to discourage. And 16 TiB is
+large enough.
 
 By not setting the node offset for parent nodes, and by using only 0 and 1 for
 the node depth parameter, Bao breaks the conventions of the [BLAKE2
@@ -540,12 +542,12 @@ spec, because distinguishing the root is necessary to prevent generalized
 length extensions. The spec's root distinguisher is the combination of the last
 node flag and the zero value of the node offset. However, as noted above, the
 node offset might wrap for very large inputs. If you have a tree hash based on
-BLAKE2s according to the conventions of the spec, and the node offset is
-defined to wrap, you can "extend" that hash by prepending 1 EiB of arbitrary
-data (or less if the chunk size is smaller). That's not a very pratical attack,
-and the spec could mitigate it by requiring that the node offset saturate
-instead of wrapping, but ultimately it's better to prevent it by using the last
-node flag exclusively for the root.
+BLAKE2 according to the conventions of the spec, and the node offset is defined
+to wrap, you can "extend" that hash by prepending 16 TiB of arbitrary data (or
+less if the chunk size is smaller). That's not a very pratical attack, and the
+spec could mitigate it by requiring that the node offset saturate instead of
+wrapping, but ultimately it's better to prevent it by using the last node flag
+exclusively for the root.
 
 Apart from that, setting the node offset and node depth for parent nodes as in
 the spec would require some extra math to tell which subtrees are being merged

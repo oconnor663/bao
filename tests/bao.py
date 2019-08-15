@@ -92,10 +92,10 @@ def decode_len(len_bytes):
 # case, the finalization parameter is the content length as an integer. All
 # interior nodes set finalization=None.
 def hash_node(node_bytes, is_chunk, finalization, offset):
-    # The BLAKE2s node_offset parameter maxes out at 2^48-1. Just take the
-    # lower 48 bits of the offset, and allow that the offset might wrap in a
+    # The BLAKE2X node_offset parameter maxes out at 2^32-1. Just take the
+    # lower 32 bits of the offset, and allow that the offset might wrap in a
     # very large tree.
-    OFFSET_UPPER_BOUND = 2**48
+    OFFSET_UPPER_BOUND = 2**32
     state = hashlib.blake2s(
         digest_size=HASH_SIZE,
         fanout=2,

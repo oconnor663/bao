@@ -161,10 +161,10 @@ fn common_params() -> blake2s_simd::Params {
 
 pub(crate) fn chunk_params(finalization: Finalization, offset: u64) -> blake2s_simd::Params {
     let mut params = common_params();
-    // The BLAKE2s node_offset parameter maxes out at 2^48-1. Just take the
-    // lower 48 bits of the offset, and allow that the offset might wrap in a
+    // The BLAKE2X node_offset parameter maxes out at 2^32-1. Just take the
+    // lower 32 bits of the offset, and allow that the offset might wrap in a
     // very large tree.
-    const OFFSET_UPPER_BOUND: u64 = 1 << 48;
+    const OFFSET_UPPER_BOUND: u64 = 1 << 32;
     params.node_offset(offset % OFFSET_UPPER_BOUND);
     if let Root = finalization {
         params.last_node(true);
