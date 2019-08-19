@@ -11,7 +11,7 @@
 //! # Example
 //!
 //! ```
-//! # fn main() -> Result<(), Box<std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use std::io::prelude::*;
 //!
 //! // Encode some example bytes.
@@ -620,17 +620,30 @@ impl<T: Read, O: Read> fmt::Debug for DecoderShared<T, O> {
     }
 }
 
-/// An incremental decoder, which reads and verifies the output of `bao::encode::Decoder`. This can
-/// work with both combined and outboard encodings, depending on which constructor you use.
+/// An incremental decoder, which reads and verifies the output of
+/// [`Encoder`](../encode/struct.Encoder.html).
 ///
-/// This reader supports `Seek` if the underlying readers do, but it's not a requirement.
+/// `Decoder` supports both the combined and outboard encoding format,
+/// depending on which constructor you use.
 ///
-/// This implementation is single-threaded.
+/// `Decoder` supports
+/// [`std::io::Seek`](https://doc.rust-lang.org/std/io/trait.Seek.html) if the
+/// underlying reader does, but it's also compatible with non-seekable readers.
+///
+/// Reading from `Decoder` is more efficient when you use a buffer size that's
+/// a multiple of [`BUF_SIZE`](../constant.BUF_SIZE.html). The
+/// [`bao::copy`](../fn.copy.html) helper function takes care of this.
+///
+/// `Decoder` currently requires the `std` feature, which is enabled by
+/// default, because
+/// [`std::io::Read`](https://doc.rust-lang.org/std/io/trait.Read.html) is a
+/// required part of its interface. However, if `no_std` IO traits become
+/// available in the future, `Decoder` could use them.
 ///
 /// # Example
 ///
 /// ```
-/// # fn main() -> Result<(), Box<std::error::Error>> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use std::io::prelude::*;
 ///
 /// // Create both combined and outboard encodings.
@@ -742,21 +755,26 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 }
 
 /// An incremental slice decoder. This reads and verifies the output of the
-/// `bao::encode::SliceExtractor`.
+/// [`SliceExtractor`](../encode/struct.SliceExtractor.html).
 ///
-/// Note that there is no such thing as an "outboard slice". All slices include the content chunks
-/// and intermediate hashes intermixed, as in the combined encoding mode.
+/// Note that there is no such thing as an "outboard slice". All slices include
+/// the content bytes and tree nodes intermixed, as in the combined encoding
+/// mode.
 ///
-/// This reader doesn't implement `Seek`, regardless of the underlying reader. In theory seeking
-/// inside a slice is possible, but in practice if you only want part of a slice, you should
-/// request a different slice with the parameters you actually want.
+/// Reading from `SliceDecoder` is more efficient when you use a buffer size
+/// that's a multiple of [`BUF_SIZE`](../constant.BUF_SIZE.html). The
+/// [`bao::copy`](../fn.copy.html) helper function takes care of this.
 ///
-/// This implementation is single-threaded.
+/// `SliceDecoder` currently requires the `std` feature, which is enabled by
+/// default, because
+/// [`std::io::Read`](https://doc.rust-lang.org/std/io/trait.Read.html) is a
+/// required part of its interface. However, if `no_std` IO traits become
+/// available in the future, `SliceDecoder` could use them.
 ///
 /// # Example
 ///
 /// ```
-/// # fn main() -> Result<(), Box<std::error::Error>> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use std::io::prelude::*;
 ///
 /// // Start by encoding some input.

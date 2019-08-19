@@ -501,28 +501,12 @@ impl fmt::Debug for State {
     }
 }
 
-/// An efficient buffer size for callers of the streaming implementations in
-/// this crate, `Hasher`, `encode::Encoder`, and `decode::Decoder`.
-///
-/// The streaming implementations are single threaded, but they use SIMD
-/// parallelism to get good performance. To avoid unnecessary copying, they
-/// rely on the caller to use an input buffer size large enough to occupy all
-/// the SIMD lanes on the machine. This constant, or an integer multiple of it,
-/// is an optimal size.
-///
-/// On x86 for example, the AVX2 instruction set supports hashing 8 chunks in
-/// parallel. Chunks are 4096 bytes each, so `BUF_SIZE` is currently 32768
-/// bytes. When Rust adds support for AVX512, the value of `BUF_SIZE` on x86
-/// will double to 65536 bytes. It's not expected to grow any larger than that
-/// for the foreseeable future, so on not-very-space-constrained platforms it's
-/// possible to use `BUF_SIZE` as the size of a stack array. If this constant
-/// grows above 65536 on any platform, it will be considered a
-/// backwards-incompatible change, and it will be accompanied by a major
-/// version bump.
-pub const BUF_SIZE: usize = MAX_SIMD_DEGREE * CHUNK_SIZE;
-
 /// An incremental hasher. `Hasher` is no_std-compatible and does not allocate.
 /// This implementation is single-threaded.
+///
+/// Writing to `Hasher` is more efficient when you use a buffer size that's a
+/// multiple of [`BUF_SIZE`](constant.BUF_SIZE.html). The
+/// [`bao::copy`](fn.copy.html) helper function takes care of this.
 ///
 /// # Example
 /// ```
@@ -549,10 +533,13 @@ impl Hasher {
         }
     }
 
-    /// Add input to the hash. The `Write::write` implementation is equivalent
-    /// to this, except that this is also available under `no_std`. For best
-    /// performance, use an input buffer of size `BUF_SIZE`, or some integer
-    /// multiple of that.
+    /// Add input to the hash. This is equivalent to `Write::write`, but also
+    /// available under `no_std`.
+    ///
+    /// Writing to `Hasher` is more efficient when you use a buffer size that's
+    /// a multiple of [`BUF_SIZE`](constant.BUF_SIZE.html). The
+    /// [`bao::copy`](fn.copy.html) helper function takes care of this, but if
+    /// you call `update` in a loop you need to be aware of it.
     pub fn update(&mut self, mut input: &[u8]) {
         // In normal operation, we hash every chunk that comes in using SIMD
         // and push those hashes into the tree state, only retaining a partial
@@ -647,6 +634,81 @@ impl io::Write for Hasher {
 
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
+    }
+}
+
+/// An efficient buffer size for [`Hasher`](struct.Hasher.html),
+/// [`Encoder`](encode/struct.Encoder.html),
+/// [`Decoder`](decode/struct.Decoder.html), and
+/// [`SliceDecoder`](decode/struct.SliceDecoder.html).
+///
+/// The streaming implementations are single threaded, but they use SIMD
+/// parallelism to get good performance. To avoid unnecessary copying, they
+/// rely on the caller to use a buffer size large enough to occupy all the SIMD
+/// lanes on the machine. This constant, or an integer multiple of it, is an
+/// optimal size.
+///
+/// On x86 for example, the AVX2 instruction set supports hashing 8 chunks in
+/// parallel. Chunks are 4096 bytes each, so `BUF_SIZE` is currently 32768
+/// bytes. When Rust adds support for AVX512, the value of `BUF_SIZE` on x86
+/// will double to 65536 bytes. It's not expected to grow any larger than that
+/// for the foreseeable future, so on not-very-space-constrained platforms it's
+/// possible to use `BUF_SIZE` as the size of a stack array. If this constant
+/// grows above 65536 on any platform, it will be considered a
+/// backwards-incompatible change, and it will be accompanied by a major
+/// version bump.
+pub const BUF_SIZE: usize = MAX_SIMD_DEGREE * CHUNK_SIZE;
+
+// This is an implementation detail of libstd, and if it changes there we
+// should update it here. This is covered in the tests.
+#[allow(dead_code)]
+const STD_DEFAULT_BUF_SIZE: usize = 8192;
+
+// Const functions can't use if-statements yet, which means that cmp::min and
+// cmp::max aren't const. So we have to hardcode the buffer size that copy is
+// going to use. This is covered in the tests, and we can replace this with
+// cmp::max in the future when it's const.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+const COPY_BUF_SIZE: usize = BUF_SIZE;
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+const COPY_BUF_SIZE: usize = STD_DEFAULT_BUF_SIZE;
+
+/// Copies the entire contents of a reader into a writer, just like
+/// [`std::io::copy`](https://doc.rust-lang.org/std/io/fn.copy.html), using a
+/// buffer size that's more efficient for [`Hasher`](struct.Hasher.html),
+/// [`Encoder`](encode/struct.Encoder.html),
+/// [`Decoder`](decode/struct.Decoder.html), and
+/// [`SliceDecoder`](decode/struct.SliceDecoder.html).
+///
+/// The standard library `copy` function uses a buffer size that's too small to
+/// get good SIMD performance on x86. This function uses a buffer size that's a
+/// multiple of [`BUF_SIZE`](constant.BUF_SIZE.html).
+///
+/// # Example
+///
+/// ```
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let mut reader = std::io::Cursor::new(b"some bytes");
+/// let mut hasher = bao::Hasher::new();
+/// bao::copy(&mut reader, &mut hasher)?;
+/// assert_eq!(bao::hash(b"some bytes"), hasher.finalize());
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "std")]
+pub fn copy(reader: &mut impl io::Read, writer: &mut impl io::Write) -> io::Result<u64> {
+    let mut buffer = [0; COPY_BUF_SIZE];
+    let mut total = 0;
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => return Ok(total),
+            Ok(n) => {
+                writer.write(&buffer[..n])?;
+                total += n as u64;
+            }
+            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e.into()),
+        }
     }
 }
 
@@ -768,5 +830,24 @@ pub(crate) mod test {
             let found = hasher.finalize();
             assert_eq!(expected, found, "hashes don't match");
         }
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_copy_buffer_sizes() {
+        // Check that STD_DEFAULT_BUF_SIZE is actually what libstd is using.
+        use io::BufRead;
+        let bytes = [0; 2 * STD_DEFAULT_BUF_SIZE];
+        let mut buffered_reader = io::BufReader::new(&bytes[..]);
+        let internal_buf = buffered_reader.fill_buf().unwrap();
+        assert_eq!(internal_buf.len(), STD_DEFAULT_BUF_SIZE);
+        assert!(internal_buf.len() < bytes.len());
+
+        // Check that COPY_BUF_SIZE is at least STD_DEFAULT_BUF_SIZE.
+        assert!(COPY_BUF_SIZE >= STD_DEFAULT_BUF_SIZE);
+
+        // Check that COPY_BUF_SIZE is a multiple of BUF_SIZE.
+        assert!(COPY_BUF_SIZE >= BUF_SIZE);
+        assert_eq!(0, COPY_BUF_SIZE % BUF_SIZE);
     }
 }

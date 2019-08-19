@@ -65,31 +65,13 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-// std::io::copy will use a buffer that's too small by default, leading to bad
-// SIMD performance. The bao::BUF_SIZE constant gives the optimal size.
-fn copy_with_big_buffer(mut reader: impl Read, mut writer: impl Write) -> io::Result<u64> {
-    let mut buffer = [0; bao::BUF_SIZE];
-    let mut total = 0;
-    loop {
-        match reader.read(&mut buffer) {
-            Ok(0) => return Ok(total),
-            Ok(n) => {
-                writer.write(&buffer[..n])?;
-                total += n as u64;
-            }
-            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e.into()),
-        }
-    }
-}
-
 fn hash_one(maybe_path: &Option<PathBuf>) -> Result<bao::Hash, Error> {
-    let input = open_input(maybe_path)?;
+    let mut input = open_input(maybe_path)?;
     if let Some(map) = maybe_memmap_input(&input)? {
         Ok(bao::hash(&map))
     } else {
         let mut hasher = bao::Hasher::new();
-        copy_with_big_buffer(input, &mut hasher)?;
+        bao::copy(&mut input, &mut hasher)?;
         Ok(hasher.finalize())
     }
 }
@@ -139,7 +121,7 @@ fn encode(args: &Args) -> Result<(), Error> {
     } else {
         bao::encode::Encoder::new(output.require_file()?)
     };
-    copy_with_big_buffer(&mut input, &mut encoder)?;
+    bao::copy(&mut input, &mut encoder)?;
     encoder.finalize()?;
     Ok(())
 }
@@ -178,9 +160,9 @@ fn decode(args: &Args) -> Result<(), Error> {
     }
     if let Some(count) = args.flag_count {
         let mut taker = decoder.take(count);
-        allow_broken_pipe(copy_with_big_buffer(&mut taker, &mut output))?;
+        allow_broken_pipe(bao::copy(&mut taker, &mut output))?;
     } else {
-        allow_broken_pipe(copy_with_big_buffer(&mut decoder, &mut output))?;
+        allow_broken_pipe(bao::copy(&mut decoder, &mut output))?;
     }
     Ok(())
 }
@@ -203,7 +185,7 @@ fn slice(args: &Args) -> Result<(), Error> {
         extractor =
             bao::encode::SliceExtractor::new(input.require_file()?, args.arg_start, args.arg_count);
     }
-    copy_with_big_buffer(&mut extractor, &mut output)?;
+    bao::copy(&mut extractor, &mut output)?;
     Ok(())
 }
 
@@ -212,7 +194,7 @@ fn decode_slice(args: &Args) -> Result<(), Error> {
     let mut output = open_output(&args.arg_output)?;
     let hash = parse_hash(&args)?;
     let mut decoder = bao::decode::SliceDecoder::new(input, &hash, args.arg_start, args.arg_count);
-    allow_broken_pipe(copy_with_big_buffer(&mut decoder, &mut output))?;
+    allow_broken_pipe(bao::copy(&mut decoder, &mut output))?;
     Ok(())
 }
 

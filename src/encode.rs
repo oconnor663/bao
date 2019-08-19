@@ -19,7 +19,7 @@
 //! # Example
 //!
 //! ```
-//! # fn main() -> Result<(), Box<std::error::Error>> {
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! use std::io::prelude::*;
 //! use std::io::Cursor;
 //!
@@ -275,22 +275,27 @@ enum FlipperNext {
     Done,
 }
 
-/// An incremental encoder. Note that you must call `finalize` after you're done writing.
+/// An incremental encoder. Note that you must call `finalize` after you're
+/// done writing.
 ///
-/// `Encoder` supports both combined and outboard encoding, depending on which constructor you use.
+/// `Encoder` supports both combined and outboard encoding, depending on which
+/// constructor you use.
 ///
-/// `Encoder` is currently only available when `std` is enabled, because `std::io::Write` is a
-/// required part of its interface. However, it could be extended to support `no_std`-compatible
-/// traits outside of the standard library too. Please reach out to me if you need that.
+/// Writing to `Encoder` is more efficient when you use a buffer size that's a
+/// multiple of [`BUF_SIZE`](../constant.BUF_SIZE.html). The
+/// [`bao::copy`](../fn.copy.html) helper function takes care of this.
 ///
-/// The implementation is single-threaded but uses SIMD parallelism. As with
-/// `Hasher`, performance is best if you use an input buffer of size
-/// `BUF_SIZE`, or some integer multiple of that.
+/// `Encoder` currently requires the `std` feature, which is enabled by
+/// default, because
+/// [`std::io::Write`](https://doc.rust-lang.org/std/io/trait.Write.html) and
+/// [`std::io::Seek`](https://doc.rust-lang.org/std/io/trait.Seek.html) are
+/// required parts of its interface. However, if `no_std` IO traits become
+/// available in the future, `Encoder` could use them.
 ///
 /// # Example
 ///
 /// ```
-/// # fn main() -> Result<(), Box<std::error::Error>> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use std::io::prelude::*;
 ///
 /// let mut encoded_incrementally = Vec::new();
@@ -956,7 +961,7 @@ pub(crate) enum LenNext {
 /// # Example
 ///
 /// ```
-/// # fn main() -> Result<(), Box<std::error::Error>> {
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use std::io::prelude::*;
 ///
 /// let input = vec![0; 1_000_000];
