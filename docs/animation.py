@@ -14,7 +14,6 @@ import subprocess
 import sys
 import termcolor
 
-
 TARGET = "/tmp/f"
 
 
@@ -28,7 +27,9 @@ def char_by_char(s, color=None):
 
 
 def comment(s):
-    char_by_char("# " + s + "\n", "yellow")
+    char_by_char(s + "\n", "yellow")
+    prompt()
+    time.sleep(1)
 
 
 def prompt():
@@ -41,26 +42,33 @@ def shell_out(command):
 
 
 def time_hash(exe):
-    prompt()
     char_by_char("time ")
     char_by_char(exe, "red")
     char_by_char(" " + TARGET)
     print()
     command = "time " + exe + " " + TARGET
     shell_out(command)
+    time.sleep(1)
 
 
 def main():
-    comment("Create a gigabyte file.")
-    head_command = "head -c 1000000000 /dev/zero > " + TARGET
-    prompt()
-    char_by_char(head_command)
-    print()
+    comment("# Start with a 1 GiB file.")
+
+    head_command = "ls -lh " + TARGET
+    char_by_char(head_command + "\n")
     shell_out(head_command)
-    comment("Compare the time it takes for different programs to hash it.")
+    time.sleep(1)
+
+    comment("\n# See how long it takes to hash it with SHA-512.")
+
     time_hash("sha512sum")
-    time_hash("md5sum")
-    time_hash("sha1sum")
+
+    comment("\n# Now install Bao and see how long Bao takes to hash it.")
+
+    char_by_char("cargo install bao_bin\n")
+    prompt()
+    time.sleep(1)
+
     time_hash("bao hash")
 
 
