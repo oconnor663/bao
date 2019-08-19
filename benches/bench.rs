@@ -2,7 +2,7 @@
 
 extern crate test;
 
-use bao::*;
+use bao::{decode, encode};
 use rand::prelude::*;
 use std::io::prelude::*;
 use std::io::{Cursor, SeekFrom::Start};
@@ -12,7 +12,7 @@ use test::Bencher;
 const SHORT: usize = blake2s_simd::BLOCKBYTES;
 
 // Just enough input to occupy SIMD on a single thread. Currently 32 KiB on x86.
-const MEDIUM: usize = hash::benchmarks::CHUNK_SIZE * blake2s_simd::many::MAX_DEGREE;
+const MEDIUM: usize = bao::benchmarks::CHUNK_SIZE * blake2s_simd::many::MAX_DEGREE;
 
 const LONG: usize = 1 << 24; // about 17 MB
 
@@ -56,26 +56,26 @@ impl RandomInput {
 #[bench]
 fn bench_bao_hash_slice_short(b: &mut Bencher) {
     let mut input = RandomInput::new(b, SHORT);
-    b.iter(|| hash::hash(input.get()));
+    b.iter(|| bao::hash(input.get()));
 }
 
 #[bench]
 fn bench_bao_hash_slice_medium(b: &mut Bencher) {
     let mut input = RandomInput::new(b, MEDIUM);
-    b.iter(|| hash::hash(input.get()));
+    b.iter(|| bao::hash(input.get()));
 }
 
 #[bench]
 fn bench_bao_hash_slice_long(b: &mut Bencher) {
     let mut input = RandomInput::new(b, LONG);
-    b.iter(|| hash::hash(input.get()));
+    b.iter(|| bao::hash(input.get()));
 }
 
 #[bench]
 fn bench_bao_hasher_short(b: &mut Bencher) {
     let mut input = RandomInput::new(b, SHORT);
     b.iter(|| {
-        let mut hasher = hash::Hasher::new();
+        let mut hasher = bao::Hasher::new();
         hasher.update(input.get());
         hasher.finalize()
     });
@@ -85,7 +85,7 @@ fn bench_bao_hasher_short(b: &mut Bencher) {
 fn bench_bao_hasher_medium(b: &mut Bencher) {
     let mut input = RandomInput::new(b, MEDIUM);
     b.iter(|| {
-        let mut hasher = hash::Hasher::new();
+        let mut hasher = bao::Hasher::new();
         hasher.update(input.get());
         hasher.finalize()
     });
@@ -95,7 +95,7 @@ fn bench_bao_hasher_medium(b: &mut Bencher) {
 fn bench_bao_hasher_long(b: &mut Bencher) {
     let mut input = RandomInput::new(b, LONG);
     b.iter(|| {
-        let mut hasher = hash::Hasher::new();
+        let mut hasher = bao::Hasher::new();
         hasher.update(input.get());
         hasher.finalize()
     });
@@ -184,7 +184,7 @@ fn bench_bao_encoder_outboard_long(b: &mut Bencher) {
 fn bench_bao_decoder_combined_short(b: &mut Bencher) {
     let input = RandomInput::new(b, SHORT).get().to_vec();
     let (encoded, hash) = encode::encode(&input);
-    let mut output = [1; hash::BUF_SIZE];
+    let mut output = [1; bao::BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new(&*encoded, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
@@ -196,7 +196,7 @@ fn bench_bao_decoder_combined_short(b: &mut Bencher) {
 fn bench_bao_decoder_combined_medium(b: &mut Bencher) {
     let input = RandomInput::new(b, MEDIUM).get().to_vec();
     let (encoded, hash) = encode::encode(&input);
-    let mut output = [1; hash::BUF_SIZE];
+    let mut output = [1; bao::BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new(&*encoded, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
@@ -208,7 +208,7 @@ fn bench_bao_decoder_combined_medium(b: &mut Bencher) {
 fn bench_bao_decoder_combined_long(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();
     let (encoded, hash) = encode::encode(&input);
-    let mut output = [1; hash::BUF_SIZE];
+    let mut output = [1; bao::BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new(&*encoded, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
@@ -220,7 +220,7 @@ fn bench_bao_decoder_combined_long(b: &mut Bencher) {
 fn bench_bao_decoder_outboard_short(b: &mut Bencher) {
     let input = RandomInput::new(b, SHORT).get().to_vec();
     let (outboard, hash) = encode::outboard(&input);
-    let mut output = [1; hash::BUF_SIZE];
+    let mut output = [1; bao::BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new_outboard(&*input, &*outboard, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
@@ -232,7 +232,7 @@ fn bench_bao_decoder_outboard_short(b: &mut Bencher) {
 fn bench_bao_decoder_outboard_medium(b: &mut Bencher) {
     let input = RandomInput::new(b, MEDIUM).get().to_vec();
     let (outboard, hash) = encode::outboard(&input);
-    let mut output = [1; hash::BUF_SIZE];
+    let mut output = [1; bao::BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new_outboard(&*input, &*outboard, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
@@ -244,7 +244,7 @@ fn bench_bao_decoder_outboard_medium(b: &mut Bencher) {
 fn bench_bao_decoder_outboard_long(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();
     let (outboard, hash) = encode::outboard(&input);
-    let mut output = [1; hash::BUF_SIZE];
+    let mut output = [1; bao::BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new_outboard(&*input, &*outboard, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}

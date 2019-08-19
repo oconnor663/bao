@@ -66,9 +66,9 @@ fn main() -> Result<(), Error> {
 }
 
 // std::io::copy will use a buffer that's too small by default, leading to bad
-// SIMD performance. The bao::hash::BUF_SIZE constant gives the optimal size.
+// SIMD performance. The bao::BUF_SIZE constant gives the optimal size.
 fn copy_with_big_buffer(mut reader: impl Read, mut writer: impl Write) -> io::Result<u64> {
-    let mut buffer = [0; bao::hash::BUF_SIZE];
+    let mut buffer = [0; bao::BUF_SIZE];
     let mut total = 0;
     loop {
         match reader.read(&mut buffer) {
@@ -83,12 +83,12 @@ fn copy_with_big_buffer(mut reader: impl Read, mut writer: impl Write) -> io::Re
     }
 }
 
-fn hash_one(maybe_path: &Option<PathBuf>) -> Result<bao::hash::Hash, Error> {
+fn hash_one(maybe_path: &Option<PathBuf>) -> Result<bao::Hash, Error> {
     let input = open_input(maybe_path)?;
     if let Some(map) = maybe_memmap_input(&input)? {
-        Ok(bao::hash::hash(&map))
+        Ok(bao::hash(&map))
     } else {
-        let mut hasher = bao::hash::Hasher::new();
+        let mut hasher = bao::Hasher::new();
         copy_with_big_buffer(input, &mut hasher)?;
         Ok(hasher.finalize())
     }
@@ -332,12 +332,12 @@ fn maybe_memmap_input(input: &Input) -> Result<Option<memmap::Mmap>, Error> {
     })
 }
 
-fn parse_hash(args: &Args) -> Result<bao::hash::Hash, Error> {
+fn parse_hash(args: &Args) -> Result<bao::Hash, Error> {
     let hash_vec = hex::decode(&args.arg_hash).map_err(|_| err_msg("invalid hex"))?;
-    if hash_vec.len() != bao::hash::HASH_SIZE {
+    if hash_vec.len() != bao::HASH_SIZE {
         return Err(err_msg("wrong length hash"));
     };
-    Ok((*array_ref!(hash_vec, 0, bao::hash::HASH_SIZE)).into())
+    Ok((*array_ref!(hash_vec, 0, bao::HASH_SIZE)).into())
 }
 
 // When streaming out decoded content, it's acceptable for the caller to pipe us

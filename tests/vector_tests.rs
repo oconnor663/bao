@@ -1,6 +1,6 @@
 //! The tests in this file run bao against the standard set of test vectors.
 
-use bao::hash::Hash;
+use bao::Hash;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::cmp;
@@ -94,11 +94,11 @@ fn test_hash_vectors() {
     for case in &TEST_VECTORS.hash {
         println!("case {:?}", case);
         let input = make_input(case.input_len);
-        let hash = bao::hash::hash(&input);
+        let hash = bao::hash(&input);
         assert_eq!(case.bao_hash, hash.to_hex().to_string());
 
         // Make sure the Hasher gives the same answer.
-        let mut hasher = bao::hash::Hasher::new();
+        let mut hasher = bao::Hasher::new();
         hasher.update(&input);
         let writer_hash = hasher.finalize();
         assert_eq!(hash, writer_hash);

@@ -24,7 +24,7 @@
 //! use std::io::Cursor;
 //!
 //! let input = b"some input";
-//! let expected_hash = bao::hash::hash(input);
+//! let expected_hash = bao::hash(input);
 //!
 //! let (encoded_at_once, hash) = bao::encode::encode(b"some input");
 //! assert_eq!(expected_hash, hash);
@@ -40,8 +40,8 @@
 //! # }
 //! ```
 
-use crate::hash::Finalization::{self, NotRoot, Root};
-use crate::hash::{self, chunk_params, Hash, CHUNK_SIZE, HEADER_SIZE, PARENT_SIZE};
+use crate::Finalization::{self, NotRoot, Root};
+use crate::{chunk_params, Hash, CHUNK_SIZE, HEADER_SIZE, PARENT_SIZE};
 use arrayref::{array_mut_ref, array_ref};
 use arrayvec::ArrayVec;
 use blake2s_simd::many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE};
@@ -120,10 +120,9 @@ pub(crate) fn chunk_size(chunk_index: u64, content_len: u64) -> usize {
 // without doing much work.
 //
 // Note that each of these tricks is very similar to the one we're using in
-// hash::State::needs_merge. In general the zeros and ones that flip over
-// between two chunk indexes are closely related to the subtrees that start or
-// end at that boundary, because binary numbers and binary trees have a lot in
-// common.
+// State::needs_merge. In general the zeros and ones that flip over between two
+// chunk indexes are closely related to the subtrees that start or end at that
+// boundary, because binary numbers and binary trees have a lot in common.
 // ----------------------------------------------------------------------------
 
 // Prior to the final chunk, to calculate the number of post-order parent nodes
@@ -200,7 +199,7 @@ pub(crate) fn pre_order_parent_nodes(chunk_index: u64, content_len: u64) -> u8 {
 // buffer space for the entire input.
 #[derive(Clone)]
 struct FlipperState {
-    parents: ArrayVec<[hash::ParentNode; hash::MAX_DEPTH]>,
+    parents: ArrayVec<[crate::ParentNode; crate::MAX_DEPTH]>,
     content_len: u64,
     last_chunk_moved: u64,
     parents_needed: u8,
@@ -246,7 +245,7 @@ impl FlipperState {
         }
     }
 
-    pub fn feed_parent(&mut self, parent: hash::ParentNode) {
+    pub fn feed_parent(&mut self, parent: crate::ParentNode) {
         debug_assert!(self.last_chunk_moved > 0);
         debug_assert_eq!(self.parents_available, 0);
         debug_assert!(self.parents_needed > 0);
@@ -254,7 +253,7 @@ impl FlipperState {
         self.parents.push(parent);
     }
 
-    pub fn take_parent(&mut self) -> hash::ParentNode {
+    pub fn take_parent(&mut self) -> crate::ParentNode {
         debug_assert!(self.parents_available > 0);
         self.parents_available -= 1;
         self.parents.pop().expect("took too many parents")
@@ -285,8 +284,8 @@ enum FlipperNext {
 /// traits outside of the standard library too. Please reach out to me if you need that.
 ///
 /// The implementation is single-threaded but uses SIMD parallelism. As with
-/// `hash::Encoder`, performance is best if you use an input buffer of size
-/// `hash::BUF_SIZE`, or some integer multiple of that.
+/// `Hasher`, performance is best if you use an input buffer of size
+/// `BUF_SIZE`, or some integer multiple of that.
 ///
 /// # Example
 ///
@@ -306,7 +305,7 @@ enum FlipperNext {
 pub struct Encoder<T: Read + Write + Seek> {
     inner: T,
     chunk_state: blake2s_simd::State,
-    tree_state: hash::State,
+    tree_state: crate::State,
     outboard: bool,
 }
 
@@ -320,7 +319,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
             // The chunk_state will have the Root finalization (the last_node
             // flag) set later if it turns one that the root is a chunk.
             chunk_state: chunk_params(NotRoot, 0).to_state(),
-            tree_state: hash::State::new(),
+            tree_state: crate::State::new(),
             outboard: false,
         }
     }
@@ -370,8 +369,8 @@ impl<T: Read + Write + Seek> Encoder<T> {
         let root_hash;
         loop {
             match self.tree_state.merge_finalize() {
-                hash::StateFinish::Parent(parent) => self.inner.write_all(&parent)?,
-                hash::StateFinish::Root(root) => {
+                crate::StateFinish::Parent(parent) => self.inner.write_all(&parent)?,
+                crate::StateFinish::Root(root) => {
                     root_hash = root;
                     break;
                 }
@@ -379,7 +378,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
         }
 
         // Write the length header, at the end.
-        self.inner.write_all(&hash::encode_len(total_len))?;
+        self.inner.write_all(&crate::encode_len(total_len))?;
 
         // Finally, flip the tree to be pre-order. This means rewriting the
         // entire output, so it's expensive.
@@ -394,7 +393,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
         let mut header = [0; HEADER_SIZE];
         self.inner.seek(SeekFrom::Start(read_cursor))?;
         self.inner.read_exact(&mut header)?;
-        let content_len = hash::decode_len(&header);
+        let content_len = crate::decode_len(&header);
         let mut flipper = FlipperState::new(content_len);
         loop {
             match flipper.next() {
@@ -441,7 +440,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
 
 impl<T: Read + Write + Seek> Write for Encoder<T> {
     fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
-        // Similar to hash::Hasher, in normal operation we hash chunks in their
+        // Similar to Hasher, in normal operation we hash chunks in their
         // entirety using SIMD as they come in, only retaining a partial chunk
         // in the chunk_state if there's uneven input left over. However again,
         // the first chunk is a special case: If we receive exactly one chunk
@@ -814,7 +813,7 @@ impl ParseState {
     // Returns the parsed length.
     pub fn feed_header(&mut self, header: &[u8; HEADER_SIZE]) {
         debug_assert!(self.content_len.is_none(), "second call to feed_header");
-        let content_len = hash::decode_len(header);
+        let content_len = crate::decode_len(header);
         self.content_len = Some(content_len);
         self.reset_to_root();
     }
@@ -1160,10 +1159,10 @@ mod test {
 
     #[test]
     fn test_encode() {
-        for &case in hash::TEST_CASES {
+        for &case in crate::test::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let expected_hash = hash::hash(&input);
+            let expected_hash = crate::hash(&input);
             let (encoded, hash) = encode(&input);
             assert_eq!(expected_hash, hash);
             assert_eq!(encoded.len() as u128, encoded_size(case as u64));
@@ -1177,10 +1176,10 @@ mod test {
 
     #[test]
     fn test_outboard_encode() {
-        for &case in hash::TEST_CASES {
+        for &case in crate::test::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let expected_hash = hash::hash(&input);
+            let expected_hash = crate::hash(&input);
             let (outboard, hash) = outboard(&input);
             assert_eq!(expected_hash, hash);
             assert_eq!(outboard.len() as u128, outboard_size(case as u64));
@@ -1198,7 +1197,7 @@ mod test {
             }
             answers[start as usize].0 += 1;
             answers[(start + size - 1) as usize].1 += 1;
-            let split = hash::largest_power_of_two_leq(size - 1);
+            let split = crate::largest_power_of_two_leq(size - 1);
             recurse(start, split, answers);
             recurse(start + split, size - split, answers);
         }

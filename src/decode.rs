@@ -41,9 +41,9 @@
 
 use crate::encode;
 use crate::encode::NextRead;
-use crate::hash::{
-    self, chunk_params, parent_params, Finalization, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE,
-    MAX_DEPTH, PARENT_SIZE,
+use crate::{
+    chunk_params, parent_params, Finalization, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH,
+    PARENT_SIZE,
 };
 use arrayref::{array_ref, array_refs};
 use arrayvec::ArrayVec;
@@ -62,7 +62,7 @@ pub fn decode(encoded: impl AsRef<[u8]>, hash: &Hash) -> io::Result<Vec<u8>> {
     if bytes.len() < HEADER_SIZE {
         return Err(Error::Truncated.into());
     }
-    let content_len = hash::decode_len(array_ref!(bytes, 0, HEADER_SIZE));
+    let content_len = crate::decode_len(array_ref!(bytes, 0, HEADER_SIZE));
     // Sanity check the length before making a potentially large allocation.
     if (bytes.len() as u128) < encode::encoded_size(content_len) {
         return Err(Error::Truncated.into());
@@ -136,7 +136,7 @@ impl VerifyState {
         self.parser.feed_header(header);
     }
 
-    fn feed_parent(&mut self, parent: &hash::ParentNode) -> Result<(), Error> {
+    fn feed_parent(&mut self, parent: &crate::ParentNode) -> Result<(), Error> {
         let finalization = self.parser.finalization();
         let expected_hash = self.stack.last().expect("unexpectedly empty stack");
         let computed_hash: Hash = parent_params(finalization).hash(parent).into();
@@ -282,7 +282,7 @@ fn efficient_output_len(len: usize) -> usize {
         MAX_SIMD_DEGREE * CHUNK_SIZE
     } else {
         let num_chunks = len / CHUNK_SIZE;
-        let power_of_2 = hash::largest_power_of_two_leq(num_chunks as u64) as usize;
+        let power_of_2 = crate::largest_power_of_two_leq(num_chunks as u64) as usize;
         power_of_2 * CHUNK_SIZE
     }
 }
@@ -334,7 +334,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         Ok(())
     }
 
-    fn get_parent(&mut self) -> io::Result<hash::ParentNode> {
+    fn get_parent(&mut self) -> io::Result<crate::ParentNode> {
         debug_assert_eq!(0, self.buf_len());
         let mut parent = [0; PARENT_SIZE];
         if let Some(outboard) = &mut self.outboard {
@@ -386,11 +386,11 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         &mut self,
         chunk_output: &mut [u8],
         parents_to_read: usize,
-        parents_vec: &mut ArrayVec<[hash::ParentNode; hash::MAX_DEPTH + MAX_SIMD_DEGREE]>,
+        parents_vec: &mut ArrayVec<[crate::ParentNode; crate::MAX_DEPTH + MAX_SIMD_DEGREE]>,
     ) -> io::Result<()> {
         debug_assert_eq!(self.buf_len(), 0);
-        debug_assert!(hash::MAX_DEPTH <= self.buf.len() / PARENT_SIZE);
-        debug_assert!(parents_to_read <= hash::MAX_DEPTH);
+        debug_assert!(crate::MAX_DEPTH <= self.buf.len() / PARENT_SIZE);
+        debug_assert!(parents_to_read <= crate::MAX_DEPTH);
         let parents_slice = &mut self.buf[..parents_to_read * PARENT_SIZE];
         // Fill the parents_slice and the chunk_output. If we're in outboard
         // mode, we have to use two reads to do this, because we have two
@@ -462,7 +462,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         // buffer. But it's mostly uninitialized, and it never moves.
         let mut chunk_bytes_read: usize = 0;
         let mut parents_to_read = 0;
-        let mut parents_vec: ArrayVec<[hash::ParentNode; hash::MAX_DEPTH + MAX_SIMD_DEGREE]> =
+        let mut parents_vec: ArrayVec<[crate::ParentNode; crate::MAX_DEPTH + MAX_SIMD_DEGREE]> =
             ArrayVec::new();
         let mut chunk_jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = ArrayVec::new();
         let mut parser = self.state.clone_parser();
@@ -503,7 +503,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                     // chunks as possible into the remaining output space
                     // (which, remember, may have been capped at the start for
                     // efficiency).
-                    let chunk_params = hash::chunk_params(finalization, offset);
+                    let chunk_params = crate::chunk_params(finalization, offset);
                     let (chunk, remaining) = remaining_output.split_at_mut(size);
                     remaining_output = remaining;
                     self.read_ahead_unverified_one_chunk(chunk, parents_to_read, &mut parents_vec)?;
@@ -884,11 +884,10 @@ mod test {
 
     use super::*;
     use crate::encode;
-    use crate::hash;
 
     #[test]
     fn test_decode() {
-        for &case in hash::TEST_CASES {
+        for &case in crate::test::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
             let (encoded, hash) = { encode::encode(&input) };
@@ -900,7 +899,7 @@ mod test {
 
     #[test]
     fn test_decode_outboard() {
-        for &case in hash::TEST_CASES {
+        for &case in crate::test::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
             let (outboard, hash) = { encode::outboard(&input) };
@@ -913,7 +912,7 @@ mod test {
 
     #[test]
     fn test_decoders_corrupted() {
-        for &case in hash::TEST_CASES {
+        for &case in crate::test::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
             let (encoded, hash) = encode::encode(&input);
@@ -941,12 +940,12 @@ mod test {
 
     #[test]
     fn test_seek() {
-        for &input_len in hash::TEST_CASES {
+        for &input_len in crate::test::TEST_CASES {
             println!();
             println!("input_len {}", input_len);
             let input = make_test_input(input_len);
             let (encoded, hash) = encode::encode(&input);
-            for &seek in hash::TEST_CASES {
+            for &seek in crate::test::TEST_CASES {
                 println!("seek {}", seek);
                 // Test all three types of seeking.
                 let mut seek_froms = Vec::new();
@@ -1013,7 +1012,7 @@ mod test {
         // of the empty root node", and a decoder must not return EOF before the latter.
 
         let (zero_encoded, zero_hash) = encode::encode(b"");
-        let one_hash = hash::hash(b"x");
+        let one_hash = crate::hash(b"x");
 
         // Decoding the empty tree with the right hash should succeed.
         let mut output = Vec::new();
@@ -1031,7 +1030,7 @@ mod test {
 
     #[test]
     fn test_seeking_around_invalid_data() {
-        for &case in hash::TEST_CASES {
+        for &case in crate::test::TEST_CASES {
             // Skip the cases with only one or two chunks, so we have valid
             // reads before and after the tweak.
             if case <= 2 * CHUNK_SIZE {
@@ -1085,7 +1084,7 @@ mod test {
     fn test_invalid_eof_seek() {
         // The decoder must validate the final chunk as part of seeking to or
         // past EOF.
-        for &case in hash::TEST_CASES {
+        for &case in crate::test::TEST_CASES {
             let input = make_test_input(case);
             let (encoded, hash) = encode::encode(&input);
 
@@ -1119,13 +1118,13 @@ mod test {
 
     #[test]
     fn test_slices() {
-        for &case in hash::TEST_CASES {
+        for &case in crate::test::TEST_CASES {
             let input = make_test_input(case);
             let (encoded, hash) = encode::encode(&input);
             // Also make an outboard encoding, to test that case.
             let (outboard, outboard_hash) = encode::outboard(&input);
             assert_eq!(hash, outboard_hash);
-            for &slice_start in hash::TEST_CASES {
+            for &slice_start in crate::test::TEST_CASES {
                 let expected_start = cmp::min(input.len(), slice_start);
                 let slice_lens = [0, 1, 2, CHUNK_SIZE - 1, CHUNK_SIZE, CHUNK_SIZE + 1];
                 for &slice_len in slice_lens.iter() {
@@ -1220,7 +1219,7 @@ mod test {
         // entire length of the content (or at least one byte in the last chunk), the slice should
         // be exactly the same as the entire encoded tree. This can act as a cheap way to convert
         // an outboard tree to a combined one.
-        for &case in hash::TEST_CASES {
+        for &case in crate::test::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
             let (encoded, _) = encode::encode(&input);
