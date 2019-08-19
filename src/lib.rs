@@ -2,10 +2,10 @@
 //! [Crate](https://crates.io/crates/bao) —
 //! [Spec](https://github.com/oconnor663/bao/blob/master/docs/spec.md)
 //!
-//! This crate implements the Bao hash function and encoding format. The `bao` [command line
-//! utility](https://github.com/oconnor663/bao) is built on top of it. For more about how Bao works
-//! and what the encoding format is doing, see the [command line
-//! readme](https://github.com/oconnor663/bao/blob/master/README.md) and the [full
+//! This crate implements the Bao hash function and encoding format. The `bao`
+//! [command line utility](https://crates.io/crates/bao_bin) is built on top of
+//! it. For more about how Bao works and what the encoding format is doing, see
+//! the [project README](https://github.com/oconnor663/bao) and the [full
 //! specification](https://github.com/oconnor663/bao/blob/master/docs/spec.md).
 //!
 //! The `encode` and `decode` modules require the `std` feature, which is
