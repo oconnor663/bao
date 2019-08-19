@@ -7,7 +7,7 @@
 > **Caution!** Not yet suitable for production use. The output of Bao
 > isn't stable. There might be more changes before 1.0.
 
-Bao (rhymes with bough 🌳) is a general purpose cryptographic tree hash.
+Bao (rhymes with bough 🌳) is a general-purpose cryptographic tree hash.
 Here's the [full specification](docs/spec.md) and a [recorded talk about
 it](https://youtu.be/Dya9c2DXMqQ). Unlike a serial hash function, a tree
 hash allows the implementation to work on different parts of the input
