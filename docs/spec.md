@@ -810,9 +810,9 @@ using a fanout greater than 2 brings in a lot of new complexity:
   meaning that parent nodes are of variable size.
 - The implementation needs to do more bookkeeping to maintain enough separate
   inputs for good SIMD performance. Consider a 4-ary tree using a SIMD degree
-  of 8 and 9 chunks of input. The input needs to be split up, because 9 is
-  larger than 8. The structure of the 4-ary tree naturally wants batches of
-  size 4-4-1, but good SIMD performance requires batches of size 8-1.
+  of 8 and 9 chunks of input. The chunks need to be grouped 4-4-1 to fit the
+  4-ary tree structure, but SIMD performance is better if 8 chunks get hashed
+  together.
 - There's more ambiguity in the tree layout. For example with 6 chunks and
   fanout 4, you could plausibly lay out the tree in the following two ways.
 
