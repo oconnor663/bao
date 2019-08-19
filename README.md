@@ -22,7 +22,7 @@ for those use cases:
 
 [![x86 graph](docs/x86.png)](https://raw.githubusercontent.com/oconnor663/bao/master/docs/x86.svg?sanitize=true)[![Raspberry Pi graph](docs/rpi2.png)](https://raw.githubusercontent.com/oconnor663/bao/master/docs/rpi2.svg?sanitize=true)
 
-## Encoded files
+## Streaming Verification
 
 Apart from high performance, a tree hash also lets you verify part of a
 file without re-hashing the entire thing. Bao defines an encoding
@@ -65,7 +65,7 @@ f.bao   1015624
 Error: Custom { kind: InvalidData, error: StringError("hash mismatch") }
 ```
 
-## Encoded slices
+## Verifying Slices
 
 Encoded files support random seeking, but seeking might not be available
 or efficient over a network. (Note that one seek in the content usually
@@ -112,7 +112,7 @@ f.slice 104584
 Error: Custom { kind: InvalidData, error: StringError("hash mismatch") }
 ```
 
-## Outboard mode
+## Outboard Mode
 
 By default, all of the operations above work with a "combined" encoded
 file, that is, one that contains both the content bytes and the tree
@@ -137,7 +137,7 @@ f.obao  15624
 > cmp f <(bao decode $hash f --outboard f.obao)
 ```
 
-## Installing and building from source
+## Installation and Building From Source
 
 The `bao` command line utility is published on
 [crates.io](https://crates.io) as the
