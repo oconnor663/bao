@@ -68,7 +68,7 @@ Error: Custom { kind: InvalidData, error: StringError("hash mismatch") }
 ## Encoded slices
 
 Encoded files support random seeking, but seeking might not be available
-or efficent over a network. (Note that one seek in the content usually
+or efficient over a network. (Note that one seek in the content usually
 requires several seeks in the encoding, as the decoder traverses the
 hash tree level-by-level.) In these situations, rather than e.g. hacking
 a seek interface into your HTTP client, you can instead request an

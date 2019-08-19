@@ -544,7 +544,7 @@ node flag and the zero value of the node offset. However, as noted above, the
 node offset might wrap for very large inputs. If you have a tree hash based on
 BLAKE2 according to the conventions of the spec, and the node offset is defined
 to wrap, you can "extend" that hash by prepending 16 TiB of arbitrary data (or
-less if the chunk size is smaller). That's not a very pratical attack, and the
+less if the chunk size is smaller). That's not a very practical attack, and the
 spec could mitigate it by requiring that the node offset saturate instead of
 wrapping, but ultimately it's better to prevent it by using the last node flag
 exclusively for the root.
@@ -606,7 +606,7 @@ alternating even and odd leaves, both starting at the beginning of the input.
 That would allow each leaf hash to be incorporated into the root immediately,
 at the cost of communicating between threads after each leaf, and possibly some
 smaller unavoidable heap allocations. That cost can be amortized over a large
-leaf size, or over a larger group of leaves, down to a level that's acceptible
+leaf size, or over a larger group of leaves, down to a level that's acceptable
 on a single machine. But when the cost of communication is even higher, like in
 a MapReduce job or some other distributed setting, it becomes a problem again.
 
@@ -660,8 +660,8 @@ both ways.
 
 As noted above, there's no "high security" variant of Bao. However, in some
 future world with large quantum computers, it could theoretically make sense to
-define a new hash function targetting a 256-bit security level. We could
-achieve that by replacing BLAKE2s with BLAKE2b with very few other changes.
+define a new hash function targeting a 256-bit security level. We could achieve
+that by replacing BLAKE2s with BLAKE2b with very few other changes.
 
 ### Would hashing the length as associated data improve the security of the decoder?
 
@@ -796,7 +796,7 @@ above aren't decisive either way.
 the binary tree exactly fit a BLAKE2s input block, so there's no free
 throughput to be had by making the parents larger. Rather, a larger fanout
 could help by reducing the number of levels in the tree. At most (with
-unlimtied fanout, like KangarooTwelve) the total number of parent bytes hashed
+unlimited fanout, like KangarooTwelve) the total number of parent bytes hashed
 can be reduced by 50%. However, the parent bytes are already a small fraction
 of the input bytes by design, so the potential gain here is small.
 
