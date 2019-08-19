@@ -8,11 +8,11 @@
 > isn't stable. There might be more changes before 1.0.
 
 Bao (rhymes with bough 🌳) is a general-purpose cryptographic tree hash.
-Here's the [full specification](docs/spec.md) and a [recorded talk about
-it](https://youtu.be/Dya9c2DXMqQ). Unlike a serial hash function, a tree
-hash allows the implementation to work on different parts of the input
-in parallel. On modern hardware with multiple cores and SIMD
-instructions, that makes a dramatic difference in performance:
+Here's the [full specification](docs/spec.md) and a [talk about the
+design](https://youtu.be/Dya9c2DXMqQ). Unlike a serial hash function, a
+tree hash allows the implementation to split up the input and work in
+parallel. On modern hardware with multiple cores and SIMD instructions,
+that makes a dramatic difference in performance:
 
 ![snazzy gif](docs/bao_hash.gif)
 
