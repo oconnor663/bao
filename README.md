@@ -10,7 +10,7 @@
 Bao (rhymes with bough 🌳) is a general-purpose cryptographic tree hash.
 Here's the [full specification](docs/spec.md) and a [talk about the
 design](https://youtu.be/Dya9c2DXMqQ). Unlike a serial hash function, a
-tree hash allows the implementation to split up the input and work in
+tree hash allows the implementation to split up its input and work in
 parallel. On modern hardware with multiple cores and SIMD instructions,
 that makes a dramatic difference in performance:
 
@@ -24,19 +24,19 @@ for those use cases:
 
 ## Streaming Verification
 
-Apart from high performance, a tree hash also lets you verify part of a
-file without re-hashing the entire thing. Bao defines an encoding
-format, which stores all the nodes of a hash tree interleaved with their
-input. Clients can stream this encoding, or do random seeks into it,
-while verifying that every byte they read matches the root hash.
+Tree hashes make it possible to verify part of a file without re-hashing
+the entire thing. Bao defines an encoding format, which stores an input
+together with all the nodes of its hash tree. Clients can stream this
+encoding, or do random seeks into it, while verifying that every byte
+they read matches the root hash.
 
 Use case: A secure messaging app might support attachment files by
-including the hash of an attachment in a message. With a serial hash,
-the recipient would need to download an entire attachment to verify it,
-but that's impractical for e.g. large video files. With a tree hash like
-Bao, the recipient can stream a video, while still verifying each byte
-as it comes in. (This scenario was in fact the original motivation for
-the Bao project.)
+including the hash of an attachment in the metadata of a message. With a
+serial hash, the recipient would need to download the entire attachment
+to verify it, but that can be impractical for things like large video
+files. With a tree hash like Bao, the recipient can stream a video
+attachment, while still verifying each byte as it comes in. (This
+scenario was the original motivation for the Bao project.)
 
 ```sh
 # Create an input file that's a megabyte of random data.
@@ -68,16 +68,15 @@ Error: Custom { kind: InvalidData, error: StringError("hash mismatch") }
 ## Verifying Slices
 
 Encoded files support random seeking, but seeking might not be available
-or efficient over a network. (Note that one seek in the content usually
-requires several seeks in the encoding, as the decoder traverses the
-hash tree level-by-level.) In these situations, rather than e.g. hacking
-a seek interface into your HTTP client, you can instead request an
-encoded slice. A slice contains some part of the original file and the
-parts of the hash tree needed to verify it. Creating a slice requires
-seeking over the full encoding, but the recipient can then stream the
-slice without needing to seek. Decoding a slice uses the same root hash
-as regular decoding, so it doesn't require any preparation in advance
-from the sender or the recipient.
+or efficient over the network. (Note that one seek in the content
+usually requires several seeks in the encoding, as the decoder traverses
+the hash tree level-by-level.) In these situations, rather than trying
+to seek remotely, clients can instead request an encoded slice
+containing the range of content bytes they need. Creating a slice
+requires the sender to seek over the full encoding, but the recipient
+can then stream the slice without seeking at all. Decoding a slice uses
+the same root hash as regular decoding, so it doesn't require any
+preparation in advance from the sender or the recipient.
 
 Use case: A BitTorrent-like application could fetch different slices of
 a file from different peers, without needing to define the slices ahead
@@ -164,8 +163,8 @@ involved, before diving into the Rust code.
 
 The `bao` library crate includes `no_std` support if you set
 `default-features = false` in your `Cargo.toml`. Currently only the
-`hash` module is available, with Rayon-based multithreading disabled.
-The `encode` and `decode` modules currently depend on the
-`std::io::{Read, Write, Seek}` traits. Those traits are all they need
-from `std`, and they do not allocate, so they could be made
-`no_std`-compatible in the future with some compatibility layer.
+`hash` module is available, with multithreading disabled. The `encode`
+and `decode` modules depend on the `std::io::{Read, Write, Seek}`
+traits. However, those interface traits are all they use from `std`, and
+they don't allocate memory, so they could be made `no_std`-compatible in
+the future.
