@@ -20,7 +20,7 @@ Bao also performs well on short messages and 32-bit systems. It's based
 on the [BLAKE2s](https://blake2.net/) hash function, which was designed
 for those use cases:
 
-[![x86 graph](docs/x86.png)](docs/x86.svg)[![Raspberry Pi graph](docs/rpi2.png)](docs/rpi2.svg)
+[![x86 graph](docs/x86.png)](https://raw.githubusercontent.com/oconnor663/bao/master/docs/x86.svg?sanitize=true)[![Raspberry Pi graph](docs/rpi2.png)](https://raw.githubusercontent.com/oconnor663/bao/master/docs/rpi2.svg?sanitize=true)
 
 ## Encoded files
 
