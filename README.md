@@ -7,40 +7,36 @@
 > **Caution!** Not yet suitable for production use. The output of Bao
 > isn't stable. There might be more changes before 1.0.
 
-Bao (rhymes with bough 🌳) is a general purpose tree hash for files.
-Here's the [full specification](docs/spec.md). Here's a [talk I gave
-about it](https://youtu.be/Dya9c2DXMqQ) in November 2018. What makes a
-tree hash different from a regular hash? Depending on how many cores
-you've got in your machine, the first thing you might notice is that
-it's ten times faster than SHA-2:
+Bao (rhymes with bough 🌳) is a general purpose cryptographic tree hash.
+Here's the [full specification](docs/spec.md) and a [recorded talk about
+it](https://youtu.be/Dya9c2DXMqQ). Unlike a serial hash function, a tree
+hash allows the implementation to work on different parts of the input
+in parallel. On modern hardware with multiple cores and SIMD
+instructions, that makes a dramatic difference in performance:
 
 ![snazzy gif](docs/bao_hash.gif)
 
-Why is `bao hash` so fast? It's mostly parallelism, multiple threads
-working on different subtrees at the same time. The demo above is from
-the 4-core i5-8250U processor in my laptop, but Bao can scale much
-higher. In-memory benchmarks on a 48-core AWS m5.24xlarge instance hit
-[91 GB/s of
-throughput](https://raw.githubusercontent.com/oconnor663/bao/master/docs/bao_htop.png).
-Bao is also based on BLAKE2, which was [designed to outperform
-SHA-1](https://blake2.net/), and it uses the [fastest SIMD
-implementation available](https://github.com/oconnor663/blake2_simd).
+Bao also performs well on short messages and 32-bit systems. It's based
+on the [BLAKE2s](https://blake2.net/) hash function, which was designed
+for those use cases:
+
+[![x86 graph](docs/x86.png)](docs/x86.svg)[![Raspberry Pi graph](docs/rpi2.png)](docs/rpi2.svg)
 
 ## Encoded files
 
-Apart from parallelism, tree hashes make it possible to verify a file
-piece-by-piece rather than all-at-once. This is done by storing both the
-input and the entire hash tree together in an encoded file. Clients can
-stream these files, or do random seeks into them, with the guarantee
-that every byte they read matches the root hash.
+Apart from high performance, a tree hash also lets you verify part of a
+file without re-hashing the entire thing. Bao defines an encoding
+format, which stores all the nodes of a hash tree interleaved with their
+input. Clients can stream this encoding, or do random seeks into it,
+while verifying that every byte they read matches the root hash.
 
 Use case: A secure messaging app might support attachment files by
-including the hash of an attachment in a message. With a regular hash,
+including the hash of an attachment in a message. With a serial hash,
 the recipient would need to download an entire attachment to verify it,
-but that's impractical for e.g. large video files. With a Bao hash, the
-recipient can stream a video, while still verifying each byte as it
-comes in. (This scenario was in fact the original motivation for the Bao
-project.)
+but that's impractical for e.g. large video files. With a tree hash like
+Bao, the recipient can stream a video, while still verifying each byte
+as it comes in. (This scenario was in fact the original motivation for
+the Bao project.)
 
 ```sh
 # Create an input file that's a megabyte of random data.
