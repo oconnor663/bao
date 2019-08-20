@@ -162,9 +162,6 @@ possible. It's a good starting point for understanding the algorithms
 involved, before diving into the Rust code.
 
 The `bao` library crate includes `no_std` support if you set
-`default-features = false` in your `Cargo.toml`. Currently only the
-`hash` module is available, with multithreading disabled. The `encode`
-and `decode` modules depend on the `std::io::{Read, Write, Seek}`
-traits. However, those interface traits are all they use from `std`, and
-they don't allocate memory, so they could be made `no_std`-compatible in
-the future.
+`default-features = false` in your `Cargo.toml`. The `encode` and
+`decode` modules currently depend `std` for the `Read`, `Write`, and
+`Seek` traits.
