@@ -163,5 +163,5 @@ involved, before diving into the Rust code.
 
 The `bao` library crate includes `no_std` support if you set
 `default-features = false` in your `Cargo.toml`. The `encode` and
-`decode` modules currently depend `std` for the `Read`, `Write`, and
+`decode` modules currently depend on `std` for the `Read`, `Write`, and
 `Seek` traits.
