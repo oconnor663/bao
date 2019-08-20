@@ -850,4 +850,14 @@ pub(crate) mod test {
         assert!(COPY_BUF_SIZE >= BUF_SIZE);
         assert_eq!(0, COPY_BUF_SIZE % BUF_SIZE);
     }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_hasher_write() {
+        let input = vec![0xff; 1_000_000];
+        let mut hasher = Hasher::new();
+        let n = crate::copy(&mut io::Cursor::new(&input), &mut hasher).unwrap();
+        assert_eq!(n, input.len() as u64);
+        assert_eq!(hash(&input), hasher.finalize());
+    }
 }
