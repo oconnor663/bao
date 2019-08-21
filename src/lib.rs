@@ -179,13 +179,13 @@ fn common_params() -> blake2s_simd::Params {
     params
 }
 
-pub(crate) fn chunk_params(finalization: Finalization, offset: u64) -> blake2s_simd::Params {
+pub(crate) fn chunk_params(finalization: Finalization, chunk_index: u64) -> blake2s_simd::Params {
     let mut params = common_params();
     // The BLAKE2X node_offset parameter maxes out at 2^32-1. Just take the
     // lower 32 bits of the offset, and allow that the offset might wrap in a
     // very large tree.
     const OFFSET_UPPER_BOUND: u64 = 1 << 32;
-    params.node_offset(offset % OFFSET_UPPER_BOUND);
+    params.node_offset(chunk_index % OFFSET_UPPER_BOUND);
     if let Root = finalization {
         params.last_node(true);
     }
@@ -260,7 +260,7 @@ fn hash_recurse(
     input: &[u8],
     finalization: Finalization,
     simd_degree: usize,
-    mut offset: u64,
+    mut chunk_index: u64,
     out: &mut [u8],
 ) -> usize {
     // The top level handles the one chunk case.
@@ -271,8 +271,8 @@ fn hash_recurse(
         // never Root.
         let mut jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = ArrayVec::new();
         for chunk in input.chunks(CHUNK_SIZE) {
-            let chunk_params = chunk_params(NotRoot, offset);
-            offset += 1;
+            let chunk_params = chunk_params(NotRoot, chunk_index);
+            chunk_index += 1;
             let push_result = jobs.try_push(HashManyJob::new(&chunk_params, chunk));
             debug_assert!(push_result.is_ok(), "too many pushes");
         }
@@ -286,10 +286,18 @@ fn hash_recurse(
     let (left_input, right_input) = input.split_at(left_len(input.len() as u64) as usize);
     let mut child_out_array = [0; 2 * MAX_SIMD_DEGREE * HASH_SIZE];
     let (left_out, right_out) = child_out_array.split_at_mut(simd_degree * HASH_SIZE);
-    let right_offset = offset + (left_input.len() as u64 / CHUNK_SIZE as u64);
+    let right_chunk_index = chunk_index + (left_input.len() as u64 / CHUNK_SIZE as u64);
     let (left_n, right_n) = join(
-        || hash_recurse(left_input, NotRoot, simd_degree, offset, left_out),
-        || hash_recurse(right_input, NotRoot, simd_degree, right_offset, right_out),
+        || hash_recurse(left_input, NotRoot, simd_degree, chunk_index, left_out),
+        || {
+            hash_recurse(
+                right_input,
+                NotRoot,
+                simd_degree,
+                right_chunk_index,
+                right_out,
+            )
+        },
     );
     // Do one level of parent hashing and give the resulting parent hashes to
     // the caller. We can assert that the left_out slice was filled, which
@@ -575,7 +583,7 @@ impl Hasher {
         // none of these can be the root. Here all the parent hash work is
         // serial, so there's some overhead compared to the fully parallel (not
         // to mention multithreaded) all-at-once hash() function.
-        let mut chunk_offset = self.tree_state.count() / CHUNK_SIZE as u64;
+        let mut chunk_index = self.tree_state.count() / CHUNK_SIZE as u64;
         let mut chunks = input.chunks_exact(CHUNK_SIZE);
         let mut fused_chunks = chunks.by_ref().fuse();
         loop {
@@ -583,8 +591,8 @@ impl Hasher {
                 .by_ref()
                 .take(MAX_SIMD_DEGREE)
                 .map(|chunk| {
-                    let params = chunk_params(NotRoot, chunk_offset);
-                    chunk_offset += 1;
+                    let params = chunk_params(NotRoot, chunk_index);
+                    chunk_index += 1;
                     HashManyJob::new(&params, chunk)
                 })
                 .collect();
@@ -602,7 +610,7 @@ impl Hasher {
         // reset the chunk_state, because we know we're starting a new one.
         if !chunks.remainder().is_empty() {
             debug_assert!(chunks.remainder().len() < CHUNK_SIZE);
-            self.chunk_state = chunk_params(NotRoot, chunk_offset).to_state();
+            self.chunk_state = chunk_params(NotRoot, chunk_index).to_state();
             self.chunk_state.update(chunks.remainder());
         }
     }
@@ -788,16 +796,16 @@ pub(crate) mod test {
             NotRoot
         };
         let mut state = State::new();
-        let mut chunk_offset = 0;
+        let mut chunk_index = 0;
         while input.len() > CHUNK_SIZE {
-            let hash = chunk_params(NotRoot, chunk_offset)
+            let hash = chunk_params(NotRoot, chunk_index)
                 .hash(&input[..CHUNK_SIZE])
                 .into();
-            chunk_offset += 1;
+            chunk_index += 1;
             state.push_subtree(&hash, CHUNK_SIZE);
             input = &input[CHUNK_SIZE..];
         }
-        let hash = chunk_params(last_chunk_finialization, chunk_offset)
+        let hash = chunk_params(last_chunk_finialization, chunk_index)
             .hash(input)
             .into();
         state.push_subtree(&hash, input.len());

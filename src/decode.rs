@@ -356,7 +356,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         size: usize,
         finalization: Finalization,
         skip: usize,
-        offset: u64,
+        index: u64,
         parents_to_read: usize,
     ) -> io::Result<()> {
         debug_assert_eq!(0, self.buf_len());
@@ -370,7 +370,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         }
         let buf_slice = &mut self.buf[..size];
         self.input.read_exact(buf_slice)?;
-        let hash = chunk_params(finalization, offset).hash(buf_slice).into();
+        let hash = chunk_params(finalization, index).hash(buf_slice).into();
         self.state.feed_chunk(&hash)?;
         self.buf_start = skip;
         self.buf_end = size;
@@ -482,7 +482,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                     size,
                     finalization,
                     skip,
-                    offset,
+                    index,
                 } => {
                     // On the first chunk, we might find that we either we
                     // don't have enough output buffer space or that we need to
@@ -494,7 +494,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                             size,
                             finalization,
                             skip,
-                            offset,
+                            index,
                             parents_to_read,
                         )?;
                         return Ok(self.take_buffered_bytes(remaining_output));
@@ -503,7 +503,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                     // chunks as possible into the remaining output space
                     // (which, remember, may have been capped at the start for
                     // efficiency).
-                    let chunk_params = crate::chunk_params(finalization, offset);
+                    let chunk_params = crate::chunk_params(finalization, index);
                     let (chunk, remaining) = remaining_output.split_at_mut(size);
                     remaining_output = remaining;
                     self.read_ahead_unverified_one_chunk(chunk, parents_to_read, &mut parents_vec)?;
@@ -560,13 +560,13 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                 size,
                 finalization,
                 skip,
-                offset,
+                index,
             } => {
                 self.buffer_verified_chunk(
                     size,
                     finalization,
                     skip,
-                    offset,
+                    index,
                     0, /* parents_to_read */
                 )?;
                 debug_assert_eq!(0, self.buf_len());
