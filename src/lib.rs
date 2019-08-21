@@ -355,6 +355,115 @@ pub fn hash(input: &[u8]) -> Hash {
     condense_parents(&mut children_array[..num_children * HASH_SIZE], Root)
 }
 
+// Recursively split the input, combining child hashes into parent hashes at
+// each level. Rather than returning a single subtree hash, return a set of
+// simd_degree hashes (if there's enough children). That lets each level of the
+// tree take full advantage of SIMD parallelism.
+#[cfg(feature = "std")]
+fn hash_file_recurse(
+    file: &std::fs::File,
+    offset: u64,
+    len: u64,
+    finalization: Finalization,
+    simd_degree: usize,
+    out: &mut [u8],
+) -> std::io::Result<usize> {
+    use std::os::unix::fs::FileExt;
+    // The top level handles the one chunk case.
+    debug_assert!(len > 0);
+    let mut chunk_index = offset / CHUNK_SIZE as u64;
+
+    if len <= (simd_degree * CHUNK_SIZE) as u64 {
+        let buf = &mut [0; MAX_SIMD_DEGREE * CHUNK_SIZE][..len as usize];
+        file.read_exact_at(buf, offset)?;
+        // Because the top level handles the one chunk case, chunk hashing is
+        // never Root.
+        let mut jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = ArrayVec::new();
+        for chunk in buf.chunks(CHUNK_SIZE) {
+            let chunk_params = chunk_params(NotRoot, chunk_index);
+            chunk_index += 1;
+            let push_result = jobs.try_push(HashManyJob::new(&chunk_params, chunk));
+            debug_assert!(push_result.is_ok(), "too many pushes");
+        }
+        blake2s_simd::many::hash_many(jobs.iter_mut());
+        for (job, dest) in jobs.iter_mut().zip(out.chunks_exact_mut(HASH_SIZE)) {
+            *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
+        }
+        return Ok(jobs.len());
+    }
+
+    let left_len = left_len(len);
+    let right_offset = offset + left_len;
+    let right_len = len - left_len;
+    let mut child_out_array = [0; 2 * MAX_SIMD_DEGREE * HASH_SIZE];
+    let (left_out, right_out) = child_out_array.split_at_mut(simd_degree * HASH_SIZE);
+    let (left_result, right_result) = join(
+        || hash_file_recurse(file, offset, left_len, NotRoot, simd_degree, left_out),
+        || {
+            hash_file_recurse(
+                file,
+                right_offset,
+                right_len,
+                NotRoot,
+                simd_degree,
+                right_out,
+            )
+        },
+    );
+    let left_n = left_result?;
+    let right_n = right_result?;
+    // Do one level of parent hashing and give the resulting parent hashes to
+    // the caller. We can assert that the left_out slice was filled, which
+    // means all the child hashes are laid out contiguously. Note that if the
+    // input was less than simd_degree chunks long, recursion will bottom out
+    // immediately at the chunks branch above, and we will never get here.
+    debug_assert_eq!(simd_degree, left_n, "left subtree always full");
+    let num_children = left_n + right_n;
+    let children_slice = &child_out_array[..num_children * HASH_SIZE];
+    Ok(hash_parents_simd(children_slice, finalization, out))
+}
+
+/// Hash a slice of input bytes all at once. If the `std` feature is enabled,
+/// as it is by default, this will use multiple threads via Rayon. Other than
+/// initializing the global threadpool, this function doesn't allocate. This is
+/// the fastest hashing implementation.
+///
+/// # Example
+///
+/// ```
+/// let hash_at_once = bao::hash(b"input bytes");
+/// ```
+#[cfg(feature = "std")]
+pub fn hash_file(mut file: &std::fs::File) -> std::io::Result<Hash> {
+    use std::io::prelude::*;
+    use std::os::unix::fs::FileExt;
+    // XXX: Are we allowed to assume that the caller wants to read from the beginning?
+    let len = file.seek(std::io::SeekFrom::End(0))?;
+
+    // Handle the single chunk case explicitly.
+    if len <= CHUNK_SIZE as u64 {
+        let buf = &mut [0; CHUNK_SIZE][..len as usize];
+        file.read_exact_at(buf, 0)?;
+        return Ok(chunk_params(Root, 0).hash(buf).into());
+    }
+
+    let simd_degree = blake2s_simd::many::degree();
+    let mut children_array = [0; MAX_SIMD_DEGREE * HASH_SIZE];
+
+    let num_children = hash_file_recurse(file, 0, len, Root, simd_degree, &mut children_array)?;
+
+    if simd_degree == 1 {
+        debug_assert_eq!(num_children, 1);
+    } else {
+        debug_assert!(num_children > 1);
+    }
+
+    Ok(condense_parents(
+        &mut children_array[..num_children * HASH_SIZE],
+        Root,
+    ))
+}
+
 pub(crate) enum StateFinish {
     Parent(ParentNode),
     Root(Hash),
@@ -838,6 +947,21 @@ pub(crate) mod test {
             let found = hasher.finalize();
             assert_eq!(expected, found, "hashes don't match");
         }
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_hash_file() -> std::io::Result<()> {
+        use std::io::prelude::*;
+        for &case in TEST_CASES {
+            let input = vec![42; case];
+            let expected = hash(&input);
+            let mut file = tempfile::tempfile()?;
+            file.write_all(&input)?;
+            let found = hash_file(&file)?;
+            assert_eq!(expected, found, "hashes don't match");
+        }
+        Ok(())
     }
 
     #[cfg(feature = "std")]

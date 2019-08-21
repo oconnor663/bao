@@ -72,6 +72,17 @@ fn bench_bao_hash_slice_long(b: &mut Bencher) {
 }
 
 #[bench]
+fn bench_bao_hash_file(b: &mut Bencher) {
+    use std::io::prelude::*;
+    let mut input = RandomInput::new(b, LONG);
+    let mut file = tempfile::tempfile().unwrap();
+    file.write_all(input.get()).unwrap();
+    let mut _vec = Vec::with_capacity(LONG);
+    file.read_to_end(&mut _vec).unwrap();
+    b.iter(|| bao::hash_file(&file).unwrap());
+}
+
+#[bench]
 fn bench_bao_hasher_short(b: &mut Bencher) {
     let mut input = RandomInput::new(b, SHORT);
     b.iter(|| {
