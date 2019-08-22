@@ -287,10 +287,33 @@ fn path_if_some_and_not_dash(maybe_path: &Option<PathBuf>) -> Option<&Path> {
     }
 }
 
+// On Unix, coerce stdin into a File, to see if we can mmap it. This hack
+// doesn't work well on Windows, because File::metadata() is not reliable.
+#[cfg(not(windows))]
+fn fake_stdin_file() -> Option<std::mem::ManuallyDrop<File>> {
+    use std::os::unix::prelude::*;
+    Some(std::mem::ManuallyDrop::new(unsafe {
+        File::from_raw_fd(libc::STDIN_FILENO)
+    }))
+}
+
+#[cfg(windows)]
+fn fake_stdin_file() -> Option<std::mem::ManuallyDrop<File>> {
+    None
+}
+
 fn maybe_memmap_input(input: &Input) -> Result<Option<memmap::Mmap>, Error> {
-    let in_file = match *input {
-        Input::Stdin => return Ok(None),
-        Input::File(ref file) => file,
+    let fake_file;
+    let in_file = match input {
+        Input::Stdin => {
+            fake_file = fake_stdin_file();
+            if let Some(file) = &fake_file {
+                file
+            } else {
+                return Ok(None);
+            }
+        }
+        Input::File(file) => file,
     };
     let metadata = in_file.metadata()?;
     Ok(if !metadata.is_file() {
