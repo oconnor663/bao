@@ -324,8 +324,7 @@ fn parse_hash(args: &Args) -> Result<bao::Hash, Error> {
 
 // When streaming out decoded content, it's acceptable for the caller to pipe us
 // into e.g. `head -c 100`. We catch closed pipe errors in that case and avoid
-// erroring out. When encoding, though, we let those errors stay noisy, since
-// truncating an encoding is almost never correct.
+// erroring out.
 fn allow_broken_pipe<T>(result: io::Result<T>) -> io::Result<()> {
     match result {
         Ok(_) => Ok(()),
