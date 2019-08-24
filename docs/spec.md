@@ -676,18 +676,18 @@ the length bytes, but the current design doesn't.
 Let's start by considering a correct decoder. What happens if a
 man-in-the-middle attacker tweaks the length header in between encoding and
 decoding? Small tweaks change the expected length of the final chunk. For
-example, if you subtract one from the length, the final chunk might go from
-4096 bytes to 4095 bytes. Assuming the collision resistance of BLAKE2, the 4095
-byte chunk will necessarily have a different hash, and validating it will lead
-to a hash mismatch error. Adding one to the length would be similar. Either no
-additional bytes are available at the end to supply the read, leading or an IO
-error, or an extra byte is available somehow, leading to a hash mismatch.
-Larger tweaks have a bigger effect on the expected structure of the tree.
-Growing the tree leads to chunk hashes being reinterpreted as parent hashes,
-and shrinking the tree leads to parent hashes being reinterpreted as chunk
-hashes. Since chunks and parents are domain separated from each other, this
-also leads to hash mismatch errors in the tree, in particular always including
-some node along the right edge.
+example, if you subtract one from the length, the final chunk might go from 10
+bytes to 9 bytes. Assuming the collision resistance of BLAKE2, the 9-byte chunk
+will necessarily have a different hash, and validating it will lead to a hash
+mismatch error. Adding one to the length would be similar. Either no additional
+bytes are available at the end to supply the read, leading to an IO error, or
+an extra byte is available somehow, leading to a hash mismatch. Larger tweaks
+have a bigger effect on the expected structure of the tree. Growing the tree
+leads to chunk hashes being reinterpreted as parent hashes, and shrinking the
+tree leads to parent hashes being reinterpreted as chunk hashes. Since chunks
+and parents are domain separated from each other, this also leads to hash
+mismatch errors in the tree, in particular always including some node along the
+right edge.
 
 Those observations are the reason behind the "final chunk requirement" for
 decoders. That is, a decoder must always validate the final chunk before
@@ -876,12 +876,12 @@ way to learn anything about the contents of an encoded file is to decode it.
 
 Another scenario that might lead to malleability is that a decoder might not
 verify all parent nodes. For example, if the decoder sees that an encoding is 8
-chunks long, and it can buffer all 8 chunks and hash them in parallel, it might
-chose to ignore the parent nodes and just reconstruct the root hash from those
-8 chunks. The reference decoder doesn't do this, in part because it would hide
-encoder bugs that lead to incorrect parent nodes. But if the decoder is careful
-not to emit any chunk bytes to the caller until all of them have been verified,
-it can technically skip some parent nodes like this without violating the
+chunks long, and it has buffer space for all 8 chunks, it might skip over the
+encoded parent nodes and just reconstruct the whole tree from its chunks. The
+reference decoder doesn't do this, in part because it could hide encoder bugs
+that lead to incorrect parent nodes. But if an implementation is careful not to
+emit any chunk bytes to the caller until all of them have been verified against
+the root hash, it can skip reading parent nodes like this without violating the
 security requirements. In this case, those parent nodes would be malleable.
 
 As discussed above, a "sloppy" decoder might also ignore some mutations in the
@@ -889,8 +889,8 @@ length header, without failing decoding. That's strictly incorrect, and it
 violates security requirements related to the original input length, but the
 possibility that a buggy implementation might do that is yet another reason to
 assume that encoded bytes are malleable. To be clear though, none of the
-scenarios discussed in this section violate the guarantee that decoded output
-matches the original input.
+scenarios discussed in this section violate the guarantee that decoded bytes
+match the original input.
 
 ## Other Related Work
 
