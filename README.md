@@ -54,14 +54,14 @@ f.bao   1015624
 > hash=`bao hash f`
 
 # Stream decoded bytes from the encoded file, using the hash above.
-> bao decode $hash f.bao f2
+> bao decode $hash < f.bao > f2
 > cmp f f2
 
 # Observe that using the wrong hash to decode results in an error. This
 # is also what will happen if we use the right hash but corrupt some
 # bytes in the encoded file.
 > bad_hash="0000000000000000000000000000000000000000000000000000000000000000"
-> bao decode $bad_hash f.bao f3
+> bao decode $bad_hash < f.bao
 Error: Custom { kind: InvalidData, error: StringError("hash mismatch") }
 ```
 
@@ -98,7 +98,7 @@ f.slice 104584
 
 # Using the same parameters we used to create the slice, plus the same
 # hash we got above from the full encoding, decode the slice.
-> bao decode-slice $hash 500000 100000 f.slice > f.slice.out
+> bao decode-slice $hash 500000 100000 < f.slice > f.slice.out
 
 # Confirm that the decoded output matches the corresponding section from
 # the input file. (Note that `tail` numbers bytes starting with 1.)
@@ -107,7 +107,7 @@ f.slice 104584
 
 # Now try decoding the slice with the wrong hash. Again, this will fail,
 # as it would if we corrupted some bytes in the slice.
-> bao decode-slice $bad_hash 500000 100000 f.slice
+> bao decode-slice $bad_hash 500000 100000 < f.slice
 Error: Custom { kind: InvalidData, error: StringError("hash mismatch") }
 ```
 
@@ -133,7 +133,8 @@ f.obao  15624
 
 # Decode the whole file in outboard mode. Note that both the original
 # input file and the outboard encoding are passed in as arguments.
-> cmp f <(bao decode $hash f --outboard f.obao)
+> bao decode $hash f --outboard f.obao f4
+> cmp f f4
 ```
 
 ## Installation and Building From Source
