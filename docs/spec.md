@@ -417,18 +417,16 @@ with several caveats:
   practice, but an application with a critical bottleneck hashing medium-length
   inputs has this option.
 
-### What's the best way to choose the chunk size?
+### Why a 4096-byte chunk size?
 
-**Open question.** There are many efficiency tradeoffs at the margins. As noted
-above, the main advantage of a small chunk size is that it allows the
+**Somewhat arbitrary.** Power-of-two chunk sizes lead to simpler arithmetic and
+more efficient IO. But as for which power of two to choose, there are different
+tradeoffs, and a chunk size of 2048 or 8192 could also have been reasonable. As
+noted above, the main advantage of a small chunk size is that it allows the
 implementation to parallelize more work for inputs that are only a few chunks
-long. The advantage of a large chunk size is that it reduces the number of
-parent nodes in the tree and the overhead of hashing them. I chose 4096
-somewhat arbitrarily, because it seems to be a common page size, and because
-the performance overhead is subjectively small in testing. But different
-applications are likely to have different priorities around this tradeoff, and
-we won't be able to settle this question without more experiments. See [issue
-17](https://github.com/oconnor663/bao/issues/17).
+long. On the other hand, the advantage of a large chunk size is that it reduces
+the number of parent nodes in the tree and the overhead of hashing them, which
+leads to better throughput for large inputs.
 
 Here are [throughput measurements](https://github.com/oconnor663/bao_experiments/blob/72a13726a1dfb5ed67d41fdea1932a8b0b0dfc0b/benches/libtest.rs#L18-L23)
 for hashing a 2^24 byte (16.8 MB) input at different chunk sizes on my laptop
