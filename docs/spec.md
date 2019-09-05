@@ -837,7 +837,7 @@ However, the implementation might instead store the incremental state of a
 parent hash at each level rather than a complete list of subtree hashes. The
 words in an incremental state are 32 bytes, and the implementation would
 probably need to buffer a full 64 byte block along with the words to account
-for finalization. That's no space benefit for an fanout of 4 (the 3 subtree
+for finalization. That's no space benefit for a fanout of 4 (the 3 subtree
 hashes per level described above were also 96 bytes), but it's independent of
 the fanout, so larger fanouts could benefit from reduced stack depth without
 increasing the storage per level any further. Conceptually at unlimited fanout
