@@ -370,11 +370,10 @@ pub(crate) enum StateFinish {
 /// optional `merge_parent` and `merge_finalize` interfaces.
 ///
 /// This struct contains a relatively large buffer on the stack for holding partial subtree hashes:
-/// 64 hashes at 32 bytes apiece, 2048 bytes in total. This is enough state space for the largest
+/// 53 hashes at 32 bytes apiece, 1696 bytes put together. This is enough state space for the largest
 /// possible input, `2^64 - 1` bytes or about 18 exabytes. That's impractically large for anything
 /// that could be hashed in the real world, and implementations that are starved for stack space
-/// could cut that buffer in half and still be able to hash about 17 terabytes (`2^32` times the
-/// 4096-byte chunk size).
+/// could use a smaller buffer and accept a tighter max input length.
 ///
 /// Note that this type used to be public, but is currently private. It could be re-exposed if
 /// there's demand from no_std callers.
