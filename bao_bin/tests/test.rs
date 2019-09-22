@@ -24,7 +24,7 @@ pub fn bao_exe() -> PathBuf {
 #[test]
 fn test_hash_one() {
     let expected = bao::hash(b"foo").to_hex();
-    let output = cmd!(bao_exe(), "hash").input("foo").read().unwrap();
+    let output = cmd!(bao_exe(), "hash").stdin_bytes("foo").read().unwrap();
     assert_eq!(&*expected, &*output);
 }
 
@@ -36,7 +36,7 @@ fn test_hash_many() {
     let file2 = dir.path().join("file2");
     fs::write(&file2, b"bar").unwrap();
     let output = cmd!(bao_exe(), "hash", &file1, &file2, "-")
-        .input("baz")
+        .stdin_bytes("baz")
         .read()
         .unwrap();
     let foo_hash = bao::hash(b"foo");
@@ -65,7 +65,10 @@ fn test_encode_decode_combined() {
     let input_path = dir.path().join("input");
     let input_bytes = &b"abc"[..];
     fs::write(&input_path, input_bytes).unwrap();
-    let input_hash = cmd!(bao_exe(), "hash").input(input_bytes).read().unwrap();
+    let input_hash = cmd!(bao_exe(), "hash")
+        .stdin_bytes(input_bytes)
+        .read()
+        .unwrap();
     let encoded_path = dir.path().join("encoded");
     cmd!(bao_exe(), "encode", &input_path, &encoded_path)
         .run()
@@ -74,7 +77,7 @@ fn test_encode_decode_combined() {
 
     // Test decode using stdin and stdout.
     let decoded_bytes = cmd!(bao_exe(), "decode", &input_hash)
-        .input(&*encoded_bytes)
+        .stdin_bytes(&*encoded_bytes)
         .stdout_capture()
         .run()
         .unwrap()
@@ -84,7 +87,7 @@ fn test_encode_decode_combined() {
     // Make sure decoding with the wrong hash fails.
     let zero_hash = "0".repeat(input_hash.len());
     let output = cmd!(bao_exe(), "decode", &zero_hash)
-        .input(&*encoded_bytes)
+        .stdin_bytes(&*encoded_bytes)
         .stdout_capture()
         .stderr_capture()
         .unchecked()
@@ -127,7 +130,10 @@ fn test_encode_decode_outboard() {
     let input_path = dir.path().join("input");
     let input_bytes = &b"abc"[..];
     fs::write(&input_path, input_bytes).unwrap();
-    let input_hash = cmd!(bao_exe(), "hash").input(input_bytes).read().unwrap();
+    let input_hash = cmd!(bao_exe(), "hash")
+        .stdin_bytes(input_bytes)
+        .read()
+        .unwrap();
     let outboard_path = dir.path().join("outboard");
     cmd!(
         bao_exe(),
@@ -147,7 +153,7 @@ fn test_encode_decode_outboard() {
         "--outboard",
         &outboard_path
     )
-    .input(input_bytes)
+    .stdin_bytes(input_bytes)
     .stdout_capture()
     .run()
     .unwrap()
@@ -163,7 +169,7 @@ fn test_encode_decode_outboard() {
         "--outboard",
         &outboard_path
     )
-    .input(input_bytes)
+    .stdin_bytes(input_bytes)
     .stdout_capture()
     .stderr_capture()
     .unchecked()
@@ -198,16 +204,16 @@ fn test_slice() {
 
     let mut input = vec![0; input_len];
     rand::thread_rng().fill_bytes(&mut input);
-    let hash = cmd!(bao_exe(), "hash").input(&*input).read().unwrap();
+    let hash = cmd!(bao_exe(), "hash").stdin_bytes(&*input).read().unwrap();
     let dir = tempdir().unwrap();
     let encoded_path = dir.path().join("encoded");
     cmd!(bao_exe(), "encode", "-", &encoded_path)
-        .input(&*input)
+        .stdin_bytes(&*input)
         .run()
         .unwrap();
     let outboard_path = dir.path().join("outboard");
     cmd!(bao_exe(), "encode", "-", "--outboard", &outboard_path)
-        .input(&*input)
+        .stdin_bytes(&*input)
         .run()
         .unwrap();
 
@@ -247,7 +253,7 @@ fn test_slice() {
         slice_start.to_string(),
         slice_len.to_string()
     )
-    .input(&*slice_bytes)
+    .stdin_bytes(&*slice_bytes)
     .stdout_capture()
     .run()
     .unwrap()
@@ -263,7 +269,7 @@ fn test_slice() {
         slice_start.to_string(),
         slice_len.to_string()
     )
-    .input(&*slice_bytes)
+    .stdin_bytes(&*slice_bytes)
     .stdout_capture()
     .stderr_capture()
     .unchecked()
