@@ -3,12 +3,12 @@ use rand::prelude::*;
 use std::env::consts::EXE_EXTENSION;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Once, ONCE_INIT};
+use std::sync::Once;
 use tempfile::tempdir;
 
 pub fn bao_exe() -> PathBuf {
     // `cargo test` doesn't automatically run `cargo build`, so we do that ourselves.
-    static CARGO_BUILD_ONCE: Once = ONCE_INIT;
+    static CARGO_BUILD_ONCE: Once = Once::new();
     CARGO_BUILD_ONCE.call_once(|| {
         cmd!("cargo", "build", "--quiet")
             .run()
