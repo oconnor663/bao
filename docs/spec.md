@@ -14,6 +14,18 @@
 * [Storage Requirements](#storage-requirements)
 * [Performance Notes](#performance-notes)
 * [Design Rationales and Open Questions](#design-rationales-and-open-questions)
+  + [Why BLAKE2s instead of BLAKE2b?](#why-blake2s-instead-of-blake2b)
+  + [Why a 4096-byte chunk size?](#why-a-4096-byte-chunk-size)
+  + [Does Bao have a "high security" variant?](#does-bao-have-a-high-security-variant)
+  + [Can we expose the BLAKE2 general parameters through the Bao API?](#can-we-expose-the-blake2-general-parameters-through-the-bao-api)
+  + [Why does Bao set the node offset parameter for each chunk?](#why-does-bao-set-the-node-offset-parameter-for-each-chunk)
+  + [Could we use a simpler tree mode, like KangarooTwelve does?](#could-we-use-a-simpler-tree-mode-like-kangarootwelve-does)
+  + [Should we fall back to serial hashing for messages above some maximum size?](#should-we-fall-back-to-serial-hashing-for-messages-above-some-maximum-size)
+  + [Is 64 bits large enough for the encoded length?](#is-64-bits-large-enough-for-the-encoded-length)
+  + [Could a similar design be based on a different underlying hash function?](#could-a-similar-design-be-based-on-a-different-underlying-hash-function)
+  + [Would hashing the length as associated data improve the security of the decoder?](#would-hashing-the-length-as-associated-data-improve-the-security-of-the-decoder)
+  + [Would it be more efficient to use a fanout larger than 2?](#would-it-be-more-efficient-to-use-a-fanout-larger-than-2)
+  + [Why is the encoding format malleable?](#why-is-the-encoding-format-malleable)
 * [Other Related Work](#other-related-work)
 
 
