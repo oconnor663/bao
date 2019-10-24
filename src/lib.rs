@@ -710,11 +710,11 @@ pub fn copy(reader: &mut impl io::Read, writer: &mut impl io::Write) -> io::Resu
         match reader.read(&mut buffer) {
             Ok(0) => return Ok(total),
             Ok(n) => {
-                writer.write(&buffer[..n])?;
+                writer.write_all(&buffer[..n])?;
                 total += n as u64;
             }
             Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e.into()),
+            Err(e) => return Err(e),
         }
     }
 }
