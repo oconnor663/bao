@@ -1,6 +1,6 @@
 [package]
 name = "bao_bin"
-version = "0.9.0"
+version = "0.9.1"
 authors = ["Jack O'Connor"]
 description = "the command line utility that's part of the bao crate"
 license = "MIT"
