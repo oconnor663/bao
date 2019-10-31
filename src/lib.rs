@@ -44,8 +44,6 @@ use core::cmp;
 use core::fmt;
 use core::mem;
 #[cfg(feature = "std")]
-use rayon;
-#[cfg(feature = "std")]
 use std::io;
 
 /// The size of a `Hash`, 32 bytes.
@@ -242,12 +240,12 @@ fn hash_parents_simd(children: &[u8], finalization: Finalization, out: &mut [u8]
     outputs
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "rayon")]
 fn join<T: Send>(f1: impl Send + FnOnce() -> T, f2: impl Send + FnOnce() -> T) -> (T, T) {
     rayon::join(f1, f2)
 }
 
-#[cfg(not(feature = "std"))]
+#[cfg(not(feature = "rayon"))]
 fn join<T: Send>(f1: impl Send + FnOnce() -> T, f2: impl Send + FnOnce() -> T) -> (T, T) {
     (f1(), f2())
 }

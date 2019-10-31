@@ -2,6 +2,7 @@
 
 extern crate test;
 
+#[cfg(feature = "std")]
 use bao::{decode, encode};
 use rand::prelude::*;
 use std::io::prelude::*;

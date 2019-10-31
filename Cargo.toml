@@ -10,8 +10,8 @@ readme = "README.md"
 edition = "2018"
 
 [features]
-default = ["std"]
-std = ["blake2s_simd/std", "rayon"]
+default = ["std", "rayon"]
+std = ["blake2s_simd/std"]
 
 [dependencies]
 arrayref = "0.3.5"
