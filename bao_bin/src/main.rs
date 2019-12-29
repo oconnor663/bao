@@ -19,6 +19,8 @@ Usage: bao hash [<inputs>...]
        bao (--help | --version)
 ";
 
+const COPY_BUFFER_SIZE: usize = 8192;
+
 #[derive(Debug, Deserialize)]
 struct Args {
     cmd_decode: bool,
@@ -65,13 +67,31 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
+fn copy_reader_to_writer(
+    reader: &mut impl io::Read,
+    writer: &mut impl io::Write,
+) -> io::Result<u64> {
+    let mut buf = [0; COPY_BUFFER_SIZE];
+    let mut written = 0;
+    loop {
+        let len = match reader.read(&mut buf) {
+            Ok(0) => return Ok(written),
+            Ok(len) => len,
+            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        writer.write_all(&buf[..len])?;
+        written += len as u64;
+    }
+}
+
 fn hash_one(maybe_path: &Option<PathBuf>) -> Result<bao::Hash, Error> {
     let mut input = open_input(maybe_path)?;
     if let Some(map) = maybe_memmap_input(&input)? {
-        Ok(bao::hash(&map))
+        Ok(blake3::hash(&map))
     } else {
-        let mut hasher = bao::Hasher::new();
-        bao::copy(&mut input, &mut hasher)?;
+        let mut hasher = blake3::Hasher::new();
+        copy_reader_to_writer(&mut input, &mut hasher)?;
         Ok(hasher.finalize())
     }
 }
@@ -121,7 +141,7 @@ fn encode(args: &Args) -> Result<(), Error> {
     } else {
         bao::encode::Encoder::new(output.require_file()?)
     };
-    bao::copy(&mut input, &mut encoder)?;
+    copy_reader_to_writer(&mut input, &mut encoder)?;
     encoder.finalize()?;
     Ok(())
 }
@@ -160,9 +180,9 @@ fn decode(args: &Args) -> Result<(), Error> {
     }
     if let Some(count) = args.flag_count {
         let mut taker = decoder.take(count);
-        allow_broken_pipe(bao::copy(&mut taker, &mut output))?;
+        allow_broken_pipe(copy_reader_to_writer(&mut taker, &mut output))?;
     } else {
-        allow_broken_pipe(bao::copy(&mut decoder, &mut output))?;
+        allow_broken_pipe(copy_reader_to_writer(&mut decoder, &mut output))?;
     }
     Ok(())
 }
@@ -185,7 +205,7 @@ fn slice(args: &Args) -> Result<(), Error> {
         extractor =
             bao::encode::SliceExtractor::new(input.require_file()?, args.arg_start, args.arg_count);
     }
-    bao::copy(&mut extractor, &mut output)?;
+    copy_reader_to_writer(&mut extractor, &mut output)?;
     Ok(())
 }
 
@@ -194,7 +214,7 @@ fn decode_slice(args: &Args) -> Result<(), Error> {
     let mut output = open_output(&args.arg_output)?;
     let hash = parse_hash(&args)?;
     let mut decoder = bao::decode::SliceDecoder::new(input, &hash, args.arg_start, args.arg_count);
-    allow_broken_pipe(bao::copy(&mut decoder, &mut output))?;
+    allow_broken_pipe(copy_reader_to_writer(&mut decoder, &mut output))?;
     Ok(())
 }
 

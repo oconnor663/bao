@@ -41,13 +41,9 @@
 
 use crate::encode;
 use crate::encode::NextRead;
-use crate::{
-    chunk_params, parent_params, Finalization, Hash, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH,
-    PARENT_SIZE,
-};
-use arrayref::{array_ref, array_refs};
+use crate::{Finalization, Hash, CHUNK_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
+use arrayref::array_ref;
 use arrayvec::ArrayVec;
-use blake2s_simd::many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE};
 use std::cmp;
 use std::error;
 use std::fmt;
@@ -138,13 +134,15 @@ impl VerifyState {
 
     fn feed_parent(&mut self, parent: &crate::ParentNode) -> Result<(), Error> {
         let finalization = self.parser.finalization();
-        let expected_hash = self.stack.last().expect("unexpectedly empty stack");
-        let computed_hash: Hash = parent_params(finalization).hash(parent).into();
+        let expected_hash: &Hash = self.stack.last().expect("unexpectedly empty stack");
+        let left_child: Hash = (*array_ref!(parent, 0, 32)).into();
+        let right_child: Hash = (*array_ref!(parent, 32, 32)).into();
+        let computed_hash: Hash =
+            blake3::guts::parent_cv(&left_child, &right_child, finalization.is_root());
         // Hash implements constant time equality.
         if expected_hash != &computed_hash {
             return Err(Error::HashMismatch);
         }
-        let (&left_child, &right_child) = array_refs!(parent, HASH_SIZE, HASH_SIZE);
         self.stack.pop();
         self.stack.push(right_child.into());
         self.stack.push(left_child.into());
@@ -161,14 +159,6 @@ impl VerifyState {
         self.stack.pop();
         self.parser.advance_chunk();
         Ok(())
-    }
-
-    // Making a copy of the ParseState (which is small, since it doesn't
-    // contain a subtree stack) allows the caller to read ahead and hash chunks
-    // in batches with good SIMD performance. At the same time, this
-    // VerifyState is untouched, and it cannot advance without correct input.
-    fn clone_parser(&self) -> encode::ParseState {
-        self.parser.clone()
     }
 }
 
@@ -226,65 +216,6 @@ struct DecoderShared<T: Read, O: Read> {
     buf: [u8; CHUNK_SIZE],
     buf_start: usize,
     buf_end: usize,
-}
-
-fn read_exact_vectored(
-    mut reader: impl Read,
-    mut buf1: &mut [u8],
-    mut buf2: &mut [u8],
-) -> io::Result<()> {
-    while !buf1.is_empty() {
-        let bufs = &mut [io::IoSliceMut::new(buf1), io::IoSliceMut::new(buf2)];
-        match reader.read_vectored(bufs) {
-            Ok(0) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "failed to fill whole buffer",
-                ));
-            }
-            Ok(n) => {
-                if n < buf1.len() {
-                    buf1 = &mut buf1[n..];
-                } else {
-                    buf2 = &mut buf2[n - buf1.len()..];
-                    buf1 = &mut [];
-                }
-            }
-            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {}
-            Err(e) => return Err(e),
-        }
-    }
-    if !buf2.is_empty() {
-        reader.read_exact(buf2)?;
-    }
-    Ok(())
-}
-
-// If the caller's buffer isn't big enough for a chunk, just use the whole
-// thing, and we'll probably end up copying from our internal chunk buffer
-// (unless what's coming up happens to be the the final short chunk). If the
-// caller's buffer is bigger than MAX_SIMD_DEGREE chunks, just use
-// MAX_SIMD_DEGREE chunks, since that's how many ArrayVec slots we'll allocate
-// on the stack for HashManyJobs.
-//
-// In between we want to target the largest power of 2 number of chunks that
-// fits in the caller's buffer. For example, if the caller's buffer is 5 chunks
-// long, we want to read 4 chunks. That's because it's more efficient to hash 4
-// chunks in parallel with SIMD than it is to hash 1. If the caller wants
-// exactly those 5 chunks, they'll call read() again with a 1 chunk buffer, and
-// we'll hash the 5th chunk by itself at that time. But if the caller keeps
-// using the 5-chunk buffer, they'll get 4 chunks every time, and that'll be
-// more efficient.
-fn efficient_output_len(len: usize) -> usize {
-    if len <= CHUNK_SIZE {
-        len
-    } else if len >= MAX_SIMD_DEGREE * CHUNK_SIZE {
-        MAX_SIMD_DEGREE * CHUNK_SIZE
-    } else {
-        let num_chunks = len / CHUNK_SIZE;
-        let power_of_2 = crate::largest_power_of_two_leq(num_chunks as u64) as usize;
-        power_of_2 * CHUNK_SIZE
-    }
 }
 
 impl<T: Read, O: Read> DecoderShared<T, O> {
@@ -370,51 +301,12 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         }
         let buf_slice = &mut self.buf[..size];
         self.input.read_exact(buf_slice)?;
-        let hash = chunk_params(finalization, index).hash(buf_slice).into();
+        let hash = blake3::guts::ChunkState::new(index)
+            .update(buf_slice)
+            .finalize(finalization.is_root());
         self.state.feed_chunk(&hash)?;
         self.buf_start = skip;
         self.buf_end = size;
-        Ok(())
-    }
-
-    // A helper function for read() below. Reads a single chunk, along with
-    // whatever number of parent nodes come before it. We read the parents all
-    // at once, to avoid the cost of a syscall for every parent. We read
-    // parents into the internal chunk buffer (which must be empty at this
-    // point) to avoid the cost of zeroing a new stack buffer.
-    fn read_ahead_unverified_one_chunk(
-        &mut self,
-        chunk_output: &mut [u8],
-        parents_to_read: usize,
-        parents_vec: &mut ArrayVec<[crate::ParentNode; crate::MAX_DEPTH + MAX_SIMD_DEGREE]>,
-    ) -> io::Result<()> {
-        debug_assert_eq!(self.buf_len(), 0);
-        debug_assert!(crate::MAX_DEPTH <= self.buf.len() / PARENT_SIZE);
-        debug_assert!(parents_to_read <= crate::MAX_DEPTH);
-        let parents_slice = &mut self.buf[..parents_to_read * PARENT_SIZE];
-        // Fill the parents_slice and the chunk_output. If we're in outboard
-        // mode, we have to use two reads to do this, because we have two
-        // streams. But if we're in combined mode, we can do it with a single
-        // vectored read.
-        if let Some(outboard) = &mut self.outboard {
-            outboard.read_exact(parents_slice)?;
-            self.input.read_exact(chunk_output)?;
-        } else {
-            read_exact_vectored(&mut self.input, parents_slice, chunk_output)?;
-        }
-        // Insert all the parents we just read into the parents_vec. Note that
-        // the caller can't just read them straight out of the internal buffer,
-        // because (in the very large input case) there might end up being more
-        // parents than that buffer can hold. At the same time, we don't want
-        // to pay the cost of zeroing a larger buffer, because usually there
-        // are very few parents. Nor do we want to pay the cost of reading
-        // everything into the caller's buffer and then memmove'ing chunks to
-        // the front. Nor do we want to write unsafe code. The compromise here
-        // is to pay the cost of copying however many parents we did read,
-        // which is usually small.
-        for parent in self.buf.chunks_exact(PARENT_SIZE).take(parents_to_read) {
-            parents_vec.push(*array_ref!(parent, 0, PARENT_SIZE));
-        }
         Ok(())
     }
 
@@ -433,50 +325,19 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
             return Ok(self.take_buffered_bytes(output));
         }
 
-        // Figure out how much of the caller's buffer we actually want to fill.
-        // If the buffer is an uneven size, or larger than the MAX_SIMD_DEGREE
-        // jobs we're allocating stack space for in the ArrayVecs below, then
-        // we'll ignore the tail.
-        let efficient_len = efficient_output_len(output.len());
-        let mut remaining_output = &mut output[..efficient_len];
-
-        // The main read loop. For each chunk, count the number of parents
-        // we'll need to read without actually reading them. When we get to a
-        // chunk, we'll read all the parents and the chunk together (with a
-        // single vectorized read, if we're in combined mode). If the
-        // remaining_output has enough space for the chunk, we'll read it
-        // directly into the output, and possibly continue on to read more
-        // chunks. If not, we'll read it into the internal chunk buffer
-        // instead. However many chunks we read, hash them all in parallel in a
-        // single batch.
-        //
-        // We coordinate all of this by making a copy of the VerifyState's
-        // internal ParseState, which is small and cheap, and advancing the
-        // copied parser to count parents. That lets us advance parsing past a
-        // chunk before we've computed its hash, while the actual VerifyState
-        // stays put and waits to receive all hashes in order as usual. That's
-        // a pretty important property, because it means that any successful
-        // reads will be contiguous, even if the caller retries errors.
-        //
-        // This parents_vec is large, possibly larger than the internal chunk
-        // buffer. But it's mostly uninitialized, and it never moves.
-        let mut chunk_bytes_read: usize = 0;
-        let mut parents_to_read = 0;
-        let mut parents_vec: ArrayVec<[crate::ParentNode; crate::MAX_DEPTH + MAX_SIMD_DEGREE]> =
-            ArrayVec::new();
-        let mut chunk_jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = ArrayVec::new();
-        let mut parser = self.state.clone_parser();
+        // Otherwise try to verify a new chunk.
         loop {
-            match parser.read_next() {
+            match self.state.read_next() {
+                NextRead::Done => {
+                    // This is EOF. We know the internal buffer is empty,
+                    // because we checked it before this loop.
+                    return Ok(0);
+                }
                 NextRead::Header => {
-                    // If the header wasn't read before, read it now, and then
-                    // re-clone the parser to get the post-header version.
                     self.get_and_feed_header()?;
-                    parser = self.state.clone_parser();
                 }
                 NextRead::Parent => {
-                    parents_to_read += 1;
-                    parser.advance_parent();
+                    self.get_and_feed_parent()?;
                 }
                 NextRead::Chunk {
                     size,
@@ -484,65 +345,42 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                     skip,
                     index,
                 } => {
-                    // On the first chunk, we might find that we either we
-                    // don't have enough output buffer space or that we need to
-                    // skip partway through a chunk. In those cases, fall back
-                    // to reading to the internal buffer.
-                    if size > remaining_output.len() || skip > 0 {
-                        debug_assert!(chunk_jobs.is_empty(), "first chunk");
-                        self.buffer_verified_chunk(
-                            size,
-                            finalization,
-                            skip,
-                            index,
-                            parents_to_read,
-                        )?;
-                        return Ok(self.take_buffered_bytes(remaining_output));
-                    }
-                    // Otherwise this is the fast path. Try to read as many
-                    // chunks as possible into the remaining output space
-                    // (which, remember, may have been capped at the start for
-                    // efficiency).
-                    let chunk_params = crate::chunk_params(finalization, index);
-                    let (chunk, remaining) = remaining_output.split_at_mut(size);
-                    remaining_output = remaining;
-                    self.read_ahead_unverified_one_chunk(chunk, parents_to_read, &mut parents_vec)?;
-                    parents_to_read = 0;
-                    chunk_bytes_read += size;
-                    parser.advance_chunk();
-                    chunk_jobs.push(HashManyJob::new(&chunk_params, chunk));
-                    // If we've exhausted all the output buffer space, break
-                    // this loop and move on to verification.
-                    if remaining_output.is_empty() {
-                        break;
+                    debug_assert_eq!(self.buf_len(), 0);
+
+                    // If we can, read the chunk directly into the `output`
+                    // buffer, to avoid extra copies. If there's a verification
+                    // error, the caller won't read the invalid bytes, because
+                    // we won't return a length.
+                    let (read_buf, direct_output) = if output.len() >= size && skip == 0 {
+                        (&mut output[..size], true)
+                    } else {
+                        (&mut self.buf[..size], false)
+                    };
+
+                    // Read the unverified chunk.
+                    self.input.read_exact(read_buf)?;
+
+                    // Hash it and push its hash into the VerifyState. This
+                    // returns an error if the hash is bad. Otherwise, the
+                    // chunk is verifiied.
+                    let chunk_hash = blake3::guts::ChunkState::new(index)
+                        .update(read_buf)
+                        .finalize(finalization.is_root());
+                    self.state.feed_chunk(&chunk_hash)?;
+
+                    // If the output buffer was large enough for direct output,
+                    // we're done. Otherwise, we need to update the internal
+                    // buffer state and return some bytes.
+                    if direct_output {
+                        return Ok(size);
+                    } else {
+                        self.buf_start = skip;
+                        self.buf_end = size;
+                        return Ok(self.take_buffered_bytes(output));
                     }
                 }
-                // We will either exhaust the remaining_output above, or break
-                // here at EOF.
-                NextRead::Done => break,
             }
         }
-
-        // Hash all the chunks we just read, if we didn't fall back to reading
-        // to the internal buffer.
-        blake2s_simd::many::hash_many(&mut chunk_jobs);
-
-        // Feed each parent node and chunk hash into the VerifyState. Up until
-        // this point the VerifyState wasn't modified, except maybe to hash the
-        // header.
-        let mut parents_iter = parents_vec.iter();
-        for job in &chunk_jobs {
-            while let NextRead::Parent = self.state.read_next() {
-                let parent = parents_iter.next().expect("ran out of parents");
-                self.state.feed_parent(parent)?;
-            }
-            self.state.feed_chunk(&job.to_hash().into())?;
-        }
-        debug_assert!(parents_iter.next().is_none(), "didn't use all parents");
-
-        // All the state operations above passed, so the chunks in the caller's
-        // buffer are good.
-        Ok(chunk_bytes_read)
     }
 
     // Returns Ok(true) to indicate the seek is finished. Note that both the
@@ -1030,7 +868,7 @@ mod test {
         // of the empty root node", and a decoder must not return EOF before the latter.
 
         let (zero_encoded, zero_hash) = encode::encode(b"");
-        let one_hash = crate::hash(b"x");
+        let one_hash = blake3::hash(b"x");
 
         // Decoding the empty tree with the right hash should succeed.
         let mut output = Vec::new();

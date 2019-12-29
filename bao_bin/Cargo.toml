@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 arrayref = "0.3.5"
 bao = { path = "..", version = "0.9" }
+blake3 = { path = "../../BLAKE3", features = ["c_avx512", "rayon"] }
 docopt = "1.1.0"
 failure = "0.1.5"
 hex = "0.4.0"

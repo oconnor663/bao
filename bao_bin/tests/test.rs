@@ -23,7 +23,7 @@ pub fn bao_exe() -> PathBuf {
 
 #[test]
 fn test_hash_one() {
-    let expected = bao::hash(b"foo").to_hex();
+    let expected = blake3::hash(b"foo").to_hex();
     let output = cmd!(bao_exe(), "hash").stdin_bytes("foo").read().unwrap();
     assert_eq!(&*expected, &*output);
 }
@@ -39,9 +39,9 @@ fn test_hash_many() {
         .stdin_bytes("baz")
         .read()
         .unwrap();
-    let foo_hash = bao::hash(b"foo");
-    let bar_hash = bao::hash(b"bar");
-    let baz_hash = bao::hash(b"baz");
+    let foo_hash = blake3::hash(b"foo");
+    let bar_hash = blake3::hash(b"bar");
+    let baz_hash = blake3::hash(b"baz");
     let expected = format!(
         "{}  {}\n{}  {}\n{}  -",
         foo_hash.to_hex(),

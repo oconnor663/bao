@@ -24,7 +24,7 @@
 //! use std::io::Cursor;
 //!
 //! let input = b"some input";
-//! let expected_hash = bao::hash(input);
+//! let expected_hash = blake3::hash(input);
 //!
 //! let (encoded_at_once, hash) = bao::encode::encode(b"some input");
 //! assert_eq!(expected_hash, hash);
@@ -41,10 +41,9 @@
 //! ```
 
 use crate::Finalization::{self, NotRoot, Root};
-use crate::{chunk_params, Hash, CHUNK_SIZE, HEADER_SIZE, PARENT_SIZE};
-use arrayref::{array_mut_ref, array_ref};
+use crate::{Hash, ParentNode, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
+use arrayref::array_mut_ref;
 use arrayvec::ArrayVec;
-use blake2s_simd::many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE};
 use std::cmp;
 use std::fmt;
 use std::io;
@@ -199,7 +198,7 @@ pub(crate) fn pre_order_parent_nodes(chunk_index: u64, content_len: u64) -> u8 {
 // buffer space for the entire input.
 #[derive(Clone)]
 struct FlipperState {
-    parents: ArrayVec<[crate::ParentNode; crate::MAX_DEPTH]>,
+    parents: ArrayVec<[crate::ParentNode; MAX_DEPTH]>,
     content_len: u64,
     last_chunk_moved: u64,
     parents_needed: u8,
@@ -275,6 +274,121 @@ enum FlipperNext {
     Done,
 }
 
+pub(crate) enum StateFinish {
+    Parent(ParentNode),
+    Root(Hash),
+}
+
+#[derive(Clone)]
+pub(crate) struct State {
+    subtrees: ArrayVec<[Hash; MAX_DEPTH]>,
+    total_len: u64,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self {
+            subtrees: ArrayVec::new(),
+            total_len: 0,
+        }
+    }
+
+    pub fn count(&self) -> u64 {
+        self.total_len
+    }
+
+    fn merge_inner(&mut self, finalization: Finalization) -> ParentNode {
+        let right_child = self.subtrees.pop().unwrap();
+        let left_child = self.subtrees.pop().unwrap();
+        let parent_cv = blake3::guts::parent_cv(&left_child, &right_child, finalization.is_root());
+        self.subtrees.push(parent_cv);
+        let mut parent_node = [0; PARENT_SIZE];
+        parent_node[..HASH_SIZE].copy_from_slice(left_child.as_bytes());
+        parent_node[HASH_SIZE..].copy_from_slice(right_child.as_bytes());
+        parent_node
+    }
+
+    // We keep the subtree hashes in an array without storing their size, and we use this cute
+    // trick to figure out when we should merge them. Because every subtree (prior to the
+    // finalization step) is a power of two times the chunk size, adding a new subtree to the
+    // right/small end is a lot like adding a 1 to a binary number, and merging subtrees is like
+    // propagating the carry bit. Each carry represents a place where two subtrees need to be
+    // merged, and the final number of 1 bits is the same as the final number of subtrees.
+    fn needs_merge(&self) -> bool {
+        let chunks = self.total_len / CHUNK_SIZE as u64;
+        self.subtrees.len() > chunks.count_ones() as usize
+    }
+
+    /// Add a subtree hash to the state.
+    ///
+    /// For most callers, this will always be the hash of a `CHUNK_SIZE` chunk of input bytes, with
+    /// the final chunk possibly having fewer bytes. It's possible to use input subtrees larger
+    /// than a single chunk, as long as the size is a power of 2 times `CHUNK_SIZE` and again kept
+    /// constant until the final chunk. This can be helpful in a multi-threaded setting, where you
+    /// want to hash more than one chunk at a time per thread, but most callers should stick with
+    /// single chunks.
+    ///
+    /// In cases where the total input is a single chunk or less, including the case with no input
+    /// bytes at all, callers are expected to finalize that chunk themselves before pushing. (Or
+    /// just ignore the State object entirely.) It's of course impossible to back out the input
+    /// bytes and re-finalize them.
+    ///
+    /// # Panic
+    ///
+    /// This will panic if the total input length overflows a `u64`.
+    pub fn push_subtree(&mut self, hash: &Hash, len: usize) {
+        debug_assert!(!self.needs_merge());
+        self.subtrees.push(*hash);
+        // Overflow in the length is practically impossible if we're actually hashing the input,
+        // since it would take several hundred CPU years of work. But it could happen if we're
+        // doing something fancy with a sparse tree. In general, the Bao hash of more than u64::MAX
+        // bytes is not defined, and a correct implementation should refuse to compute it.
+        self.total_len = self
+            .total_len
+            .checked_add(len as u64)
+            .expect("addition overflowed");
+    }
+
+    /// Returns a `ParentNode` corresponding to a just-completed subtree, if
+    /// any. You must not call this until you're sure there's more input
+    /// coming, or else the finalization might be incorrect.
+    ///
+    /// Callers that want parent node bytes (to build an encoded tree) must call `merge_parent` in
+    /// a loop, until it returns `None`. Parent nodes are yielded in smallest-to-largest order.
+    /// Callers that only want the final root hash can ignore this function; the next call to
+    /// `push_subtree` will take care of merging in that case.
+    ///
+    /// After the final call to `push_subtree`, you must call `merge_finalize` in a loop instead of
+    /// this function.
+    pub fn merge_parent(&mut self) -> Option<ParentNode> {
+        if !self.needs_merge() {
+            return None;
+        }
+        Some(self.merge_inner(NotRoot))
+    }
+
+    /// Returns a tuple of `ParentNode` bytes and (in the last call only) the root hash. Callers
+    /// who need `ParentNode` bytes must call `merge_finalize` in a loop after pushing the final
+    /// subtree, until the second return value is `Some`. Callers who don't need parent nodes
+    /// should use the simpler `finalize` interface instead.
+    pub fn merge_finalize(&mut self) -> StateFinish {
+        if self.subtrees.len() > 2 {
+            StateFinish::Parent(self.merge_inner(NotRoot))
+        } else if self.subtrees.len() == 2 {
+            StateFinish::Parent(self.merge_inner(Root))
+        } else {
+            StateFinish::Root(self.subtrees[0])
+        }
+    }
+}
+
+impl fmt::Debug for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Avoid printing hashes, they might be secret.
+        write!(f, "State {{ ... }}")
+    }
+}
+
 /// An incremental encoder. Note that you must call `finalize` after you're
 /// done writing.
 ///
@@ -309,8 +423,8 @@ enum FlipperNext {
 #[derive(Clone, Debug)]
 pub struct Encoder<T: Read + Write + Seek> {
     inner: T,
-    chunk_state: blake2s_simd::State,
-    tree_state: crate::State,
+    chunk_state: blake3::guts::ChunkState,
+    tree_state: State,
     outboard: bool,
 }
 
@@ -321,10 +435,8 @@ impl<T: Read + Write + Seek> Encoder<T> {
     pub fn new(inner: T) -> Self {
         Self {
             inner,
-            // The chunk_state will have the Root finalization (the last_node
-            // flag) set later if it turns one that the root is a chunk.
-            chunk_state: chunk_params(NotRoot, 0).to_state(),
-            tree_state: crate::State::new(),
+            chunk_state: blake3::guts::ChunkState::new(0),
+            tree_state: State::new(),
             outboard: false,
         }
     }
@@ -352,7 +464,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
         let total_len = self
             .tree_state
             .count()
-            .checked_add(self.chunk_state.count())
+            .checked_add(self.chunk_state.len() as u64)
             .expect("addition overflowed");
 
         // If the chunk_state contains any chunk data, we have to finalize it
@@ -360,22 +472,18 @@ impl<T: Read + Write + Seek> Encoder<T> {
         // at all, we have to hash the empty chunk. Note that any partial chunk
         // bytes retained in the chunk_state have already been written to the
         // underlying writer by .write().
-        if self.chunk_state.count() > 0 || self.tree_state.count() == 0 {
-            if self.tree_state.count() == 0 {
-                // This is after-the-fact Root finalization.
-                self.chunk_state.set_last_node(true);
-            }
-            let hash = self.chunk_state.finalize().into();
-            self.tree_state
-                .push_subtree(&hash, self.chunk_state.count() as usize);
+        if self.chunk_state.len() > 0 || self.tree_state.count() == 0 {
+            let is_root = self.tree_state.count() == 0;
+            let hash = self.chunk_state.finalize(is_root);
+            self.tree_state.push_subtree(&hash, self.chunk_state.len());
         }
 
         // Merge and write all the parents along the right edge.
         let root_hash;
         loop {
             match self.tree_state.merge_finalize() {
-                crate::StateFinish::Parent(parent) => self.inner.write_all(&parent)?,
-                crate::StateFinish::Root(root) => {
+                StateFinish::Parent(parent) => self.inner.write_all(&parent)?,
+                StateFinish::Root(root) => {
                     root_hash = root;
                     break;
                 }
@@ -444,105 +552,27 @@ impl<T: Read + Write + Seek> Encoder<T> {
 }
 
 impl<T: Read + Write + Seek> Write for Encoder<T> {
-    fn write(&mut self, mut input: &[u8]) -> io::Result<usize> {
-        // Similar to Hasher, in normal operation we hash chunks in their
-        // entirety using SIMD as they come in, only retaining a partial chunk
-        // in the chunk_state if there's uneven input left over. However again,
-        // the first chunk is a special case: If we receive exactly one chunk
-        // on the first call, we have to retain it in the chunk_state, because
-        // we won't know how to finalize it until we get more input. (Receiving
-        // less than one chunk would retain it in any case, as uneven input
-        // left over.)
-        let orig_input_len = input.len();
-        let maybe_root = self.tree_state.count() == 0 && input.len() <= CHUNK_SIZE;
-        let have_partial_chunk = self.chunk_state.count() > 0;
-        if maybe_root || have_partial_chunk {
-            let want = CHUNK_SIZE - self.chunk_state.count() as usize;
-            let take = cmp::min(want, input.len());
-            if !self.outboard {
-                self.inner.write_all(&input[..take])?;
-            }
-            self.chunk_state.update(&input[..take]);
-            input = &input[take..];
-
-            // If there's more input coming, finish the chunk before we
-            // continue. Otherwise short circuit.
-            if !input.is_empty() {
-                // In this case there cannot be any pending parent nodes to be
-                // written, because either we're partway through a chunk
-                // already or we're the first chunk.
-                debug_assert!(self.tree_state.merge_parent().is_none());
-                let chunk_hash = self.chunk_state.finalize().into();
-                // At this point the chunk_state needs to be reset. However, we
-                // don't know what offset to use until we get to the next
-                // partial chunk. We'll reset it then.
-                self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
-            } else {
-                return Ok(orig_input_len);
-            }
-        }
-
-        // Hash groups of full chunks in parallel using SIMD. After hashing a
-        // group of chunks, write each chunk to the output (if non-outboard),
-        // incorporate its hash into the tree_state, and write out any
-        // completed parent nodes.
-        let mut chunk_index = self.tree_state.count() / CHUNK_SIZE as u64;
-        let mut chunks = input.chunks_exact(CHUNK_SIZE);
-        let mut fused_chunks = chunks.by_ref().fuse();
-        loop {
-            let chunk_group: ArrayVec<[&[u8; CHUNK_SIZE]; MAX_SIMD_DEGREE]> = fused_chunks
-                .by_ref()
-                .take(MAX_SIMD_DEGREE)
-                .map(|chunk| array_ref!(chunk, 0, CHUNK_SIZE))
-                .collect();
-            if chunk_group.is_empty() {
-                break;
-            }
-            let mut jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = chunk_group
-                .iter()
-                .map(|&chunk| {
-                    let params = chunk_params(NotRoot, chunk_index);
-                    chunk_index += 1;
-                    HashManyJob::new(&params, chunk)
-                })
-                .collect();
-            blake2s_simd::many::hash_many(&mut jobs);
-            for (&chunk, job) in chunk_group.iter().zip(&jobs) {
-                // Note that we always merge and write the previous chunk's
-                // parents just before writing the next chunk, rather than
-                // after we finished writing the previous chunk. That's because
-                // we don't know whether the last set of merges is root or not,
-                // until we get more input.
-                while let Some(parent) = self.tree_state.merge_parent() {
-                    self.inner.write_all(&parent)?;
-                }
-                if !self.outboard {
-                    self.inner.write_all(chunk)?;
-                }
-                let chunk_hash = job.to_hash().into();
-                self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
-            }
-        }
-
-        // Emit any remaining partial chunk bytes and retain them in the
-        // chunk_state.
-        debug_assert!(chunks.remainder().len() < CHUNK_SIZE);
-        debug_assert_eq!(self.chunk_state.count(), 0);
-        if !chunks.remainder().is_empty() {
-            // Again we merge and write the previous chunk's parents now that
-            // we're sure there's more input.
+    fn write(&mut self, input: &[u8]) -> io::Result<usize> {
+        // If the current chunk is full, we need to finalize it, add it to
+        // the tree state, and write out any completed parent nodes.
+        if self.chunk_state.len() == CHUNK_SIZE {
+            let chunk_hash = self.chunk_state.finalize(false);
+            self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
+            let chunk_counter = self.tree_state.count() / CHUNK_SIZE as u64;
+            self.chunk_state = blake3::guts::ChunkState::new(chunk_counter);
             while let Some(parent) = self.tree_state.merge_parent() {
                 self.inner.write_all(&parent)?;
             }
-            if !self.outboard {
-                self.inner.write_all(chunks.remainder())?;
-            }
-            // This is where we reset the chunk_state, because we know we're
-            // starting a new one.
-            self.chunk_state = chunk_params(NotRoot, chunk_index).to_state();
-            self.chunk_state.update(chunks.remainder());
         }
-        Ok(orig_input_len)
+
+        // Add as many bytes as possible to the current chunk.
+        let want = CHUNK_SIZE - self.chunk_state.len();
+        let take = cmp::min(want, input.len());
+        if !self.outboard {
+            self.inner.write_all(&input[..take])?;
+        }
+        self.chunk_state.update(&input[..take]);
+        Ok(take)
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -974,8 +1004,8 @@ pub(crate) enum LenNext {
 /// let mut slice = Vec::new();
 /// extractor.read_to_end(&mut slice)?;
 ///
-/// // The slice includes some overhead to store the necessary subtree hashes, but it's not much.
-/// assert_eq!(8712, slice.len());
+/// // The slice includes some overhead to store the necessary subtree hashes.
+/// assert_eq!(9096, slice.len());
 /// # Ok(())
 /// # }
 /// ```
@@ -1167,7 +1197,7 @@ mod test {
         for &case in crate::test::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let expected_hash = crate::hash(&input);
+            let expected_hash = blake3::hash(&input);
             let (encoded, hash) = encode(&input);
             assert_eq!(expected_hash, hash);
             assert_eq!(encoded.len() as u128, encoded_size(case as u64));
@@ -1184,12 +1214,16 @@ mod test {
         for &case in crate::test::TEST_CASES {
             println!("case {}", case);
             let input = make_test_input(case);
-            let expected_hash = crate::hash(&input);
+            let expected_hash = blake3::hash(&input);
             let (outboard, hash) = outboard(&input);
             assert_eq!(expected_hash, hash);
             assert_eq!(outboard.len() as u128, outboard_size(case as u64));
             assert_eq!(outboard.len(), outboard.capacity());
         }
+    }
+
+    fn largest_power_of_two_leq(n: u64) -> u64 {
+        ((n / 2) + 1).next_power_of_two()
     }
 
     // This is another way to calculate the number of parent nodes, which takes longer but is less
@@ -1202,7 +1236,7 @@ mod test {
             }
             answers[start as usize].0 += 1;
             answers[(start + size - 1) as usize].1 += 1;
-            let split = crate::largest_power_of_two_leq(size - 1);
+            let split = largest_power_of_two_leq(size - 1);
             recurse(start, split, answers);
             recurse(start + split, size - split, answers);
         }
@@ -1248,6 +1282,49 @@ mod test {
                     chunk, total_chunks
                 );
             }
+        }
+    }
+
+    fn drive_state(mut input: &[u8]) -> Hash {
+        let last_chunk_is_root = input.len() <= CHUNK_SIZE;
+        let mut state = State::new();
+        let mut chunk_index = 0;
+        while input.len() > CHUNK_SIZE {
+            let hash = blake3::guts::ChunkState::new(chunk_index)
+                .update(&input[..CHUNK_SIZE])
+                .finalize(false);
+            chunk_index += 1;
+            state.push_subtree(&hash, CHUNK_SIZE);
+            input = &input[CHUNK_SIZE..];
+            // Merge any parents, but throw away the result. We don't need
+            // them, but we need to avoid tripping an assert.
+            while state.merge_parent().is_some() {}
+        }
+        let hash = blake3::guts::ChunkState::new(chunk_index)
+            .update(input)
+            .finalize(last_chunk_is_root);
+        state.push_subtree(&hash, input.len());
+        loop {
+            match state.merge_finalize() {
+                StateFinish::Parent(_) => {}
+                StateFinish::Root(hash) => return hash,
+            }
+        }
+    }
+
+    // These tests just check the different implementations against each other,
+    // but explicit test vectors are included in test_vectors.json and checked
+    // in the integration tests.
+
+    #[test]
+    fn test_state() {
+        let buf = [0x42; 65537];
+        for &case in crate::test::TEST_CASES {
+            dbg!(case);
+            let input = &buf[..case];
+            let expected = blake3::hash(&input);
+            let found = drive_state(&input);
+            assert_eq!(expected, found, "hashes don't match");
         }
     }
 }

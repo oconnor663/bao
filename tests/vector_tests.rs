@@ -33,7 +33,7 @@ struct EncodeTest {
     input_len: usize,
     output_len: usize,
     bao_hash: String,
-    encoded_blake2s: String,
+    encoded_blake3: String,
     corruptions: Vec<usize>,
 }
 
@@ -42,7 +42,7 @@ struct OutboardTest {
     input_len: usize,
     output_len: usize,
     bao_hash: String,
-    encoded_blake2s: String,
+    encoded_blake3: String,
     outboard_corruptions: Vec<usize>,
     input_corruptions: Vec<usize>,
 }
@@ -65,7 +65,7 @@ struct SliceTestSlice {
     start: u64,
     len: u64,
     output_len: usize,
-    output_blake2s: String,
+    output_blake3: String,
     corruptions: Vec<usize>,
 }
 
@@ -81,24 +81,16 @@ fn make_input(len: usize) -> Vec<u8> {
     output
 }
 
-fn blake2s(bytes: &[u8]) -> String {
-    blake2s_simd::Params::new()
-        .hash_length(16)
-        .hash(bytes)
-        .to_hex()
-        .to_string()
-}
-
 #[test]
 fn test_hash_vectors() {
     for case in &TEST_VECTORS.hash {
         println!("case {:?}", case);
         let input = make_input(case.input_len);
-        let hash = bao::hash(&input);
+        let hash = blake3::hash(&input);
         assert_eq!(case.bao_hash, hash.to_hex().to_string());
 
         // Make sure the Hasher gives the same answer.
-        let mut hasher = bao::Hasher::new();
+        let mut hasher = blake3::Hasher::new();
         hasher.update(&input);
         let writer_hash = hasher.finalize();
         assert_eq!(hash, writer_hash);
@@ -111,7 +103,6 @@ fn corrupt_hash(hash: &Hash) -> Hash {
     bad_bytes.into()
 }
 
-#[cfg(feature = "std")]
 #[test]
 fn test_encode_vectors() {
     for case in &TEST_VECTORS.encode {
@@ -119,7 +110,10 @@ fn test_encode_vectors() {
         let input = make_input(case.input_len);
         let (encoded, hash) = bao::encode::encode(&input);
         assert_eq!(&*case.bao_hash, &*hash.to_hex());
-        assert_eq!(case.encoded_blake2s, blake2s(&encoded));
+        assert_eq!(
+            case.encoded_blake3,
+            blake3::hash(&encoded).to_hex().as_str()
+        );
         let encoded_size = bao::encode::encoded_size(case.input_len as u64) as usize;
         assert_eq!(encoded_size, encoded.len());
 
@@ -144,7 +138,6 @@ fn test_encode_vectors() {
     }
 }
 
-#[cfg(feature = "std")]
 fn decode_outboard(input: &[u8], outboard: &[u8], hash: &Hash) -> io::Result<Vec<u8>> {
     let mut reader = bao::decode::Decoder::new_outboard(input, outboard, hash);
     let mut output = Vec::with_capacity(input.len());
@@ -152,7 +145,6 @@ fn decode_outboard(input: &[u8], outboard: &[u8], hash: &Hash) -> io::Result<Vec
     Ok(output)
 }
 
-#[cfg(feature = "std")]
 #[test]
 fn test_outboard_vectors() {
     for case in &TEST_VECTORS.outboard {
@@ -160,7 +152,10 @@ fn test_outboard_vectors() {
         let input = make_input(case.input_len);
         let (outboard, hash) = bao::encode::outboard(&input);
         assert_eq!(&*case.bao_hash, &*hash.to_hex());
-        assert_eq!(case.encoded_blake2s, blake2s(&outboard));
+        assert_eq!(
+            case.encoded_blake3,
+            blake3::hash(&outboard).to_hex().as_str()
+        );
         let outboard_size = bao::encode::outboard_size(case.input_len as u64) as usize;
         assert_eq!(outboard_size, outboard.len());
 
@@ -194,7 +189,6 @@ fn test_outboard_vectors() {
     }
 }
 
-#[cfg(feature = "std")]
 #[test]
 fn test_seek_vectors() {
     for case in &TEST_VECTORS.seek {
@@ -275,7 +269,6 @@ fn test_seek_vectors() {
     }
 }
 
-#[cfg(feature = "std")]
 fn decode_slice(slice: &[u8], hash: &Hash, start: u64, len: u64) -> io::Result<Vec<u8>> {
     let mut reader = bao::decode::SliceDecoder::new(slice, hash, start, len);
     let mut output = Vec::new();
@@ -283,7 +276,6 @@ fn decode_slice(slice: &[u8], hash: &Hash, start: u64, len: u64) -> io::Result<V
     Ok(output)
 }
 
-#[cfg(feature = "std")]
 #[test]
 fn test_slice_vectors() {
     for case in &TEST_VECTORS.slice {
@@ -305,7 +297,10 @@ fn test_slice_vectors() {
             let mut combined_slice = Vec::new();
             combined_extractor.read_to_end(&mut combined_slice).unwrap();
             assert_eq!(slice.output_len, combined_slice.len());
-            assert_eq!(slice.output_blake2s, blake2s(&combined_slice));
+            assert_eq!(
+                slice.output_blake3,
+                blake3::hash(&combined_slice).to_hex().as_str()
+            );
 
             // Make sure slicing the outboard encoding also gives the right output.
             let mut outboard_extractor = bao::encode::SliceExtractor::new_outboard(
