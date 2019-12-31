@@ -4,10 +4,6 @@
 //! If there's a mismatch, decoding will return an error. It's possible for incremental decoding to
 //! return some valid bytes before encountering a error, but it will never return unverified bytes.
 //!
-//! This module requires the `std` feature, which is enabled by default. The
-//! standard library is only used for the `std::io::{Read, Write, Seek}`
-//! traits. This implementation does not allocate.
-//!
 //! # Example
 //!
 //! ```
@@ -468,16 +464,6 @@ impl<T: Read, O: Read> fmt::Debug for DecoderShared<T, O> {
 /// [`std::io::Seek`](https://doc.rust-lang.org/std/io/trait.Seek.html) if the
 /// underlying reader does, but it's also compatible with non-seekable readers.
 ///
-/// Reading from `Decoder` is more efficient when you use a buffer size that's
-/// a multiple of [`BUF_SIZE`](../constant.BUF_SIZE.html). The
-/// [`bao::copy`](../fn.copy.html) helper function takes care of this.
-///
-/// `Decoder` currently requires the `std` feature, which is enabled by
-/// default, because
-/// [`std::io::Read`](https://doc.rust-lang.org/std/io/trait.Read.html) is a
-/// required part of its interface. However, if `no_std` IO traits become
-/// available in the future, `Decoder` could use them.
-///
 /// # Example
 ///
 /// ```
@@ -598,16 +584,6 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 /// Note that there is no such thing as an "outboard slice". All slices include
 /// the content bytes and tree nodes intermixed, as in the combined encoding
 /// mode.
-///
-/// Reading from `SliceDecoder` is more efficient when you use a buffer size
-/// that's a multiple of [`BUF_SIZE`](../constant.BUF_SIZE.html). The
-/// [`bao::copy`](../fn.copy.html) helper function takes care of this.
-///
-/// `SliceDecoder` currently requires the `std` feature, which is enabled by
-/// default, because
-/// [`std::io::Read`](https://doc.rust-lang.org/std/io/trait.Read.html) is a
-/// required part of its interface. However, if `no_std` IO traits become
-/// available in the future, `SliceDecoder` could use them.
 ///
 /// # Example
 ///

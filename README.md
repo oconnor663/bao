@@ -1,34 +1,15 @@
 # Bao [![Build Status](https://travis-ci.org/oconnor663/bao.svg?branch=master)](https://travis-ci.org/oconnor663/bao) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao) [![crates.io](https://img.shields.io/crates/v/bao.svg)](https://crates.io/crates/bao)
 
-[Spec](docs/spec.md) —
+[Spec](docs/blake3_bao_spec.md) —
 [Rust Crate](https://crates.io/crates/bao) —
 [Rust Docs](https://docs.rs/bao)
 
-> **Caution!** Not yet suitable for production use. The output of Bao
-> isn't stable. There might be more changes before 1.0.
-
-Bao (rhymes with bough 🌳) is a general-purpose cryptographic tree hash.
-Here's the [full specification](docs/spec.md) and a [talk about the
-design](https://youtu.be/Dya9c2DXMqQ). Unlike a serial hash function, a
-tree hash allows the implementation to split up its input and work in
-parallel. On modern hardware with multiple cores and SIMD instructions,
-that makes a dramatic difference in performance:
-
-![snazzy gif](docs/bao_hash.gif)
-
-Bao also performs well on short messages and 32-bit systems. It's based
-on the [BLAKE2s](https://blake2.net/) hash function, which was designed
-for those use cases:
-
-[![x86 graph](docs/x86.png)](https://raw.githubusercontent.com/oconnor663/bao/master/docs/x86.svg?sanitize=true)[![Raspberry Pi graph](docs/rpi2.png)](https://raw.githubusercontent.com/oconnor663/bao/master/docs/rpi2.svg?sanitize=true)
-
-## Streaming Verification
-
-Tree hashes make it possible to verify part of a file without re-hashing
-the entire thing. Bao defines an encoding format, which stores an input
-together with all the nodes of its hash tree. Clients can stream this
-encoding, or do random seeks into it, while verifying that every byte
-they read matches the root hash.
+Bao (rhymes with bough 🌳) is an implementation of BLAKE3 verified
+streaming. Tree hashes like BLAKE3 make it possible to verify part of a
+file without re-hashing the entire thing, using an encoding format that
+stores an input together with all the nodes of its hash tree. Clients
+can stream this encoding, or do random seeks into it, while verifying
+that every byte they read matches the root hash.
 
 Use case: A secure messaging app might support attachment files by
 including the hash of an attachment in the metadata of a message. With a

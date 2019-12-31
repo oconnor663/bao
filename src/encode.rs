@@ -12,10 +12,6 @@
 //! copying any input bytes. The outboard encoding is much smaller, but it can
 //! only be used together with the original input file.
 //!
-//! This module requires the `std` feature, which is enabled by default. The
-//! standard library is only used for the `std::io::{Read, Write, Seek}`
-//! traits. This implementation does not allocate.
-//!
 //! # Example
 //!
 //! ```
@@ -394,17 +390,6 @@ impl fmt::Debug for State {
 ///
 /// `Encoder` supports both combined and outboard encoding, depending on which
 /// constructor you use.
-///
-/// Writing to `Encoder` is more efficient when you use a buffer size that's a
-/// multiple of [`BUF_SIZE`](../constant.BUF_SIZE.html). The
-/// [`bao::copy`](../fn.copy.html) helper function takes care of this.
-///
-/// `Encoder` currently requires the `std` feature, which is enabled by
-/// default, because
-/// [`std::io::Write`](https://doc.rust-lang.org/std/io/trait.Write.html) and
-/// [`std::io::Seek`](https://doc.rust-lang.org/std/io/trait.Seek.html) are
-/// required parts of its interface. However, if `no_std` IO traits become
-/// available in the future, `Encoder` could use them.
 ///
 /// # Example
 ///

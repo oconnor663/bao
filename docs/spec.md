@@ -1,7 +1,8 @@
-# The Bao Spec
+> **Historical version.** This spec describes Bao 0.9.1. As of version 0.10,
+> Bao is based on the BLAKE3 standard, and much of this document no longer
+> applies.
 
-> **Caution!** Not yet suitable for production use. The output of Bao
-> isn't stable. There might be more changes before 1.0.
+# The Bao Spec
 
 ## Contents
 
