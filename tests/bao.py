@@ -55,14 +55,123 @@ import hashlib
 import hmac
 import sys
 
-CHUNK_SIZE = 4096
+IV = [
+    0x6A09E667,
+    0xBB67AE85,
+    0x3C6EF372,
+    0xA54FF53A,
+    0x510E527F,
+    0x9B05688C,
+    0x1F83D9AB,
+    0x5BE0CD19,
+]
+
+MSG_SCHEDULE = [
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
+    [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
+    [7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8],
+    [9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13],
+    [2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9],
+    [12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11],
+]
+
+BLOCK_SIZE = 64
+CHUNK_SIZE = 1024
+KEY_SIZE = 32
 HASH_SIZE = 32
 PARENT_SIZE = 2 * HASH_SIZE
+WORD_BITS = 32
+WORD_BYTES = 4
+WORD_MAX = 2**WORD_BITS - 1
 HEADER_SIZE = 8
 
+# domain flags
+CHUNK_START = 1 << 0
+CHUNK_END = 1 << 1
+PARENT = 1 << 2
+ROOT = 1 << 3
+KEYED_HASH = 1 << 4
+DERIVE_KEY = 1 << 5
+
 # finalization flags
-ROOT = object()
+IS_ROOT = object()
 NOT_ROOT = object()
+
+
+def wrapping_add(a, b):
+    return (a + b) & WORD_MAX
+
+
+def rotate_right(x, n):
+    return (x >> n | x << (WORD_BITS - n)) & WORD_MAX
+
+
+def g(state, a, b, c, d, x, y):
+    state[a] = wrapping_add(state[a], wrapping_add(state[b], x))
+    state[d] = rotate_right(state[d] ^ state[a], 16)
+    state[c] = wrapping_add(state[c], state[d])
+    state[b] = rotate_right(state[b] ^ state[c], 12)
+    state[a] = wrapping_add(state[a], wrapping_add(state[b], y))
+    state[d] = rotate_right(state[d] ^ state[a], 8)
+    state[c] = wrapping_add(state[c], state[d])
+    state[b] = rotate_right(state[b] ^ state[c], 7)
+
+
+def round(state, msg_words, schedule):
+    # Mix the columns.
+    g(state, 0, 4, 8, 12, msg_words[schedule[0]], msg_words[schedule[1]])
+    g(state, 1, 5, 9, 13, msg_words[schedule[2]], msg_words[schedule[3]])
+    g(state, 2, 6, 10, 14, msg_words[schedule[4]], msg_words[schedule[5]])
+    g(state, 3, 7, 11, 15, msg_words[schedule[6]], msg_words[schedule[7]])
+    # Mix the rows.
+    g(state, 0, 5, 10, 15, msg_words[schedule[8]], msg_words[schedule[9]])
+    g(state, 1, 6, 11, 12, msg_words[schedule[10]], msg_words[schedule[11]])
+    g(state, 2, 7, 8, 13, msg_words[schedule[12]], msg_words[schedule[13]])
+    g(state, 3, 4, 9, 14, msg_words[schedule[14]], msg_words[schedule[15]])
+
+
+def words_from_bytes(buf):
+    words = [0] * (len(buf) // WORD_BYTES)
+    for word_i in range(len(words)):
+        words[word_i] = int.from_bytes(
+            buf[word_i * WORD_BYTES:(word_i + 1) * WORD_BYTES], "little")
+    return words
+
+
+def bytes_from_words(words):
+    buf = bytearray(len(words) * WORD_BYTES)
+    for word_i in range(len(words)):
+        buf[WORD_BYTES * word_i:WORD_BYTES * (word_i + 1)] = \
+            words[word_i].to_bytes(WORD_BYTES, "little")
+    return buf
+
+
+# The truncated BLAKE3 compression function. This implementation does not
+# support extended output.
+def compress(cv, block, block_len, offset, flags):
+    block_words = words_from_bytes(block)
+    state = [
+        cv[0],
+        cv[1],
+        cv[2],
+        cv[3],
+        cv[4],
+        cv[5],
+        cv[6],
+        cv[7],
+        IV[0],
+        IV[1],
+        IV[2],
+        IV[3],
+        offset & WORD_MAX,
+        (offset >> WORD_BITS) & WORD_MAX,
+        block_len,
+        flags,
+    ]
+    for round_number in range(7):
+        round(state, block_words, MSG_SCHEDULE[round_number])
+    return [state[i] ^ state[i + 8] for i in range(8)]
 
 
 # The standard read() function is allowed to return fewer bytes than requested
@@ -87,27 +196,24 @@ def decode_len(len_bytes):
     return int.from_bytes(len_bytes, "little")
 
 
-# The root node (whether it's a chunk or a parent) is hashed with the BLAKE2
-# "last node" flag set, and with the total content length as a suffix. In that
-# case, the finalization parameter is the content length as an integer. All
-# interior nodes set finalization=None.
-def hash_node(node_bytes, is_chunk, finalization, node_offset):
-    # The BLAKE2X node_offset parameter maxes out at 2^32-1. Just take the
-    # lower 32 bits of the node offset, and allow that the node offset might
-    # wrap in a very large tree.
-    NODE_OFFSET_UPPER_BOUND = 2**32
-    state = hashlib.blake2s(
-        digest_size=HASH_SIZE,
-        fanout=2,
-        depth=255,
-        leaf_size=4096,
-        node_offset=node_offset % NODE_OFFSET_UPPER_BOUND,
-        node_depth=0 if is_chunk else 1,
-        inner_size=HASH_SIZE,
-        last_node=finalization is ROOT,
-    )
-    state.update(node_bytes)
-    return state.digest()
+def hash_node(node_bytes, is_chunk, finalization, counter):
+    cv = IV[:]
+    i = 0
+    flags = CHUNK_START if is_chunk else PARENT
+    while len(node_bytes) - i > BLOCK_SIZE:
+        block = node_bytes[i:i + BLOCK_SIZE]
+        cv = compress(cv, block, BLOCK_SIZE, counter, flags)
+        flags = 0
+        i += BLOCK_SIZE
+    if is_chunk:
+        flags |= CHUNK_END
+    if finalization is IS_ROOT:
+        flags |= ROOT
+    block = node_bytes[i:]
+    block_len = len(block)
+    block += b"\0" * (BLOCK_SIZE - block_len)
+    cv = compress(cv, block, block_len, counter, flags)
+    return bytes_from_words(cv)
 
 
 def hash_chunk(chunk_bytes, finalization, chunk_index):
@@ -160,7 +266,7 @@ def bao_encode(buf, *, outboard=False):
         return encoded, hash_parent(node, finalization)
 
     # Only this topmost call sets a non-None finalization.
-    encoded, hash_ = encode_recurse(buf, ROOT)
+    encoded, hash_ = encode_recurse(buf, IS_ROOT)
     # The final output prefixes the encoded length.
     output = encode_len(len(buf)) + encoded
     return output, hash_
@@ -188,7 +294,7 @@ def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
 
     # The first HEADER_SIZE bytes are the encoded content len.
     content_len = decode_len(read_exact(tree_stream, HEADER_SIZE))
-    decode_recurse(hash_, content_len, ROOT)
+    decode_recurse(hash_, content_len, IS_ROOT)
 
 
 def bao_hash(input_stream):
@@ -203,12 +309,12 @@ def bao_hash(input_stream):
         if not read:
             if chunks == 0:
                 # This is the only chunk and therefore the root.
-                return hash_chunk(buf, ROOT, chunks)
+                return hash_chunk(buf, IS_ROOT, chunks)
             new_subtree = hash_chunk(buf, NOT_ROOT, chunks)
             while len(subtrees) > 1:
                 parent = subtrees.pop() + new_subtree
                 new_subtree = hash_parent(parent, NOT_ROOT)
-            return hash_parent(subtrees[0] + new_subtree, ROOT)
+            return hash_parent(subtrees[0] + new_subtree, IS_ROOT)
         # If we already had a full chunk buffered, hash it and merge subtrees
         # before adding in bytes we just read into the buffer. This order or
         # operations means we know the finalization is non-root.
@@ -345,7 +451,7 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
             decode_slice_recurse(subtree_start + llen, subtree_len - llen,
                                  right_hash, NOT_ROOT)
 
-    decode_slice_recurse(0, content_len, hash_, ROOT)
+    decode_slice_recurse(0, content_len, hash_, IS_ROOT)
 
 
 def open_input(maybe_path):
