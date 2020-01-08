@@ -1,15 +1,13 @@
-# Bao [![Build Status](https://travis-ci.org/oconnor663/bao.svg?branch=master)](https://travis-ci.org/oconnor663/bao) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao) [![crates.io](https://img.shields.io/crates/v/bao.svg)](https://crates.io/crates/bao)
+# <img src="docs/bao.svg" alt="Bao" height=100> &nbsp; [![Build Status](https://travis-ci.org/oconnor663/bao.svg?branch=master)](https://travis-ci.org/oconnor663/bao) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao) [![crates.io](https://img.shields.io/crates/v/bao.svg)](https://crates.io/crates/bao)
 
-[Spec](docs/blake3_bao_spec.md) —
-[Rust Crate](https://crates.io/crates/bao) —
-[Rust Docs](https://docs.rs/bao)
+[Spec](docs/blake3_bao_spec.md) — [Rust Crate](https://crates.io/crates/bao) — [Rust Docs](https://docs.rs/bao)
 
-Bao (rhymes with bough 🌳) is an implementation of BLAKE3 verified
-streaming. Tree hashes like BLAKE3 make it possible to verify part of a
-file without re-hashing the entire thing, using an encoding format that
-stores an input together with all the nodes of its hash tree. Clients
-can stream this encoding, or do random seeks into it, while verifying
-that every byte they read matches the root hash.
+Bao is an implementation of BLAKE3 verified streaming. Tree hashes like
+BLAKE3 make it possible to verify part of a file without re-hashing the
+entire thing, using an encoding format that stores an input together
+with all the nodes of its hash tree. Clients can stream this encoding,
+or do random seeks into it, while verifying that every byte they read
+matches the root hash.
 
 Use case: A secure messaging app might support attachment files by
 including the hash of an attachment in the metadata of a message. With a
