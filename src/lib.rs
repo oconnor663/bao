@@ -1,11 +1,11 @@
 //! [Repo](https://github.com/oconnor663/bao) —
 //! [Crate](https://crates.io/crates/bao) —
-//! [Spec](https://github.com/oconnor663/bao/blob/master/docs/blake3_bao_spec.md)
+//! [Spec](https://github.com/oconnor663/bao/blob/master/docs/spec.md)
 //!
 //! Bao is an implementation of BLAKE3 verified streaming. For more about how
 //! verified streaming works and what the Bao format looks like, see the
 //! [project README](https://github.com/oconnor663/bao) and the [full
-//! specification](https://github.com/oconnor663/bao/blob/master/docs/blake3_bao_spec.md).
+//! specification](https://github.com/oconnor663/bao/blob/master/docs/spec.md).
 //!
 //! # Example
 //!

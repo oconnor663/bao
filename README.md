@@ -1,6 +1,6 @@
 # <a href="#"><img src="docs/bao.svg" alt="Bao" height=100></a> &nbsp; [![Build Status](https://travis-ci.org/oconnor663/bao.svg?branch=master)](https://travis-ci.org/oconnor663/bao) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao) [![crates.io](https://img.shields.io/crates/v/bao.svg)](https://crates.io/crates/bao)
 
-[Spec](docs/blake3_bao_spec.md) — [Rust Crate](https://crates.io/crates/bao) — [Rust Docs](https://docs.rs/bao)
+[Spec](docs/spec.md) — [Rust Crate](https://crates.io/crates/bao) — [Rust Docs](https://docs.rs/bao)
 
 Bao is an implementation of BLAKE3 verified streaming. Tree hashes like
 BLAKE3 make it possible to verify part of a file without re-hashing the
