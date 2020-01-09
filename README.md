@@ -9,6 +9,9 @@ with all the nodes of its hash tree. Clients can stream this encoding,
 or do random seeks into it, while verifying that every byte they read
 matches the root hash.
 
+> **Caution!** Bao is beta cryptography software. It has not been
+> formally audited yet.
+
 ## Encoding and Decoding
 
 Use case: A secure messaging app might support attachment files by
