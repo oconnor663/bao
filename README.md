@@ -2,12 +2,13 @@
 
 [Spec](docs/spec.md) — [Rust Crate](https://crates.io/crates/bao) — [Rust Docs](https://docs.rs/bao)
 
-Bao is an implementation of BLAKE3 verified streaming. Tree hashes like
-BLAKE3 make it possible to verify part of a file without re-hashing the
-entire thing, using an encoding format that stores an input together
-with all the nodes of its hash tree. Clients can stream this encoding,
-or do random seeks into it, while verifying that every byte they read
-matches the root hash.
+Bao is an implementation of
+[BLAKE3](https://github.com/BLAKE3-team/BLAKE3) verified streaming. Tree
+hashes like BLAKE3 make it possible to verify part of a file without
+re-hashing the entire thing, using an encoding format that stores an
+input together with all the nodes of its hash tree. Clients can stream
+this encoding, or do random seeks into it, while verifying that every
+byte they read matches the root hash.
 
 > **Caution!** Bao is beta cryptography software. It has not been
 > formally audited yet.
