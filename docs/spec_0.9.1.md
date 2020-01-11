@@ -1,6 +1,6 @@
 > **Historical version.** This spec describes Bao 0.9.1. As of version 0.10,
 > Bao is based on the BLAKE3 standard, and much of this document no longer
-> applies.
+> applies. Here is the [current spec](spec.md).
 
 # The Bao Spec
 
