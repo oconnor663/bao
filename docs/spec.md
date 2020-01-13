@@ -17,15 +17,15 @@
 
 ## Combined Encoding Format
 
-The combined encoding file format is the contents of the chunks and parent
-nodes of the tree concatenated together in pre-order (that is a parent,
-followed by its left subtree, followed by its right subtree), with the 8-byte
-little-endian unsigned input length prepended to the very front. This makes the
-order of nodes on disk the same as the order in which a depth-first traversal
-would encounter them, so a decoder reading the tree from beginning to end
-doesn't need to do any seeking. Here's the example input of 2049 zero bytes
-(two full chunks and a third chunk with just one byte), formatted as an encoded
-file:
+The combined encoding file format is the contents of the chunks and parent nodes of the
+[BLAKE3 tree](https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf)
+concatenated together in pre-order (that is a parent, followed by its left
+subtree, followed by its right subtree), with the 8-byte little-endian unsigned
+input length prepended to the very front. This makes the order of nodes on disk
+the same as the order in which a depth-first traversal would encounter them, so
+a decoder reading the tree from beginning to end doesn't need to do any
+seeking. Here's the example input of 2049 zero bytes (two full chunks and a
+third chunk with just one byte), formatted as an encoded file:
 
 ```
 input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
@@ -80,13 +80,15 @@ The reference implementation is permissive.
 
 After parsing the length from the first eight bytes of an encoding, the decoder
 traverses the tree by reading parent nodes and chunk nodes. The decoder
-verifies the hash of each node as it's read, and it may return the contents of
-each valid chunk to the caller immediately. The length itself is considered
-validated _when and only when_ the decoder validates the final chunk, either by
-validating the entire encoding or by seeking to the end and validating only the
-right edge of the tree. The decoder _must not_ expose the length to the caller
-in any way before the final chunk is validated. There are a number of ways the
-decoder might expose the length, some of which are less obvious than others:
+verifies the chaining value (CV) of each node as it's read, and it may return
+the contents of each valid chunk to the caller immediately. CVs are computed as per the
+[BLAKE3 spec](https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf).
+The length itself is considered validated _when and only when_ the decoder
+validates the final chunk, either by validating the entire encoding or by
+seeking to the end and validating only the right edge of the tree. The decoder
+_must not_ expose the length to the caller in any way before the final chunk is
+validated. There are a number of ways the decoder might expose the length, some
+of which are less obvious than others:
 
 - An explicit `.length()` method. The reference implementation doesn't include
   one, because it would be required to seek internally. Callers who need the
@@ -108,8 +110,8 @@ decoder might expose the length, some of which are less obvious than others:
   which means the seek itself must validate the final chunk.
 
 For decoders that don't expose a `.length()` method and don't support seeking,
-the security requirements can be simplified to "verify the hash of every node
-you read, and don't skip the empty chunk." But decoders that do support seeking
+the security requirements can be simplified to "verify the CV of every node you
+read, and don't skip the empty chunk." But decoders that do support seeking
 need to consider the final chunk requirement very carefully. The decoder is
 expected to maintain these guarantees, even in the face of a man-in-the-middle
 attacker who modifies the encoded bytes:
@@ -139,23 +141,23 @@ possible by modifying or truncating the rest of the encoding. The story is more
 complicated if we consider "sloppy" implementations that accept some invalid
 encodings, in which case hashing the length could mitigate some attacks but
 would also create some new ones. An earlier version of the Bao design did hash
-the length bytes, but the current design doesn't.
+the length bytes, but the current design doesn't. This has the nice property
+that the `bao hash` of a file is the same as the regular BLAKE3 hash.
 
 Let's start by considering a correct decoder. What happens if a
 man-in-the-middle attacker tweaks the length header in between encoding and
 decoding? Small tweaks change the expected length of the final chunk. For
 example, if you subtract one from the length, the final chunk might go from 10
 bytes to 9 bytes. Assuming the collision resistance of BLAKE3, the 9-byte chunk
-will necessarily have a different hash, and validating it will lead to a hash
+will necessarily have a different CV, and validating it will lead to a hash
 mismatch error. Adding one to the length would be similar. Either no additional
 bytes are available at the end to supply the read, leading to an IO error, or
 an extra byte is available somehow, leading to a hash mismatch. Larger tweaks
 have a bigger effect on the expected structure of the tree. Growing the tree
-leads to chunk hashes being reinterpreted as parent hashes, and shrinking the
-tree leads to parent hashes being reinterpreted as chunk hashes. Since chunks
-and parents are domain separated from each other, this also leads to hash
-mismatch errors in the tree, in particular always including some node along the
-right edge.
+leads to chunk CVs being reinterpreted as parent CVs, and shrinking the tree
+leads to parent CVs being reinterpreted as chunk CVs. Since chunks and parents
+are domain separated from each other, this also leads to hash mismatch errors
+in the tree, in particular always including some node along the right edge.
 
 Those observations are the reason behind the "final chunk requirement" for
 decoders. That is, a decoder must always validate the final chunk before
@@ -168,10 +170,10 @@ but that's indistinguishable from simple corruption or truncation at the same
 point in the tree.
 
 So, what happens if the decoder gets sloppy? Of course the implementation could
-neglect to check any hashes at all, providing no security. Assuming the
-implementation does check hashes, there are couple other subtle mistakes that
-can still come up in practice (insofar as I made them myself in early versions
-of the reference implementation).
+neglect to check any CVs at all, providing no security. Assuming the
+implementation does check CVs, there are couple other subtle mistakes that can
+still come up in practice (insofar as I made them myself in early versions of
+Bao).
 
 The first one, we just mentioned: failure to uphold the "final chunk
 requirement". As a special case, recall that the empty tree consists of a
@@ -235,11 +237,11 @@ mitigated some attacks on sloppy implementations -- that would be some
 motivation to do it. However, that last scenario above actually leads to a new
 class of attacks, by violating Bao's "no decoding collisions" guarantee. That
 is, no input should ever decode (successfully, to completion) under more than
-one hash. (And naturally the one hash an input does decode under must be the
-hash of itself.) The illegitimate encoding above and its exotic root hash
-constitute a "decoding collision" with the legitimate encoding they're derived
-from. To put yourself in the shoes of a caller who might care about this
-property, imagine you have a dictionary containing Bao encodings indexed by the
+one hash. (And the one hash an input does decode under must be the BLAKE3 hash
+of itself.) The illegitimate encoding above and its exotic root hash constitute
+a "decoding collision" with the legitimate encoding they're derived from. To
+put yourself in the shoes of a caller who might care about this property,
+imagine you have a dictionary containing Bao encodings indexed by the BLAKE3
 hashes that decode them. If you find that a given string's hash isn't present
 as a key in your dictionary, is it safe for you to assume that no encoding in
 your dictionary will decode to that string? Bao says yes, you may assume that.
@@ -249,14 +251,14 @@ associated data would actually make sloppy implementations _less_ secure, by
 giving attackers a way to create decoding collisions.
 
 Earlier versions of Bao did append the length to the root node, instead of
-using a chunk/parent distinguisher. A proper distinguisher (the `node_depth`
-initialization parameter) was added later, both to better fit the [*Sufficient
-conditions*](https://eprint.iacr.org/2009/210.pdf) framework and to avoid
-issues around integer overflow. At that point the length suffix was redundant,
-and it also incurred some performance overhead in the short message case, where
-a one-block message would require two blocks of compression. It was dropped
-mainly for that performance reason, since the sloppy implementation concerns
-above aren't decisive either way.
+using a chunk/parent distinguisher. A proper distinguisher was added later (the
+`node_depth` initialization parameter, as Bao was based on BLAKE2 at that time),
+both to better fit the [*Sufficient conditions*](https://eprint.iacr.org/2009/210.pdf)
+framework and to avoid issues around integer overflow. At that point the length
+suffix was redundant, and it also incurred some performance overhead in the
+short message case, where a one-block message would require two blocks of
+compression. It was dropped mainly for that performance reason, since the
+sloppy implementation concerns above aren't decisive either way.
 
 ### Why is the encoding format malleable?
 
