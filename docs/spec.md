@@ -128,7 +128,7 @@ Note one non-guarantee in particular: The encoding itself may be malleable.
 Multiple "different" encodings may decode to the same input, under the same
 hash. See the design rationales for more on this.
 
-## Design Rationales and Open Questions
+## Design Rationales
 
 ### Would hashing the length as associated data improve the security of the decoder?
 
