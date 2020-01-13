@@ -14,3 +14,4 @@ script:
   - cargo test --no-default-features
   # Test the bao_bin sub-crate.
   - (cd bao_bin && cargo test)
+  - (cd bao_bin && cargo test --no-default-features)
