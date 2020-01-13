@@ -10,7 +10,7 @@
 * [Outboard Encoding Format](#outboard-encoding-format)
 * [Slice Format](#slice-format)
 * [Decoder](#decoder)
-* [Design Rationales and Open Questions](#design-rationales-and-open-questions)
+* [Discussion](#discussion)
   + [Would hashing the length as associated data improve the security of the decoder?](#would-hashing-the-length-as-associated-data-improve-the-security-of-the-decoder)
   + [Why is the encoding format malleable?](#why-is-the-encoding-format-malleable)
 
@@ -128,7 +128,7 @@ Note one non-guarantee in particular: The encoding itself may be malleable.
 Multiple "different" encodings may decode to the same input, under the same
 hash. See the design rationales for more on this.
 
-## Design Rationales
+## Discussion
 
 ### Would hashing the length as associated data improve the security of the decoder?
 
