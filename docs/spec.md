@@ -126,7 +126,8 @@ attacker who modifies the encoded bytes:
 
 Note one non-guarantee in particular: The encoding itself may be malleable.
 Multiple "different" encodings may decode to the same input, under the same
-hash. See the design rationales for more on this.
+hash. See the [discussion below](#why-is-the-encoding-format-malleable) for
+more on this.
 
 ## Discussion
 
