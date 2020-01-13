@@ -119,10 +119,10 @@ attacker who modifies the encoded bytes:
 - If EOF is indicated to the caller in any way, either through a read or
   through a seek, it matches the length of the original input.
 - If the decoder reads a complete output to EOF, the decoding hash must be the
-  Bao hash of that output. There are no "decoding collisions" where two
-  different hashes decode the same output to EOF. (Though two different hashes
-  may decode the same output, if at least one of the decodings encounters an
-  error before EOF.)
+  BLAKE3 hash of that output. There are no "decoding collisions" where two
+  different hashes decode the same output to EOF. Two different hashes may
+  decode the same output, however, if at least one of them terminates with an
+  error before EOF.
 
 Note one non-guarantee in particular: The encoding itself may be malleable.
 Multiple "different" encodings may decode to the same input, under the same

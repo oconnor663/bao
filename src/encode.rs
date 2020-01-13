@@ -337,7 +337,7 @@ impl State {
         self.subtrees.push(*hash);
         // Overflow in the length is practically impossible if we're actually hashing the input,
         // since it would take several hundred CPU years of work. But it could happen if we're
-        // doing something fancy with a sparse tree. In general, the Bao hash of more than u64::MAX
+        // doing something fancy with a sparse tree. In general, the BLAKE3 hash of more than u64::MAX
         // bytes is not defined, and a correct implementation should refuse to compute it.
         self.total_len = self
             .total_len
