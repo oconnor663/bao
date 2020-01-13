@@ -35,7 +35,7 @@ original motivation for the Bao project.)
 # Compare the size of the two files. The encoding overhead is small.
 > stat -c "%n %s" f f.bao | column -t
 f       1000000
-f.bao   1015624
+f.bao   1062472
 
 # Compute the BLAKE3 hash of the original file. The `b3sum` tool would
 # also work here.
@@ -82,7 +82,7 @@ challenges for the future.
 # Look at the size of the slice. It contains the 100 KB of content plus
 # some overhead. Again, the overhead is small.
 > stat -c "%n %s" f.slice
-f.slice 104584
+f.slice 107272
 
 # Using the same parameters we used to create the slice, plus the same
 # hash we got above from the full encoding, decode the slice.
@@ -116,8 +116,8 @@ these cases, you can use the "outboard" encoding format, via the
 # equal to the overhead of the original combined file.
 > stat -c "%n %s" f f.bao f.obao | column -t
 f       1000000
-f.bao   1015624
-f.obao  15624
+f.bao   1062472
+f.obao  62472
 
 # Decode the whole file in outboard mode. Note that both the original
 # input file and the outboard encoding are passed in as arguments.
