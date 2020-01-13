@@ -8,10 +8,8 @@ rust:
   - beta
   - nightly
 script:
-  # With std (and any other optional features that might be added in the future).
-  - cargo test --all-features
-  # Without std.
-  - cargo test --no-default-features
+  - cargo test
+  - cargo test --features=c_avx512,rayon
   # Test the bao_bin sub-crate.
   - (cd bao_bin && cargo test)
   - (cd bao_bin && cargo test --no-default-features)
