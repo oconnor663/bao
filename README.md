@@ -21,9 +21,9 @@ Use case: A secure messaging app might support attachment files by
 including the hash of an attachment in the metadata of a message. With a
 serial hash, the recipient would need to download the entire attachment
 to verify it, but that can be impractical for things like large video
-files. With a tree hash like Bao, the recipient can stream a video
-attachment, while still verifying each byte as it comes in. (This
-scenario was the original motivation for the Bao project.)
+files. With BLAKE3 and Bao, the recipient can stream a video attachment,
+while still verifying each byte as it comes in. (This scenario was the
+original motivation for the Bao project.)
 
 ```sh
 # Create an input file that's a megabyte of random data.
@@ -37,7 +37,8 @@ scenario was the original motivation for the Bao project.)
 f       1000000
 f.bao   1015624
 
-# Compute the hash of the original file.
+# Compute the BLAKE3 hash of the original file. The `b3sum` tool would
+# also work here.
 > hash=`bao hash f`
 
 # Stream decoded bytes from the encoded file, using the hash above.
@@ -148,8 +149,3 @@ cargo build --release
 implementation in Python, designed to be as short and readable as
 possible. It's a good starting point for understanding the algorithms
 involved, before diving into the Rust code.
-
-The `bao` library crate includes `no_std` support if you set
-`default-features = false` in your `Cargo.toml`. The `encode` and
-`decode` modules currently depend on `std` for the `Read`, `Write`, and
-`Seek` traits.
