@@ -24,8 +24,10 @@ subtree, followed by its right subtree), with the 8-byte little-endian unsigned
 input length prepended to the very front. This makes the order of nodes on disk
 the same as the order in which a depth-first traversal would encounter them, so
 a decoder reading the tree from beginning to end doesn't need to do any
-seeking. Here's the example input of 2049 zero bytes (two full chunks and a
-third chunk with just one byte), formatted as an encoded file:
+seeking. The contents of each parent node are the concatenated hashes
+("chaining values") of its left and right children. Here's the example input of
+2049 zero bytes (two full chunks and a third chunk with just one byte),
+formatted as an encoded file:
 
 ```
 input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
