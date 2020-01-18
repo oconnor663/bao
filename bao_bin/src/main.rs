@@ -313,14 +313,18 @@ fn maybe_memmap_input(input: &Input) -> Result<Option<memmap::Mmap>, Error> {
         Input::File(ref file) => file,
     };
     let metadata = in_file.metadata()?;
+    let file_size = metadata.len();
     Ok(if !metadata.is_file() {
         // Not a real file.
         None
-    } else if metadata.len() > isize::max_value() as u64 {
+    } else if file_size > isize::max_value() as u64 {
         // Too long to safely map. https://github.com/danburkert/memmap-rs/issues/69
         None
-    } else if metadata.len() == 0 {
+    } else if file_size == 0 {
         // Mapping an empty file currently fails. https://github.com/danburkert/memmap-rs/issues/72
+        None
+    } else if file_size < 16 * 1024 {
+        // Mapping small files is not worth it.
         None
     } else {
         // Explicitly set the length of the memory map, so that filesystem changes can't race to
