@@ -963,7 +963,7 @@ pub(crate) enum LenNext {
 /// constructor you use. Though to be clear, there's no such thing as an "outboard slice" per se.
 /// Slices always include subtree hashes inline with the content, as a combined encoding does.
 ///
-/// Note that slices always split the encoding at chunk boundaries. Bao's chunk size is currently
+/// Note that slices always split the encoding at chunk boundaries. The BLAKE3 chunk size is
 /// 1024 bytes, so using `slice_start` and `slice_len` arguments that are a multiple that avoids
 /// wasting space. Also, slicing when there's less than a full chunk of input is pointless.
 ///
