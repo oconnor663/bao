@@ -1,4 +1,4 @@
-# <a href="#"><img src="docs/bao.svg" alt="Bao" height=100></a> &nbsp; [![Build Status](https://travis-ci.org/oconnor663/bao.svg?branch=master)](https://travis-ci.org/oconnor663/bao) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao) [![crates.io](https://img.shields.io/crates/v/bao.svg)](https://crates.io/crates/bao)
+# <a href="#"><img src="docs/bao.svg" alt="Bao" height=100></a> &nbsp; [![Actions Status](https://github.com/oconnor663/bao/workflows/tests/badge.svg)](https://github.com/oconnor663/bao/actions) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao) [![crates.io](https://img.shields.io/crates/v/bao.svg)](https://crates.io/crates/bao)
 
 [Spec](docs/spec.md) — [Rust Crate](https://crates.io/crates/bao) — [Rust Docs](https://docs.rs/bao)
 
