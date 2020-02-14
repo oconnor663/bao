@@ -9,7 +9,6 @@ rust:
   - nightly
 script:
   - cargo test
-  - cargo test --features=c_avx512,rayon
   # Test the bao_bin sub-crate.
   - (cd bao_bin && cargo test)
   - (cd bao_bin && cargo test --no-default-features)
