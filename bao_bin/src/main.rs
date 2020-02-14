@@ -87,10 +87,19 @@ fn copy_reader_to_writer(
 fn hash_one(maybe_path: &Option<PathBuf>) -> Result<bao::Hash, Error> {
     let mut input = open_input(maybe_path)?;
     if let Some(map) = maybe_memmap_input(&input)? {
-        // Multi-threading with Rayon.
-        let hash = blake3::Hasher::new()
-            .update_with_join::<blake3::join::RayonJoin>(&map)
-            .finalize();
+        let hash;
+        #[cfg(feature = "rayon")]
+        {
+            // multi-threaded
+            hash = blake3::Hasher::new()
+                .update_with_join::<blake3::join::RayonJoin>(&map)
+                .finalize();
+        }
+        #[cfg(not(feature = "rayon"))]
+        {
+            // single-threaded
+            hash = blake3::hash(&map);
+        }
         Ok(hash)
     } else {
         let mut hasher = blake3::Hasher::new();
