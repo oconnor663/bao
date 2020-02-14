@@ -19,8 +19,6 @@ Usage: bao hash [<inputs>...]
        bao (--help | --version)
 ";
 
-const COPY_BUFFER_SIZE: usize = 8192;
-
 #[derive(Debug, Deserialize)]
 struct Args {
     cmd_decode: bool,
@@ -71,7 +69,8 @@ fn copy_reader_to_writer(
     reader: &mut impl io::Read,
     writer: &mut impl io::Write,
 ) -> io::Result<u64> {
-    let mut buf = [0; COPY_BUFFER_SIZE];
+    // At least 16 KiB is necessary to use AVX-512 with BLAKE3.
+    let mut buf = [0; 65536];
     let mut written = 0;
     loop {
         let len = match reader.read(&mut buf) {
