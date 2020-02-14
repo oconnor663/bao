@@ -964,7 +964,7 @@ pub(crate) enum LenNext {
 /// Slices always include subtree hashes inline with the content, as a combined encoding does.
 ///
 /// Note that slices always split the encoding at chunk boundaries. Bao's chunk size is currently
-/// 4096 bytes, so using `slice_start` and `slice_len` arguments that are a multiple that avoids
+/// 1024 bytes, so using `slice_start` and `slice_len` arguments that are a multiple that avoids
 /// wasting space. Also, slicing when there's less than a full chunk of input is pointless.
 ///
 /// Extracting a slice doesn't re-hash any of the bytes. As a result, it's fast compared to
