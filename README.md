@@ -12,6 +12,11 @@ stores an input together with all the nodes of its hash tree. Clients
 can stream this encoding, or do random seeks into it, while verifying
 that every byte they read matches the root hash.
 
+This project includes two Rust crates, the
+[`bao`](https://crates.io/crates/bao) library crate and the
+[`bao_bin`](https://crates.io/crates/bao_bin) binary crate. The latter
+provides the `bao` command line utility.
+
 > **Caution!** Bao is beta cryptography software. It has not been
 > formally audited yet.
 
