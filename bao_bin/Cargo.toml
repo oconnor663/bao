@@ -13,15 +13,15 @@ name = "bao"
 path = "src/main.rs"
 
 [features]
-default = ["c", "rayon"]
-c = ["blake3/c"]
-c_neon = ["blake3/c_neon"]
+default = ["rayon"]
+neon = ["blake3/neon"]
+pure = ["blake3/pure"]
 rayon = ["blake3/rayon"]
 
 [dependencies]
 arrayref = "0.3.5"
 bao = { path = "..", version = "0.10" }
-blake3 = "0.2.0"
+blake3 = "0.3.0"
 docopt = "1.1.0"
 failure = "0.1.5"
 hex = "0.4.0"
