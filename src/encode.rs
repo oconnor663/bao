@@ -963,9 +963,9 @@ pub(crate) enum LenNext {
 /// constructor you use. Though to be clear, there's no such thing as an "outboard slice" per se.
 /// Slices always include subtree hashes inline with the content, as a combined encoding does.
 ///
-/// Note that slices always split the encoding at chunk boundaries. The BLAKE3 chunk size is
-/// 1024 bytes, so using `slice_start` and `slice_len` arguments that are a multiple that avoids
-/// wasting space. Also, slicing when there's less than a full chunk of input is pointless.
+/// Note that slices always split the encoding at chunk boundaries. The BLAKE3 chunk size is 1024
+/// bytes, so using `slice_start` and `slice_len` values that are an even multiple of 1024 avoids
+/// wasting space.
 ///
 /// Extracting a slice doesn't re-hash any of the bytes. As a result, it's fast compared to
 /// decoding. You can quickly convert an outboard encoding to a combined encoding by "extracting" a
