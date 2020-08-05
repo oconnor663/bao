@@ -1,6 +1,8 @@
-> Bao is based on the BLAKE3 standard. An [earlier version of
-> Bao](spec_0.9.1.md) specified its own custom tree mode, which eventually grew
-> into BLAKE3.
+> Bao is based on the BLAKE3 hash function. [Earlier versions of
+> Bao](spec_0.9.1.md) were based on BLAKE2 in a custom tree hashing
+> mode. The BLAKE3 project evolved out of that tree mode, and after that
+> was published separately, Bao was rebased and trimmed down to focus on
+> verified streaming specifically.
 
 # The Bao Spec
 

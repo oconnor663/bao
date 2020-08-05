@@ -1,16 +1,17 @@
 # <a href="#"><img src="docs/bao.svg" alt="Bao" height=100></a> &nbsp; [![Actions Status](https://github.com/oconnor663/bao/workflows/tests/badge.svg)](https://github.com/oconnor663/bao/actions) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao) [![crates.io](https://img.shields.io/crates/v/bao.svg)](https://crates.io/crates/bao)
 
-[Spec](docs/spec.md) — [Rust Crate](https://crates.io/crates/bao) — [Rust Docs](https://docs.rs/bao)
+[Bao Spec](docs/spec.md) — [Rust Crate](https://crates.io/crates/bao) — [Rust Docs](https://docs.rs/bao)
 
 Bao is an implementation of
 [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) verified streaming, as
-described in Section 6.4 of [the BLAKE3
+described in Section 6.4 of the [BLAKE3
 spec](https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf).
 Tree hashes like BLAKE3 make it possible to verify part of a file
 without re-hashing the entire thing, using an encoding format that
-stores an input together with all the nodes of its hash tree. Clients
-can stream this encoding, or do random seeks into it, while verifying
-that every byte they read matches the root hash.
+stores the bytes of the file together with all the nodes of its hash
+tree. Clients can stream this encoding, or do random seeks into it,
+while verifying that every byte they read matches the root hash. For the
+details of how this works, see the [Bao spec](docs/spec.md).
 
 This project includes two Rust crates, the
 [`bao`](https://crates.io/crates/bao) library crate and the
