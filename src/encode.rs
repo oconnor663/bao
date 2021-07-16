@@ -28,7 +28,7 @@
 //! let mut encoded_incrementally = Vec::new();
 //! let mut encoder = bao::encode::Encoder::new(Cursor::new(&mut encoded_incrementally));
 //! encoder.write_all(b"some input")?;
-//! let (hash, _) = encoder.finalize()?;
+//! let hash = encoder.finalize()?;
 //! assert_eq!(expected_hash, hash);
 //!
 //! assert_eq!(encoded_at_once, encoded_incrementally);
@@ -53,7 +53,7 @@ pub fn encode(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
     let mut vec = Vec::with_capacity(encoded_size(bytes.len() as u64) as usize);
     let mut encoder = Encoder::new(io::Cursor::new(&mut vec));
     encoder.write_all(bytes).unwrap();
-    let (hash, _) = encoder.finalize().unwrap();
+    let hash = encoder.finalize().unwrap();
     (vec, hash)
 }
 
@@ -64,7 +64,7 @@ pub fn outboard(input: impl AsRef<[u8]>) -> (Vec<u8>, Hash) {
     let mut vec = Vec::with_capacity(outboard_size(bytes.len() as u64) as usize);
     let mut encoder = Encoder::new_outboard(io::Cursor::new(&mut vec));
     encoder.write_all(bytes).unwrap();
-    let (hash, _) = encoder.finalize().unwrap();
+    let hash = encoder.finalize().unwrap();
     (vec, hash)
 }
 
@@ -443,7 +443,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
     /// and then to go back and flip the entire thing into pre-order. That makes it possible to
     /// stream input without knowing its length in advance, which is a core requirement of the
     /// `std::io::Write` interface. The downside is that `finalize` is a relatively expensive step.
-    pub fn finalize(mut self) -> io::Result<(Hash, T)> {
+    pub fn finalize(&mut self) -> io::Result<Hash> {
         // Compute the total len before we merge the final chunk into the
         // tree_state.
         let total_len = self
@@ -482,7 +482,12 @@ impl<T: Read + Write + Seek> Encoder<T> {
         // entire output, so it's expensive.
         self.flip_post_order_stream()?;
 
-        Ok((root_hash, self.inner))
+        Ok(root_hash)
+    }
+
+    /// Return the inner writer.
+    pub fn into_inner(self) -> T {
+        self.inner
     }
 
     fn flip_post_order_stream(&mut self) -> io::Result<()> {
