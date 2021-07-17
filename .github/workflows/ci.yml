@@ -26,6 +26,8 @@ jobs:
         override: true
     - name: test lib
       run: cargo test
+    - name: test lib with --release
+      run: cargo test --release
     - name: test bin
       run: cargo test
       working-directory: ./bao_bin

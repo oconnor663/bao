@@ -411,6 +411,7 @@ pub struct Encoder<T: Read + Write + Seek> {
     chunk_state: blake3::guts::ChunkState,
     tree_state: State,
     outboard: bool,
+    finalized: bool,
 }
 
 impl<T: Read + Write + Seek> Encoder<T> {
@@ -423,6 +424,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
             chunk_state: blake3::guts::ChunkState::new(0),
             tree_state: State::new(),
             outboard: false,
+            finalized: false,
         }
     }
 
@@ -436,14 +438,17 @@ impl<T: Read + Write + Seek> Encoder<T> {
         encoder
     }
 
-    /// Finalize the encoding, after all the input has been written. You can't
-    /// use this `Encoder` again after calling `finalize`.
+    /// Finalize the encoding, after all the input has been written. You can't keep using this
+    /// `Encoder` again after calling `finalize`, and writing or finalizing again will panic.
     ///
     /// The underlying strategy of the `Encoder` is to first store the tree in a post-order layout,
     /// and then to go back and flip the entire thing into pre-order. That makes it possible to
     /// stream input without knowing its length in advance, which is a core requirement of the
     /// `std::io::Write` interface. The downside is that `finalize` is a relatively expensive step.
     pub fn finalize(&mut self) -> io::Result<Hash> {
+        assert!(!self.finalized, "already finalized");
+        self.finalized = true;
+
         // Compute the total len before we merge the final chunk into the
         // tree_state.
         let total_len = self
@@ -543,6 +548,8 @@ impl<T: Read + Write + Seek> Encoder<T> {
 
 impl<T: Read + Write + Seek> Write for Encoder<T> {
     fn write(&mut self, input: &[u8]) -> io::Result<usize> {
+        assert!(!self.finalized, "already finalized");
+
         // If the current chunk is full, we need to finalize it, add it to
         // the tree state, and write out any completed parent nodes.
         if self.chunk_state.len() == CHUNK_SIZE {
@@ -1322,5 +1329,21 @@ mod test {
             let found = drive_state(&input);
             assert_eq!(expected, found, "hashes don't match");
         }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_finalize_twice_panics() {
+        let mut encoder = Encoder::new(io::Cursor::new(Vec::<u8>::new()));
+        let _ = encoder.finalize();
+        let _ = encoder.finalize();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_write_after_finalize_panics() {
+        let mut encoder = Encoder::new(io::Cursor::new(Vec::<u8>::new()));
+        let _ = encoder.finalize();
+        let _ = encoder.write(&[]);
     }
 }
