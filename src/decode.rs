@@ -78,7 +78,7 @@ pub fn decode(encoded: impl AsRef<[u8]>, hash: &Hash) -> io::Result<Vec<u8>> {
 // both the Decoder and the SliceDecoder.
 #[derive(Clone)]
 struct VerifyState {
-    stack: ArrayVec<[Hash; MAX_DEPTH]>,
+    stack: ArrayVec<Hash, MAX_DEPTH>,
     parser: encode::ParseState,
     root_hash: Hash,
 }
@@ -823,7 +823,7 @@ mod test {
         let mut decoder = Decoder::new(Cursor::new(&encoded), &hash);
         // Do a thousand random seeks and chunk-sized reads.
         for _ in 0..1000 {
-            let seek = prng.gen_range(0, input_len + 1);
+            let seek = prng.gen_range(0..input_len + 1);
             println!("\nseek {}", seek);
             decoder
                 .seek(SeekFrom::Start(seek as u64))

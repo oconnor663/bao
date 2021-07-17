@@ -194,7 +194,7 @@ pub(crate) fn pre_order_parent_nodes(chunk_index: u64, content_len: u64) -> u8 {
 // buffer space for the entire input.
 #[derive(Clone)]
 struct FlipperState {
-    parents: ArrayVec<[crate::ParentNode; MAX_DEPTH]>,
+    parents: ArrayVec<crate::ParentNode, MAX_DEPTH>,
     content_len: u64,
     last_chunk_moved: u64,
     parents_needed: u8,
@@ -277,7 +277,7 @@ pub(crate) enum StateFinish {
 
 #[derive(Clone)]
 pub(crate) struct State {
-    subtrees: ArrayVec<[Hash; MAX_DEPTH]>,
+    subtrees: ArrayVec<Hash, MAX_DEPTH>,
     total_len: u64,
 }
 
