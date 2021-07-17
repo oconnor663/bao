@@ -15,7 +15,6 @@ path = "src/main.rs"
 [features]
 default = ["rayon"]
 neon = ["blake3/neon"]
-pure = ["blake3/pure"]
 rayon = ["blake3/rayon"]
 
 [dependencies]
