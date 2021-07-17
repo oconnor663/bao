@@ -485,6 +485,11 @@ impl<T: Read + Write + Seek> Encoder<T> {
         Ok(root_hash)
     }
 
+    /// Return the inner writer.
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
+
     fn flip_post_order_stream(&mut self) -> io::Result<()> {
         let mut write_cursor = self.inner.seek(SeekFrom::End(0))?;
         let mut read_cursor = write_cursor - HEADER_SIZE as u64;
