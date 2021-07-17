@@ -1346,4 +1346,25 @@ mod test {
         let _ = encoder.finalize();
         let _ = encoder.write(&[]);
     }
+
+    #[test]
+    fn test_into_inner() {
+        let v = vec![1u8, 2, 3];
+        let encoder = Encoder::new(io::Cursor::new(v.clone()));
+        let extractor =
+            SliceExtractor::new(io::Cursor::new(encoder.into_inner().into_inner()), 0, 0);
+        let (r1, r2) = extractor.into_inner();
+        assert_eq!(r1.into_inner(), v);
+        assert_eq!(r2, None);
+
+        let outboard = SliceExtractor::new_outboard(
+            io::Cursor::new(v.clone()),
+            io::Cursor::new(v.clone()),
+            0,
+            0,
+        );
+        let (r3, r4) = outboard.into_inner();
+        assert_eq!(r3.into_inner(), v);
+        assert_eq!(r4.unwrap().into_inner(), v);
+    }
 }

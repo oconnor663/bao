@@ -1077,4 +1077,14 @@ mod test {
             assert_eq!(encoded, slice);
         }
     }
+
+    #[test]
+    fn test_into_inner() {
+        let v = vec![1u8, 2, 3];
+        let hash = [0; 32].into();
+
+        let decoder = Decoder::new(io::Cursor::new(v.clone()), &hash);
+        let slice_decoder = SliceDecoder::new(decoder.into_inner(), &hash, 0, 0);
+        assert_eq!(slice_decoder.into_inner().into_inner(), v);
+    }
 }
