@@ -501,6 +501,11 @@ impl<T: Read> Decoder<T, T> {
             shared: DecoderShared::new(inner, None, hash),
         }
     }
+
+    /// Return the underlying reader.
+    pub fn into_inner(self) -> T {
+        self.shared.input
+    }
 }
 
 impl<T: Read, O: Read> Decoder<T, O> {
@@ -641,6 +646,11 @@ impl<T: Read> SliceDecoder<T> {
             slice_remaining: slice_len,
             need_fake_read: slice_len == 0,
         }
+    }
+
+    /// Return the underlying reader.
+    pub fn into_inner(self) -> T {
+        self.shared.input
     }
 }
 

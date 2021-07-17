@@ -485,7 +485,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
         Ok(root_hash)
     }
 
-    /// Return the inner writer.
+    /// Return the underlying writer.
     pub fn into_inner(self) -> T {
         self.inner
     }
@@ -1029,6 +1029,12 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
     /// --outboard`.
     pub fn new_outboard(input: T, outboard: O, slice_start: u64, slice_len: u64) -> Self {
         Self::new_inner(input, Some(outboard), slice_start, slice_len)
+    }
+
+    /// Return the underlying readers. The second reader is `Some` if and only if this
+    /// `SliceExtractor` was created with `new_outboard`.
+    pub fn into_inner(self) -> (T, Option<O>) {
+        (self.input, self.outboard)
     }
 
     fn new_inner(input: T, outboard: Option<O>, slice_start: u64, slice_len: u64) -> Self {
