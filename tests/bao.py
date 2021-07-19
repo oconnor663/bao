@@ -21,18 +21,19 @@
 # tree. The pre-order layout means that neither of the decode functions needs
 # to seek (though bao_slice does, to skip the parts that aren't in the slice).
 #
-# *bao_hash* is an iterative streaming implementation, which is closer to an
-# incremental implementation than the recursive functions are. Recursion
-# doesn't work well here, because we don't know the length of the input in
-# advance. Instead, we keep a stack of subtrees filled so far, merging them as
-# we go along. There is a very cute trick, where the number of subtree hashes
-# that should remain in the stack is the same as the number of 1's in the
-# binary representation of the count of chunks so far. (E.g. If you've read 255
-# chunks so far, then you have 8 partial subtrees. One of 128 chunks, one of 64
-# chunks, and so on. After you read the 256th chunk, you can merge all of those
-# into a single subtree.) That, plus the fact that merging is always done
-# smallest-to-largest / at the top of the stack, means that we don't need to
-# remember the size of each subtree; just the hash is enough.
+# *bao_hash* (identical to the BLAKE3 hash function) is an iterative streaming
+# implementation, which is closer to an incremental implementation than the
+# recursive functions are. Recursion doesn't work well here, because we don't
+# know the length of the input in advance. Instead, we keep a stack of subtrees
+# filled so far, merging them as we go along. There is a very cute trick, where
+# the number of subtree hashes that should remain in the stack is the same as
+# the number of 1's in the binary representation of the count of chunks so far.
+# (E.g. If you've read 255 chunks so far, then you have 8 partial subtrees. One
+# of 128 chunks, one of 64 chunks, and so on. After you read the 256th chunk,
+# you can merge all of those into a single subtree.) That, plus the fact that
+# merging is always done smallest-to-largest / at the top of the stack, means
+# that we don't need to remember the size of each subtree; just the hash is
+# enough.
 #
 # *bao_encode* is a recursive implementation, but as noted above, it's not
 # streaming. Instead, to keep things simple, it buffers the entire input and
@@ -54,6 +55,7 @@ import docopt
 import hmac
 import sys
 
+# the BLAKE3 initialization constants
 IV = [
     0x6A09E667,
     0xBB67AE85,
@@ -65,6 +67,7 @@ IV = [
     0x5BE0CD19,
 ]
 
+# the BLAKE3 message schedule
 MSG_SCHEDULE = [
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8],
@@ -106,6 +109,9 @@ def rotate_right(x, n):
     return (x >> n | x << (WORD_BITS - n)) & WORD_MAX
 
 
+# The BLAKE3 G function. This is historically related to the ChaCha
+# "quarter-round" function, though note that a BLAKE3 round is more like a
+# ChaCha "double-round", and the round function below calls G eight times.
 def g(state, a, b, c, d, x, y):
     state[a] = wrapping_add(state[a], wrapping_add(state[b], x))
     state[d] = rotate_right(state[d] ^ state[a], 16)
@@ -117,6 +123,7 @@ def g(state, a, b, c, d, x, y):
     state[b] = rotate_right(state[b] ^ state[c], 7)
 
 
+# the BLAKE3 round function
 def round(state, msg_words, schedule):
     # Mix the columns.
     g(state, 0, 4, 8, 12, msg_words[schedule[0]], msg_words[schedule[1]])
@@ -195,47 +202,46 @@ def decode_len(len_bytes):
     return int.from_bytes(len_bytes, "little")
 
 
-def hash_node(node_bytes, is_chunk, finalization, counter):
+# Compute a BLAKE3 chunk chaining value.
+def chunk_chaining_value(chunk_bytes, chunk_index, finalization):
     cv = IV[:]
     i = 0
-    flags = CHUNK_START if is_chunk else PARENT
-    while len(node_bytes) - i > BLOCK_SIZE:
-        block = node_bytes[i:i + BLOCK_SIZE]
-        cv = compress(cv, block, BLOCK_SIZE, counter, flags)
+    flags = CHUNK_START
+    while len(chunk_bytes) - i > BLOCK_SIZE:
+        block = chunk_bytes[i:i + BLOCK_SIZE]
+        cv = compress(cv, block, BLOCK_SIZE, chunk_index, flags)
         flags = 0
         i += BLOCK_SIZE
-    if is_chunk:
-        flags |= CHUNK_END
+    flags |= CHUNK_END
     if finalization is IS_ROOT:
         flags |= ROOT
-    block = node_bytes[i:]
+    block = chunk_bytes[i:]
     block_len = len(block)
     block += b"\0" * (BLOCK_SIZE - block_len)
-    cv = compress(cv, block, block_len, counter, flags)
+    cv = compress(cv, block, block_len, chunk_index, flags)
     return bytes_from_words(cv)
 
 
-def hash_chunk(chunk_bytes, finalization, chunk_index):
-    return hash_node(chunk_bytes, True, finalization, chunk_index)
+# Compute a BLAKE3 parent node chaining value.
+def parent_chaining_value(parent_bytes, finalization):
+    cv = IV[:]
+    flags = PARENT
+    if finalization is IS_ROOT:
+        flags |= ROOT
+    cv = compress(cv, parent_bytes, BLOCK_SIZE, 0, flags)
+    return bytes_from_words(cv)
 
 
-def hash_parent(parent_bytes, finalization):
-    return hash_node(parent_bytes, False, finalization, 0)
+# Verify a chunk chaining value with a constant-time comparison.
+def verify_chunk(expected_cv, chunk_bytes, chunk_index, finalization):
+    found_cv = chunk_chaining_value(chunk_bytes, chunk_index, finalization)
+    assert hmac.compare_digest(expected_cv, found_cv), "hash mismatch"
 
 
-def verify_node(node_bytes, is_chunk, finalization, expected_hash,
-                node_offset):
-    found_hash = hash_node(node_bytes, is_chunk, finalization, node_offset)
-    # Compare digests in constant time. It might matter to some callers.
-    assert hmac.compare_digest(expected_hash, found_hash), "hash mismatch"
-
-
-def verify_chunk(chunk_bytes, finalization, expected_hash, chunk_index):
-    verify_node(chunk_bytes, True, finalization, expected_hash, chunk_index)
-
-
-def verify_parent(parent_bytes, finalization, expected_hash):
-    verify_node(parent_bytes, False, finalization, expected_hash, 0)
+# Verify a parent node chaining value with a constant-time comparison.
+def verify_parent(expected_cv, parent_bytes, finalization):
+    found_cv = parent_chaining_value(parent_bytes, finalization)
+    assert hmac.compare_digest(expected_cv, found_cv), "hash mismatch"
 
 
 # Left subtrees contain the largest possible power of two chunks, with at least
@@ -252,17 +258,17 @@ def bao_encode(buf, *, outboard=False):
     def encode_recurse(buf, finalization):
         nonlocal chunk_index
         if len(buf) <= CHUNK_SIZE:
-            chunk_hash = hash_chunk(buf, finalization, chunk_index)
+            chunk_cv = chunk_chaining_value(buf, chunk_index, finalization)
             chunk_encoded = b"" if outboard else buf
             chunk_index += 1
-            return chunk_encoded, chunk_hash
+            return chunk_encoded, chunk_cv
         llen = left_len(len(buf))
         # Interior nodes have no len suffix.
-        left_encoded, left_hash = encode_recurse(buf[:llen], NOT_ROOT)
-        right_encoded, right_hash = encode_recurse(buf[llen:], NOT_ROOT)
-        node = left_hash + right_hash
+        left_encoded, left_cv = encode_recurse(buf[:llen], NOT_ROOT)
+        right_encoded, right_cv = encode_recurse(buf[llen:], NOT_ROOT)
+        node = left_cv + right_cv
         encoded = node + left_encoded + right_encoded
-        return encoded, hash_parent(node, finalization)
+        return encoded, parent_chaining_value(node, finalization)
 
     # Only this topmost call sets a non-None finalization.
     encoded, hash_ = encode_recurse(buf, IS_ROOT)
@@ -275,27 +281,28 @@ def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
     tree_stream = outboard_stream or input_stream
     chunk_index = 0
 
-    def decode_recurse(hash_, content_len, finalization):
+    def decode_recurse(subtree_cv, content_len, finalization):
         nonlocal chunk_index
         if content_len <= CHUNK_SIZE:
             chunk = read_exact(input_stream, content_len)
-            verify_chunk(chunk, finalization, hash_, chunk_index)
+            verify_chunk(subtree_cv, chunk, chunk_index, finalization)
             chunk_index += 1
             output_stream.write(chunk)
         else:
             parent = read_exact(tree_stream, PARENT_SIZE)
-            verify_parent(parent, finalization, hash_)
-            left_hash, right_hash = parent[:HASH_SIZE], parent[HASH_SIZE:]
+            verify_parent(subtree_cv, parent, finalization)
+            left_cv, right_cv = parent[:HASH_SIZE], parent[HASH_SIZE:]
             llen = left_len(content_len)
             # Interior nodes have no len suffix.
-            decode_recurse(left_hash, llen, NOT_ROOT)
-            decode_recurse(right_hash, content_len - llen, NOT_ROOT)
+            decode_recurse(left_cv, llen, NOT_ROOT)
+            decode_recurse(right_cv, content_len - llen, NOT_ROOT)
 
     # The first HEADER_SIZE bytes are the encoded content len.
     content_len = decode_len(read_exact(tree_stream, HEADER_SIZE))
     decode_recurse(hash_, content_len, IS_ROOT)
 
 
+# This is identical to the BLAKE3 hash function.
 def bao_hash(input_stream):
     buf = b""
     chunks = 0
@@ -308,23 +315,24 @@ def bao_hash(input_stream):
         if not read:
             if chunks == 0:
                 # This is the only chunk and therefore the root.
-                return hash_chunk(buf, IS_ROOT, chunks)
-            new_subtree = hash_chunk(buf, NOT_ROOT, chunks)
+                return chunk_chaining_value(buf, chunks, IS_ROOT)
+            new_subtree = chunk_chaining_value(buf, chunks, NOT_ROOT)
             while len(subtrees) > 1:
                 parent = subtrees.pop() + new_subtree
-                new_subtree = hash_parent(parent, NOT_ROOT)
-            return hash_parent(subtrees[0] + new_subtree, IS_ROOT)
+                new_subtree = parent_chaining_value(parent, NOT_ROOT)
+            return parent_chaining_value(subtrees[0] + new_subtree, IS_ROOT)
         # If we already had a full chunk buffered, hash it and merge subtrees
         # before adding in bytes we just read into the buffer. This order or
         # operations means we know the finalization is non-root.
         if len(buf) >= CHUNK_SIZE:
-            new_subtree = hash_chunk(buf[:CHUNK_SIZE], NOT_ROOT, chunks)
+            new_subtree = chunk_chaining_value(
+                buf[:CHUNK_SIZE], chunks, NOT_ROOT)
             chunks += 1
             # This is the very cute trick described at the top.
             total_after_merging = bin(chunks).count('1')
             while len(subtrees) + 1 > total_after_merging:
                 parent = subtrees.pop() + new_subtree
-                new_subtree = hash_parent(parent, NOT_ROOT)
+                new_subtree = parent_chaining_value(parent, NOT_ROOT)
             subtrees.append(new_subtree)
             buf = buf[CHUNK_SIZE:]
         buf = buf + read
@@ -417,7 +425,7 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
         slice_start = content_len - 1 if content_len > 0 else 0
         skip_output = True
 
-    def decode_slice_recurse(subtree_start, subtree_len, subtree_hash,
+    def decode_slice_recurse(subtree_start, subtree_len, subtree_cv,
                              finalization):
         subtree_end = subtree_start + subtree_len
         # Check content_len before skipping subtrees, to be sure we don't skip
@@ -433,7 +441,7 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
             # then output however many bytes we need.
             chunk = read_exact(input_stream, subtree_len)
             chunk_index = subtree_start // CHUNK_SIZE
-            verify_chunk(chunk, finalization, subtree_hash, chunk_index)
+            verify_chunk(subtree_cv, chunk, chunk_index, finalization)
             chunk_start = max(0, min(subtree_len, slice_start - subtree_start))
             chunk_end = max(0, min(subtree_len, slice_end - subtree_start))
             if not skip_output:
@@ -443,12 +451,12 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
             # subtree. Note that the finalization is always NOT_ROOT after this
             # point.
             parent = read_exact(input_stream, PARENT_SIZE)
-            verify_parent(parent, finalization, subtree_hash)
-            left_hash, right_hash = parent[:HASH_SIZE], parent[HASH_SIZE:]
+            verify_parent(subtree_cv, parent, finalization)
+            left_cv, right_cv = parent[:HASH_SIZE], parent[HASH_SIZE:]
             llen = left_len(subtree_len)
-            decode_slice_recurse(subtree_start, llen, left_hash, NOT_ROOT)
+            decode_slice_recurse(subtree_start, llen, left_cv, NOT_ROOT)
             decode_slice_recurse(subtree_start + llen, subtree_len - llen,
-                                 right_hash, NOT_ROOT)
+                                 right_cv, NOT_ROOT)
 
     decode_slice_recurse(0, content_len, hash_, IS_ROOT)
 
