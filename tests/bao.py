@@ -180,28 +180,6 @@ def compress(cv, block, block_len, offset, flags):
     return [state[i] ^ state[i + 8] for i in range(8)]
 
 
-# The standard read() function is allowed to return fewer bytes than requested
-# for a number of different reasons, including but not limited to EOF. To
-# guarantee we get the bytes we need, we have to call it in a loop.
-def read_exact(stream, n):
-    out = bytearray(n)  # initialized to n zeros
-    mv = memoryview(out)
-    while mv:
-        n = stream.readinto(mv)  # read into `out` without an extra copy
-        if n == 0:
-            raise IOError("unexpected EOF")
-        mv = mv[n:]  # move the memoryview forward
-    return out
-
-
-def encode_len(content_len):
-    return content_len.to_bytes(HEADER_SIZE, "little")
-
-
-def decode_len(len_bytes):
-    return int.from_bytes(len_bytes, "little")
-
-
 # Compute a BLAKE3 chunk chaining value.
 def chunk_chaining_value(chunk_bytes, chunk_index, finalization):
     cv = IV[:]
@@ -242,6 +220,28 @@ def verify_chunk(expected_cv, chunk_bytes, chunk_index, finalization):
 def verify_parent(expected_cv, parent_bytes, finalization):
     found_cv = parent_chaining_value(parent_bytes, finalization)
     assert hmac.compare_digest(expected_cv, found_cv), "hash mismatch"
+
+
+# The standard read() function is allowed to return fewer bytes than requested
+# for a number of different reasons, including but not limited to EOF. To
+# guarantee we get the bytes we need, we have to call it in a loop.
+def read_exact(stream, n):
+    out = bytearray(n)  # initialized to n zeros
+    mv = memoryview(out)
+    while mv:
+        n = stream.readinto(mv)  # read into `out` without an extra copy
+        if n == 0:
+            raise IOError("unexpected EOF")
+        mv = mv[n:]  # move the memoryview forward
+    return out
+
+
+def encode_len(content_len):
+    return content_len.to_bytes(HEADER_SIZE, "little")
+
+
+def decode_len(len_bytes):
+    return int.from_bytes(len_bytes, "little")
 
 
 # Left subtrees contain the largest possible power of two chunks, with at least
