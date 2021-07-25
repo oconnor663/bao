@@ -91,9 +91,7 @@ fn hash_one(maybe_path: &Option<PathBuf>) -> Result<bao::Hash, Error> {
         #[cfg(feature = "rayon")]
         {
             // multi-threaded
-            hash = blake3::Hasher::new()
-                .update_with_join::<blake3::join::RayonJoin>(&map)
-                .finalize();
+            hash = blake3::Hasher::new().update_rayon(&map).finalize();
         }
         #[cfg(not(feature = "rayon"))]
         {
