@@ -33,7 +33,7 @@ formatted as an encoded file:
 
 ```
 input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
-0120000000000000|a04fc7...c37466...|91715a...f0eef3...|000000...  |000000...   |00
+0108000000000000|a04fc7...c37466...|91715a...f0eef3...|000000...  |000000...   |00
 ```
 
 ## Outboard Encoding Format
@@ -56,7 +56,7 @@ that chunk), the resulting slice will be this:
 
 ```
 input length    |root parent node  |left parent node  |second chunk
-0120000000000000|a04fc7...c37466...|91715a...f0eef3...|000000...
+0108000000000000|a04fc7...c37466...|91715a...f0eef3...|000000...
 ```
 
 Although slices can be extracted from both combined and outboard encodings,
