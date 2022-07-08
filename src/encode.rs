@@ -550,9 +550,15 @@ impl<T: Read + Write + Seek> Write for Encoder<T> {
     fn write(&mut self, input: &[u8]) -> io::Result<usize> {
         assert!(!self.finalized, "already finalized");
 
+        // Short-circuit if the input is empty.
+        if input.is_empty() {
+            return Ok(0);
+        }
+
         // If the current chunk is full, we need to finalize it, add it to
         // the tree state, and write out any completed parent nodes.
         if self.chunk_state.len() == CHUNK_SIZE {
+            // This can't be the root, because we know more input is coming.
             let chunk_hash = self.chunk_state.finalize(false);
             self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
             let chunk_counter = self.tree_state.count() / CHUNK_SIZE as u64;
@@ -1366,5 +1372,17 @@ mod test {
         let (r3, r4) = outboard.into_inner();
         assert_eq!(r3.into_inner(), v);
         assert_eq!(r4.unwrap().into_inner(), v);
+    }
+
+    #[test]
+    fn test_empty_write_after_one_chunk() {
+        let input = &[0; CHUNK_SIZE];
+        let mut output = Vec::new();
+        let mut encoder = Encoder::new(io::Cursor::new(&mut output));
+        encoder.write_all(input).unwrap();
+        encoder.write(&[]).unwrap();
+        let hash = encoder.finalize().unwrap();
+        assert_eq!((output, hash), encode(input));
+        assert_eq!(hash, blake3::hash(input));
     }
 }
