@@ -457,16 +457,13 @@ impl<T: Read + Write + Seek> Encoder<T> {
             .checked_add(self.chunk_state.len() as u64)
             .expect("addition overflowed");
 
-        // If the chunk_state contains any chunk data, we have to finalize it
-        // and incorporate it into the tree. Also, if there was never any data
-        // at all, we have to hash the empty chunk. Note that any partial chunk
-        // bytes retained in the chunk_state have already been written to the
-        // underlying writer by .write().
-        if self.chunk_state.len() > 0 || self.tree_state.count() == 0 {
-            let is_root = self.tree_state.count() == 0;
-            let hash = self.chunk_state.finalize(is_root);
-            self.tree_state.push_subtree(&hash, self.chunk_state.len());
-        }
+        // Finalize the last chunk. Note that any partial chunk bytes retained in the chunk_state
+        // have already been written to the underlying writer by .write().
+        debug_assert!(self.chunk_state.len() > 0 || self.tree_state.count() == 0);
+        let last_chunk_is_root = self.tree_state.count() == 0;
+        let last_chunk_hash = self.chunk_state.finalize(last_chunk_is_root);
+        self.tree_state
+            .push_subtree(&last_chunk_hash, self.chunk_state.len());
 
         // Merge and write all the parents along the right edge.
         let root_hash;
