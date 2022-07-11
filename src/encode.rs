@@ -37,7 +37,7 @@
 //! ```
 
 use crate::Finalization::{self, NotRoot, Root};
-use crate::{Hash, ParentNode, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
+use crate::{Hash, ParentNode, GROUP_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 use arrayref::array_mut_ref;
 use arrayvec::ArrayVec;
 use std::cmp;
@@ -90,21 +90,21 @@ pub(crate) fn outboard_subtree_size(content_len: u64) -> u128 {
     // The number of parent nodes is always the number of chunks minus one. To see why this is true,
     // start with a single chunk and incrementally add chunks to the tree. Each new chunk always
     // brings one parent node along with it.
-    let num_parents = count_chunks(content_len) - 1;
+    let num_parents = count_groups(content_len) - 1;
     num_parents as u128 * PARENT_SIZE as u128
 }
 
-pub(crate) fn count_chunks(content_len: u64) -> u64 {
-    // Two things to watch out for here: the 0-length input still counts as 1 chunk, and we don't
+pub(crate) fn count_groups(content_len: u64) -> u64 {
+    // Two things to watch out for here: the 0-length input still counts as 1 group, and we don't
     // want to overflow when content_len is u64::MAX_VALUE.
-    let full_chunks: u64 = content_len / CHUNK_SIZE as u64;
-    let has_partial_chunk: bool = (content_len % CHUNK_SIZE as u64) != 0;
-    cmp::max(1, full_chunks + has_partial_chunk as u64)
+    let full_groups: u64 = content_len / GROUP_SIZE as u64;
+    let has_partial_group: bool = (content_len % GROUP_SIZE as u64) != 0;
+    cmp::max(1, full_groups + has_partial_group as u64)
 }
 
-pub(crate) fn chunk_size(chunk_index: u64, content_len: u64) -> usize {
-    let chunk_start = chunk_index * CHUNK_SIZE as u64;
-    cmp::min(CHUNK_SIZE, (content_len - chunk_start) as usize)
+pub(crate) fn group_size(group_index: u64, content_len: u64) -> usize {
+    let group_start = group_index * GROUP_SIZE as u64;
+    cmp::min(GROUP_SIZE, (content_len - group_start) as usize)
 }
 
 // ----------------------------------------------------------------------------
@@ -125,15 +125,15 @@ pub(crate) fn chunk_size(chunk_index: u64, content_len: u64) -> usize {
 // is the rightmost. This is the same as the number of trailing ones in the
 // chunk index (counting from 0). For example, chunk number 11 (0b1011) has two
 // trailing parent nodes.
-fn post_order_parent_nodes_nonfinal(chunk_index: u64) -> u8 {
-    (!chunk_index).trailing_zeros() as u8
+fn post_order_parent_nodes_nonfinal(group_index: u64) -> u8 {
+    (!group_index).trailing_zeros() as u8
 }
 
 // The final chunk of a post order tree has to have a parent node for each of
 // the not yet merged subtrees behind it. This is the same as the total number
 // of ones in the chunk index (counting from 0).
-fn post_order_parent_nodes_final(chunk_index: u64) -> u8 {
-    chunk_index.count_ones() as u8
+fn post_order_parent_nodes_final(group_index: u64) -> u8 {
+    group_index.count_ones() as u8
 }
 
 // In pre-order, there are a few different regimes we need to consider:
@@ -170,19 +170,34 @@ fn post_order_parent_nodes_final(chunk_index: u64) -> u8 {
 //
 // We then take the minimum of those two values, and that's the number of
 // parent nodes before each chunk.
-pub(crate) fn pre_order_parent_nodes(chunk_index: u64, content_len: u64) -> u8 {
+pub(crate) fn pre_order_parent_nodes(group_index: u64, content_len: u64) -> u8 {
     fn bit_length(x: u64) -> u32 {
         // As mentioned above, note that this reports a bit length of 64 for
         // x=0. That works for us, because cmp::min below will always choose
         // the other rule, but think about it before you copy/paste this.
         64 - x.leading_zeros()
     }
-    let total_chunks = count_chunks(content_len);
-    debug_assert!(chunk_index < total_chunks);
-    let total_chunks_after_this = total_chunks - chunk_index;
-    let bit_length_rule = bit_length(total_chunks_after_this - 1);
-    let trailing_zeros_rule = chunk_index.trailing_zeros();
+    let total_groups = count_groups(content_len);
+    debug_assert!(group_index < total_groups);
+    let total_groups_after_this = total_groups - group_index;
+    let bit_length_rule = bit_length(total_groups_after_this - 1);
+    let trailing_zeros_rule = group_index.trailing_zeros();
     cmp::min(bit_length_rule, trailing_zeros_rule) as u8
+}
+
+pub(crate) fn finalize_group(group_hasher: &blake3::Hasher, is_root: bool) -> Hash {
+    if is_root {
+        group_hasher.finalize()
+    } else {
+        blake3::guts::finalize_nonroot(&group_hasher)
+    }
+}
+
+pub(crate) fn hash_group(group_bytes: &[u8], group_index: u64, is_root: bool) -> Hash {
+    let mut hasher = blake3::Hasher::new();
+    blake3::guts::set_offset(&mut hasher, group_index * GROUP_SIZE as u64);
+    hasher.update(group_bytes);
+    finalize_group(&hasher, is_root)
 }
 
 // This type implements post-order-to-pre-order flipping for the encoder, in a way that could
@@ -196,52 +211,52 @@ pub(crate) fn pre_order_parent_nodes(chunk_index: u64, content_len: u64) -> u8 {
 struct FlipperState {
     parents: ArrayVec<crate::ParentNode, MAX_DEPTH>,
     content_len: u64,
-    last_chunk_moved: u64,
+    last_group_moved: u64,
     parents_needed: u8,
     parents_available: u8,
 }
 
 impl FlipperState {
     pub fn new(content_len: u64) -> Self {
-        let total_chunks = count_chunks(content_len);
+        let total_groups = count_groups(content_len);
         Self {
             parents: ArrayVec::new(),
             content_len,
-            last_chunk_moved: count_chunks(content_len), // one greater than the final chunk index
-            parents_needed: post_order_parent_nodes_final(total_chunks - 1),
+            last_group_moved: total_groups, // one greater than the final group index
+            parents_needed: post_order_parent_nodes_final(total_groups - 1),
             parents_available: 0,
         }
     }
 
     pub fn next(&self) -> FlipperNext {
-        // chunk_moved() adds both the parents_available for the chunk just moved and the
+        // group_moved() adds both the parents_available for the chunk just moved and the
         // parents_needed for the chunk to its left, so we have to do TakeParent first.
         if self.parents_available > 0 {
             FlipperNext::TakeParent
         } else if self.parents_needed > 0 {
             FlipperNext::FeedParent
-        } else if self.last_chunk_moved > 0 {
-            FlipperNext::Chunk(chunk_size(self.last_chunk_moved - 1, self.content_len))
+        } else if self.last_group_moved > 0 {
+            FlipperNext::Group(group_size(self.last_group_moved - 1, self.content_len))
         } else {
             FlipperNext::Done
         }
     }
 
-    pub fn chunk_moved(&mut self) {
+    pub fn group_moved(&mut self) {
         // Add the pre-order parents available for the chunk that just moved and the post-order
         // parents needed for the chunk to its left.
-        debug_assert!(self.last_chunk_moved > 0);
+        debug_assert!(self.last_group_moved > 0);
         debug_assert_eq!(self.parents_available, 0);
         debug_assert_eq!(self.parents_needed, 0);
-        self.last_chunk_moved -= 1;
-        self.parents_available = pre_order_parent_nodes(self.last_chunk_moved, self.content_len);
-        if self.last_chunk_moved > 0 {
-            self.parents_needed = post_order_parent_nodes_nonfinal(self.last_chunk_moved - 1);
+        self.last_group_moved -= 1;
+        self.parents_available = pre_order_parent_nodes(self.last_group_moved, self.content_len);
+        if self.last_group_moved > 0 {
+            self.parents_needed = post_order_parent_nodes_nonfinal(self.last_group_moved - 1);
         }
     }
 
     pub fn feed_parent(&mut self, parent: crate::ParentNode) {
-        debug_assert!(self.last_chunk_moved > 0);
+        debug_assert!(self.last_group_moved > 0);
         debug_assert_eq!(self.parents_available, 0);
         debug_assert!(self.parents_needed > 0);
         self.parents_needed -= 1;
@@ -258,7 +273,7 @@ impl FlipperState {
 impl fmt::Debug for FlipperState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "FlipperState {{ parents: {}, content_len: {}, last_chunk_moved: {}, parents_needed: {}, parents_available: {} }}",
-               self.parents.len(), self.content_len, self.last_chunk_moved, self.parents_needed, self.parents_available)
+               self.parents.len(), self.content_len, self.last_group_moved, self.parents_needed, self.parents_available)
     }
 }
 
@@ -266,7 +281,7 @@ impl fmt::Debug for FlipperState {
 enum FlipperNext {
     FeedParent,
     TakeParent,
-    Chunk(usize),
+    Group(usize),
     Done,
 }
 
@@ -311,8 +326,8 @@ impl State {
     // propagating the carry bit. Each carry represents a place where two subtrees need to be
     // merged, and the final number of 1 bits is the same as the final number of subtrees.
     fn needs_merge(&self) -> bool {
-        let chunks = self.total_len / CHUNK_SIZE as u64;
-        self.subtrees.len() > chunks.count_ones() as usize
+        let groups = self.total_len / GROUP_SIZE as u64;
+        self.subtrees.len() > groups.count_ones() as usize
     }
 
     /// Add a subtree hash to the state.
@@ -408,7 +423,7 @@ impl fmt::Debug for State {
 #[derive(Clone, Debug)]
 pub struct Encoder<T: Read + Write + Seek> {
     inner: T,
-    chunk_state: blake3::guts::ChunkState,
+    group_state: blake3::Hasher,
     tree_state: State,
     outboard: bool,
     finalized: bool,
@@ -421,7 +436,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
     pub fn new(inner: T) -> Self {
         Self {
             inner,
-            chunk_state: blake3::guts::ChunkState::new(0),
+            group_state: blake3::Hasher::new(),
             tree_state: State::new(),
             outboard: false,
             finalized: false,
@@ -454,16 +469,16 @@ impl<T: Read + Write + Seek> Encoder<T> {
         let total_len = self
             .tree_state
             .count()
-            .checked_add(self.chunk_state.len() as u64)
+            .checked_add(self.group_state.count() as u64)
             .expect("addition overflowed");
 
-        // Finalize the last chunk. Note that any partial chunk bytes retained in the chunk_state
+        // Finalize the last chunk. Note that any partial chunk bytes retained in the group_state
         // have already been written to the underlying writer by .write().
-        debug_assert!(self.chunk_state.len() > 0 || self.tree_state.count() == 0);
+        debug_assert!(self.group_state.count() > 0 || self.tree_state.count() == 0);
         let last_chunk_is_root = self.tree_state.count() == 0;
-        let last_chunk_hash = self.chunk_state.finalize(last_chunk_is_root);
+        let last_chunk_hash = finalize_group(&self.group_state, last_chunk_is_root);
         self.tree_state
-            .push_subtree(&last_chunk_hash, self.chunk_state.len());
+            .push_subtree(&last_chunk_hash, self.group_state.count() as usize);
 
         // Merge and write all the parents along the right edge.
         let root_hash;
@@ -517,20 +532,20 @@ impl<T: Read + Write + Seek> Encoder<T> {
                     self.inner.write_all(&parent)?;
                     write_cursor -= PARENT_SIZE as u64;
                 }
-                FlipperNext::Chunk(size) => {
+                FlipperNext::Group(size) => {
                     // In outboard moded, we skip over chunks.
                     if !self.outboard {
-                        let mut chunk = [0; CHUNK_SIZE];
+                        let mut group = [0; GROUP_SIZE];
                         self.inner
                             .seek(SeekFrom::Start(read_cursor - size as u64))?;
-                        self.inner.read_exact(&mut chunk[..size])?;
+                        self.inner.read_exact(&mut group[..size])?;
                         read_cursor -= size as u64;
                         self.inner
                             .seek(SeekFrom::Start(write_cursor - size as u64))?;
-                        self.inner.write_all(&chunk[..size])?;
+                        self.inner.write_all(&group[..size])?;
                         write_cursor -= size as u64;
                     }
-                    flipper.chunk_moved();
+                    flipper.group_moved();
                 }
                 FlipperNext::Done => {
                     debug_assert_eq!(HEADER_SIZE as u64, write_cursor);
@@ -554,24 +569,24 @@ impl<T: Read + Write + Seek> Write for Encoder<T> {
 
         // If the current chunk is full, we need to finalize it, add it to
         // the tree state, and write out any completed parent nodes.
-        if self.chunk_state.len() == CHUNK_SIZE {
+        if self.group_state.count() as usize == GROUP_SIZE {
             // This can't be the root, because we know more input is coming.
-            let chunk_hash = self.chunk_state.finalize(false);
-            self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
-            let chunk_counter = self.tree_state.count() / CHUNK_SIZE as u64;
-            self.chunk_state = blake3::guts::ChunkState::new(chunk_counter);
+            let group_hash = finalize_group(&self.group_state, false);
+            self.tree_state.push_subtree(&group_hash, GROUP_SIZE);
+            self.group_state = blake3::Hasher::new();
+            blake3::guts::set_offset(&mut self.group_state, self.tree_state.count());
             while let Some(parent) = self.tree_state.merge_parent() {
                 self.inner.write_all(&parent)?;
             }
         }
 
         // Add as many bytes as possible to the current chunk.
-        let want = CHUNK_SIZE - self.chunk_state.len();
+        let want = GROUP_SIZE - self.group_state.count() as usize;
         let take = cmp::min(want, input.len());
         if !self.outboard {
             self.inner.write_all(&input[..take])?;
         }
-        self.chunk_state.update(&input[..take]);
+        self.group_state.update(&input[..take]);
         Ok(take)
     }
 
@@ -615,7 +630,7 @@ impl ParseState {
     }
 
     fn at_root(&self) -> bool {
-        self.content_position < CHUNK_SIZE as u64 && self.stack_depth == 1
+        self.content_position < GROUP_SIZE as u64 && self.stack_depth == 1
     }
 
     fn at_eof(&self) -> bool {
@@ -640,14 +655,14 @@ impl ParseState {
         false
     }
 
-    fn next_chunk_start(&self) -> u64 {
+    fn next_group_start(&self) -> u64 {
         debug_assert!(!self.at_eof(), "not valid at EOF");
-        self.content_position - (self.content_position % CHUNK_SIZE as u64)
+        self.content_position - (self.content_position % GROUP_SIZE as u64)
     }
 
-    fn next_chunk_index(&self) -> u64 {
+    fn next_group_index(&self) -> u64 {
         debug_assert!(!self.at_eof(), "not valid at EOF");
-        self.content_position / CHUNK_SIZE as u64
+        self.content_position / GROUP_SIZE as u64
     }
 
     pub fn finalization(&self) -> Finalization {
@@ -690,11 +705,11 @@ impl ParseState {
         } else if self.upcoming_parents > 0 {
             NextRead::Parent
         } else {
-            NextRead::Chunk {
-                size: chunk_size(self.next_chunk_index(), content_len),
+            NextRead::Group {
+                size: group_size(self.next_group_index(), content_len),
                 finalization: self.finalization(),
-                skip: (self.content_position % CHUNK_SIZE as u64) as usize,
-                index: self.content_position / CHUNK_SIZE as u64,
+                skip: (self.content_position % GROUP_SIZE as u64) as usize,
+                index: self.content_position / GROUP_SIZE as u64,
             }
         }
     }
@@ -766,7 +781,7 @@ impl ParseState {
         // just to a different skip offset within the next chunk, resetting is
         // unnecessary, which is why we use next_chunk_start() instead of
         // content_position.
-        if self.at_eof() || seek_to < self.next_chunk_start() {
+        if self.at_eof() || seek_to < self.next_group_start() {
             self.reset_to_root();
         }
 
@@ -781,15 +796,15 @@ impl ParseState {
             // the next read will compute the correct skip. The exception is a
             // repointed EOF seek, where we instruct the caller to read the
             // final chunk and call seek_next again.
-            let distance = seek_to - self.next_chunk_start();
-            if distance < CHUNK_SIZE as u64 {
+            let distance = seek_to - self.next_group_start();
+            if distance < GROUP_SIZE as u64 {
                 if verifying_final_chunk {
-                    let size = (content_len - self.next_chunk_start()) as usize;
-                    return NextRead::Chunk {
+                    let size = (content_len - self.next_group_start()) as usize;
+                    return NextRead::Group {
                         size,
                         finalization: self.finalization(),
                         skip: size, // Skip the whole thing.
-                        index: self.content_position / CHUNK_SIZE as u64,
+                        index: self.content_position / GROUP_SIZE as u64,
                     };
                 } else {
                     self.content_position = seek_to;
@@ -803,7 +818,7 @@ impl ParseState {
             let downshifted_distance = distance
                 .checked_shr(self.upcoming_parents as u32)
                 .unwrap_or(0);
-            if downshifted_distance < CHUNK_SIZE as u64 {
+            if downshifted_distance < GROUP_SIZE as u64 {
                 debug_assert!(self.upcoming_parents > 0);
                 return NextRead::Parent;
             }
@@ -812,12 +827,12 @@ impl ParseState {
             // we know the subtree size is maximal, and computing it won't
             // overflow. The caller will have to execute an underlying seek in
             // this case.
-            let subtree_size = (CHUNK_SIZE as u64) << self.upcoming_parents;
-            self.content_position = self.next_chunk_start() + subtree_size;
+            let subtree_size = (GROUP_SIZE as u64) << self.upcoming_parents;
+            self.content_position = self.next_group_start() + subtree_size;
             self.encoding_position += encoded_subtree_size(subtree_size);
             self.stack_depth -= 1;
             // This depends on the update to content_position immediately above.
-            self.upcoming_parents = pre_order_parent_nodes(self.next_chunk_index(), content_len);
+            self.upcoming_parents = pre_order_parent_nodes(self.next_group_index(), content_len);
         }
     }
 
@@ -863,14 +878,14 @@ impl ParseState {
         self.upcoming_parents -= 1;
     }
 
-    pub fn advance_chunk(&mut self) {
+    pub fn advance_group(&mut self) {
         debug_assert_eq!(
             0, self.upcoming_parents,
-            "advance_chunk with non-zero upcoming parents"
+            "advance_group with non-zero upcoming parents"
         );
-        let content_len = self.content_len.expect("advance_chunk before header");
-        let size = chunk_size(self.next_chunk_index(), content_len);
-        let skip = self.content_position % CHUNK_SIZE as u64;
+        let content_len = self.content_len.expect("advance_group before header");
+        let size = group_size(self.next_group_index(), content_len);
+        let skip = self.content_position % GROUP_SIZE as u64;
         self.content_position += size as u64 - skip;
         self.encoding_position += size as u128;
         self.stack_depth -= 1;
@@ -882,7 +897,7 @@ impl ParseState {
             self.final_chunk_validated = true;
         } else {
             // upcoming_parents is only meaningful if we're before EOF.
-            self.upcoming_parents = pre_order_parent_nodes(self.next_chunk_index(), content_len);
+            self.upcoming_parents = pre_order_parent_nodes(self.next_group_index(), content_len);
         }
     }
 }
@@ -891,7 +906,7 @@ impl ParseState {
 pub(crate) enum NextRead {
     Header,
     Parent,
-    Chunk {
+    Group {
         size: usize,
         finalization: Finalization,
         skip: usize,
@@ -957,7 +972,7 @@ impl SeekBookkeeping {
     // from the content.
     pub fn underlying_seek_outboard(&self) -> Option<(u64, u64)> {
         if self.old_state.encoding_position != self.new_state.encoding_position {
-            let content = self.new_state.next_chunk_start();
+            let content = self.new_state.next_group_start();
             let outboard = (self.new_state.encoding_position - content as u128) as u64;
             Some((content, outboard))
         } else {
@@ -998,14 +1013,14 @@ pub(crate) enum LenNext {
 /// let (encoded, hash) = bao::encode::encode(&input);
 /// // These parameters are multiples of the chunk size, which avoids unnecessary overhead.
 /// let slice_start = 65536;
-/// let slice_len = 8192;
+/// let slice_len = 65536;
 /// let encoded_cursor = std::io::Cursor::new(&encoded);
 /// let mut extractor = bao::encode::SliceExtractor::new(encoded_cursor, slice_start, slice_len);
 /// let mut slice = Vec::new();
 /// extractor.read_to_end(&mut slice)?;
 ///
 /// // The slice includes some overhead to store the necessary subtree hashes.
-/// assert_eq!(9096, slice.len());
+/// assert_eq!(65992, slice.len());
 /// # Ok(())
 /// # }
 /// ```
@@ -1016,7 +1031,7 @@ pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
     slice_len: u64,
     slice_bytes_read: u64,
     parser: ParseState,
-    buf: [u8; CHUNK_SIZE],
+    buf: [u8; GROUP_SIZE],
     buf_start: usize,
     buf_end: usize,
     seek_done: bool,
@@ -1056,7 +1071,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
             slice_len: cmp::max(slice_len, 1),
             slice_bytes_read: 0,
             parser: ParseState::new(),
-            buf: [0; CHUNK_SIZE],
+            buf: [0; GROUP_SIZE],
             buf_start: 0,
             buf_end: 0,
             seek_done: false,
@@ -1095,10 +1110,10 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
         Ok(())
     }
 
-    fn read_chunk(&mut self, size: usize, skip: usize) -> io::Result<()> {
-        debug_assert_eq!(0, self.buf_len(), "read_chunk with nonempty buffer");
-        let chunk = &mut self.buf[..size];
-        self.input.read_exact(chunk)?;
+    fn read_group(&mut self, size: usize, skip: usize) -> io::Result<()> {
+        debug_assert_eq!(0, self.buf_len(), "read_group with nonempty buffer");
+        let group = &mut self.buf[..size];
+        self.input.read_exact(group)?;
         self.buf_start = 0;
         self.buf_end = size;
         // After reading a chunk, increment slice_bytes_read. This will stop
@@ -1107,7 +1122,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
         // the target of the previous seek was in the middle), we don't count
         // skipped bytes against the total.
         self.slice_bytes_read += (size - skip) as u64;
-        self.parser.advance_chunk();
+        self.parser.advance_group();
         Ok(())
     }
 
@@ -1136,12 +1151,12 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
             match next_read {
                 NextRead::Header => return self.read_header(),
                 NextRead::Parent => return self.read_parent(),
-                NextRead::Chunk {
+                NextRead::Group {
                     size,
                     finalization: _,
                     skip,
                     index: _,
-                } => return self.read_chunk(size, skip),
+                } => return self.read_group(size, skip),
                 NextRead::Done => self.seek_done = true, // Fall through to read.
             }
         }
@@ -1152,12 +1167,12 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
             match self.parser.read_next() {
                 NextRead::Header => unreachable!(),
                 NextRead::Parent => return self.read_parent(),
-                NextRead::Chunk {
+                NextRead::Group {
                     size,
                     finalization: _,
                     skip,
                     index: _,
-                } => return self.read_chunk(size, skip),
+                } => return self.read_group(size, skip),
                 NextRead::Done => {} // EOF
             }
         }
@@ -1266,13 +1281,13 @@ mod test {
 
     #[test]
     fn test_parent_nodes() {
-        for total_chunks in 1..100 {
-            let content_len = total_chunks * CHUNK_SIZE as u64;
-            let pre_post_list = make_pre_post_list(total_chunks);
-            for chunk in 0..total_chunks {
+        for total_groups in 1..100 {
+            let content_len = total_groups * GROUP_SIZE as u64;
+            let pre_post_list = make_pre_post_list(total_groups);
+            for chunk in 0..total_groups {
                 let (expected_pre, expected_post) = pre_post_list[chunk as usize];
                 let pre = pre_order_parent_nodes(chunk, content_len);
-                let post = if chunk < total_chunks - 1 {
+                let post = if chunk < total_groups - 1 {
                     post_order_parent_nodes_nonfinal(chunk)
                 } else {
                     post_order_parent_nodes_final(chunk)
@@ -1280,35 +1295,31 @@ mod test {
                 assert_eq!(
                     expected_pre, pre,
                     "incorrect pre-order parent nodes for chunk {} of total {}",
-                    chunk, total_chunks
+                    chunk, total_groups
                 );
                 assert_eq!(
                     expected_post, post,
                     "incorrect post-order parent nodes for chunk {} of total {}",
-                    chunk, total_chunks
+                    chunk, total_groups
                 );
             }
         }
     }
 
     fn drive_state(mut input: &[u8]) -> Hash {
-        let last_chunk_is_root = input.len() <= CHUNK_SIZE;
+        let last_group_is_root = input.len() <= GROUP_SIZE;
         let mut state = State::new();
-        let mut chunk_index = 0;
-        while input.len() > CHUNK_SIZE {
-            let hash = blake3::guts::ChunkState::new(chunk_index)
-                .update(&input[..CHUNK_SIZE])
-                .finalize(false);
-            chunk_index += 1;
-            state.push_subtree(&hash, CHUNK_SIZE);
-            input = &input[CHUNK_SIZE..];
+        let mut group_index = 0;
+        while input.len() > GROUP_SIZE {
+            let hash = hash_group(&input[..GROUP_SIZE], group_index, false);
+            group_index += 1;
+            state.push_subtree(&hash, GROUP_SIZE);
+            input = &input[GROUP_SIZE..];
             // Merge any parents, but throw away the result. We don't need
             // them, but we need to avoid tripping an assert.
             while state.merge_parent().is_some() {}
         }
-        let hash = blake3::guts::ChunkState::new(chunk_index)
-            .update(input)
-            .finalize(last_chunk_is_root);
+        let hash = hash_group(input, group_index, last_group_is_root);
         state.push_subtree(&hash, input.len());
         loop {
             match state.merge_finalize() {
@@ -1372,8 +1383,8 @@ mod test {
     }
 
     #[test]
-    fn test_empty_write_after_one_chunk() {
-        let input = &[0; CHUNK_SIZE];
+    fn test_empty_write_after_one_group() {
+        let input = &[0; GROUP_SIZE];
         let mut output = Vec::new();
         let mut encoder = Encoder::new(io::Cursor::new(&mut output));
         encoder.write_all(input).unwrap();

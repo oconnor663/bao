@@ -8,7 +8,7 @@ import sys
 
 # Imports from this directory.
 import bao
-from bao import CHUNK_SIZE, HEADER_SIZE, PARENT_SIZE
+from bao import CHUNK_SIZE, GROUP_SIZE, HEADER_SIZE, PARENT_SIZE
 from generate_input import input_bytes
 
 SIZES = [
@@ -17,16 +17,17 @@ SIZES = [
     CHUNK_SIZE - 1,
     CHUNK_SIZE,
     CHUNK_SIZE + 1,
-    2 * CHUNK_SIZE - 1,
     2 * CHUNK_SIZE,
-    2 * CHUNK_SIZE + 1,
-    3 * CHUNK_SIZE - 1,
     3 * CHUNK_SIZE,
-    3 * CHUNK_SIZE + 1,
-    # The first case that has chunks at three different depths.
-    11 * CHUNK_SIZE,
+    GROUP_SIZE - 1,
+    GROUP_SIZE,
+    GROUP_SIZE + 1,
+    2 * GROUP_SIZE,
+    3 * GROUP_SIZE,
+    # The first case that has chunk groups at three different depths.
+    11 * GROUP_SIZE,
     # The first case that has a depth jump greater than one.
-    13 * CHUNK_SIZE,
+    13 * GROUP_SIZE,
 ]
 
 
@@ -44,10 +45,10 @@ def hashes():
     return ret
 
 
-# Return the first byte of the header, of each parent, and of each chunk.
+# Return the first byte of the header, of each parent, and of each chunk group.
 def encode_corruption_points(content_len, outboard=False):
     def recurse(subtree_start, subtree_len, offset, ret):
-        if subtree_len <= CHUNK_SIZE:
+        if subtree_len <= GROUP_SIZE:
             if subtree_len != 0 and not outboard:
                 ret.append(offset)
             return
@@ -89,7 +90,7 @@ def outboard():
         corruption = 0
         while corruption < size:
             input_corruptions.append(corruption)
-            corruption += CHUNK_SIZE
+            corruption += GROUP_SIZE
         fields = [
             ("input_len", size),
             ("output_len", len(encoded)),
@@ -111,7 +112,7 @@ def seeks():
             if offset > 0:
                 offsets.append(offset - 1)
             offsets.append(offset)
-            offset += CHUNK_SIZE
+            offset += GROUP_SIZE
         if size > 0:
             offsets.append(size - 1)
         offsets.append(size)
@@ -139,9 +140,9 @@ def slice_corruption_points(content_len, slice_start, slice_len):
         elif slice_end <= subtree_start and not is_root:
             # We've covered all the sliced content. Quit.
             return 0
-        elif subtree_len <= CHUNK_SIZE:
-            # The current subtree is a chunk. Add its first byte, as long as
-            # it's not the empty chunk.
+        elif subtree_len <= GROUP_SIZE:
+            # The current subtree is one chunk group. Add its first byte, as
+            # long as it's not the empty chunk.
             if subtree_len != 0:
                 ret.append(offset)
             return subtree_len
@@ -174,7 +175,7 @@ def slices():
         encoded, hash_ = bao.bao_encode(b)
         slices = []
         for offset in offsets:
-            for slice_len in [0, CHUNK_SIZE]:
+            for slice_len in [0, GROUP_SIZE]:
                 slice_bytes = io.BytesIO()
                 bao.bao_slice(io.BytesIO(encoded), slice_bytes, offset, slice_len)
                 slice_hash = blake3_hash(slice_bytes.getbuffer())

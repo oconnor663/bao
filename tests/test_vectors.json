@@ -22,36 +22,40 @@
             "bao_hash": "3613596275c4ea790774dedf20835b2daf86cacc892feef6ce720c121572f1f9"
         },
         {
-            "input_len": 2047,
-            "bao_hash": "89cc9b9cf2a83f03b22983c8bd7f2df392f5c1966f0e221db9ab396f7043c4d7"
-        },
-        {
             "input_len": 2048,
             "bao_hash": "fed8b40d6095dc7c5061f9cd832fd192337473bd392bf6f6bbaf1261ea78f8fa"
-        },
-        {
-            "input_len": 2049,
-            "bao_hash": "64770fa15a4bbe7770654c4ac68ed4f0e975ad6c85b5edb4d3db3b4b604e084e"
-        },
-        {
-            "input_len": 3071,
-            "bao_hash": "3bf36194161a10a32843a84568d0ce0a524b3bc6182abc492ddaaa3dae785279"
         },
         {
             "input_len": 3072,
             "bao_hash": "9748169f2aa70258d18cef6dc6b4b4511265e268e85f73dcbea6e34ab0341da1"
         },
         {
-            "input_len": 3073,
-            "bao_hash": "5ba075072daba2470558a171e3769fba057dc3f12375c60892bdbe73348d9fd1"
+            "input_len": 16383,
+            "bao_hash": "f0970fbfe2f1c5145fa6aa31833779803d5c53743a8443ed1395218f511834ba"
         },
         {
-            "input_len": 11264,
-            "bao_hash": "69fa39c8ab837dbb9e419c66a3ab7014ce9f86dba55935936b4c38cfcbc4d5f6"
+            "input_len": 16384,
+            "bao_hash": "b318758645c4467406c829a5f3da7cab00010fccccf4b7c314525cd85e2d0af8"
         },
         {
-            "input_len": 13312,
-            "bao_hash": "3e88d1dd20f426640077dcf82d6d4e18ee0062aa72f8ae547a0e65fcd36a0f06"
+            "input_len": 16385,
+            "bao_hash": "12a6a6b0554e7f3eed485f668bfd3b37382a2beee5e7ed5594c4a91c4c70f4aa"
+        },
+        {
+            "input_len": 32768,
+            "bao_hash": "8008de557073cab60f851191359ad9dc1afe9dc6152668ee01825c56ac5a754e"
+        },
+        {
+            "input_len": 49152,
+            "bao_hash": "91823357fefc308b57bb85ebed1d1edeba3c355e804dc63fa98fcb82554b1566"
+        },
+        {
+            "input_len": 180224,
+            "bao_hash": "4742cbae9485ce1b86ab359c1a84e203f819795d018b22a5c70c5c4577dd732e"
+        },
+        {
+            "input_len": 212992,
+            "bao_hash": "760c549edfe95c734b1d6a9b846d81692ed3ca022b541442949a0e42fe570df2"
         }
     ],
     "encode": [
@@ -96,103 +100,97 @@
         },
         {
             "input_len": 1025,
-            "output_len": 1097,
+            "output_len": 1033,
             "bao_hash": "3613596275c4ea790774dedf20835b2daf86cacc892feef6ce720c121572f1f9",
-            "encoded_blake3": "04a7fc9414f25fbb4529968d4eb32e569691ad3517f45fa736cfddaed99d66f5",
+            "encoded_blake3": "da1d4119ba1bfb5c71a2a731b85c0c6c2b04fcfdf022a6c29c52538dc2142646",
             "corruptions": [
                 0,
-                8,
-                72,
-                1096
-            ]
-        },
-        {
-            "input_len": 2047,
-            "output_len": 2119,
-            "bao_hash": "89cc9b9cf2a83f03b22983c8bd7f2df392f5c1966f0e221db9ab396f7043c4d7",
-            "encoded_blake3": "7b74fc273e48f75185f87e9574edcf286eb267be463c056c93c39728b18d250d",
-            "corruptions": [
-                0,
-                8,
-                72,
-                1096
+                8
             ]
         },
         {
             "input_len": 2048,
-            "output_len": 2120,
+            "output_len": 2056,
             "bao_hash": "fed8b40d6095dc7c5061f9cd832fd192337473bd392bf6f6bbaf1261ea78f8fa",
-            "encoded_blake3": "d1c5ba94d24e1e3005685e53521b6110c1b16cb675f8c1a6ba95d3cca111fb15",
+            "encoded_blake3": "c56271512387fca0e3bf0427a2d9718fc55484a05bade75bfbaffa5519d04f90",
             "corruptions": [
                 0,
-                8,
-                72,
-                1096
-            ]
-        },
-        {
-            "input_len": 2049,
-            "output_len": 2185,
-            "bao_hash": "64770fa15a4bbe7770654c4ac68ed4f0e975ad6c85b5edb4d3db3b4b604e084e",
-            "encoded_blake3": "d9ea16809c9a8a86481b09799c8a71e58a1f48a9eec2f85a17a61005229c0de8",
-            "corruptions": [
-                0,
-                8,
-                72,
-                136,
-                1160,
-                2184
-            ]
-        },
-        {
-            "input_len": 3071,
-            "output_len": 3207,
-            "bao_hash": "3bf36194161a10a32843a84568d0ce0a524b3bc6182abc492ddaaa3dae785279",
-            "encoded_blake3": "d5e69f5c15b39fd840f3e18cf732d5682d0327391178c7fc9f04ec6dcb83be52",
-            "corruptions": [
-                0,
-                8,
-                72,
-                136,
-                1160,
-                2184
+                8
             ]
         },
         {
             "input_len": 3072,
-            "output_len": 3208,
+            "output_len": 3080,
             "bao_hash": "9748169f2aa70258d18cef6dc6b4b4511265e268e85f73dcbea6e34ab0341da1",
-            "encoded_blake3": "954bd49159ed95edb871fc9d7bc5388ed3dc31e68e1347e999ecea8c0a9d7737",
+            "encoded_blake3": "b67804efb8904058e29fa84f895d18b5c018e5c5987942dae28fc0db7189a40e",
+            "corruptions": [
+                0,
+                8
+            ]
+        },
+        {
+            "input_len": 16383,
+            "output_len": 16391,
+            "bao_hash": "f0970fbfe2f1c5145fa6aa31833779803d5c53743a8443ed1395218f511834ba",
+            "encoded_blake3": "67fcd82efd41730e6d49500bf56c79cd07bde3d4a850e32e2e3df2f478485fce",
+            "corruptions": [
+                0,
+                8
+            ]
+        },
+        {
+            "input_len": 16384,
+            "output_len": 16392,
+            "bao_hash": "b318758645c4467406c829a5f3da7cab00010fccccf4b7c314525cd85e2d0af8",
+            "encoded_blake3": "60d9a72e5c11b19e7559fef0b21c5bdf9eb571332aed298c76379931bf2c37e1",
+            "corruptions": [
+                0,
+                8
+            ]
+        },
+        {
+            "input_len": 16385,
+            "output_len": 16457,
+            "bao_hash": "12a6a6b0554e7f3eed485f668bfd3b37382a2beee5e7ed5594c4a91c4c70f4aa",
+            "encoded_blake3": "9bc8d32c06eefd2659fcfc86f564349a4ab04da1484ed54ff19943093031f300",
+            "corruptions": [
+                0,
+                8,
+                72,
+                16456
+            ]
+        },
+        {
+            "input_len": 32768,
+            "output_len": 32840,
+            "bao_hash": "8008de557073cab60f851191359ad9dc1afe9dc6152668ee01825c56ac5a754e",
+            "encoded_blake3": "5dd1efa9f2ce74cd0b4d968aa286396aa1783c6974882c7dff3545f2284401bc",
+            "corruptions": [
+                0,
+                8,
+                72,
+                16456
+            ]
+        },
+        {
+            "input_len": 49152,
+            "output_len": 49288,
+            "bao_hash": "91823357fefc308b57bb85ebed1d1edeba3c355e804dc63fa98fcb82554b1566",
+            "encoded_blake3": "bab3baa031145be8eef9502656ced570312011c548be87dad1adc46f83fc3ce1",
             "corruptions": [
                 0,
                 8,
                 72,
                 136,
-                1160,
-                2184
+                16520,
+                32904
             ]
         },
         {
-            "input_len": 3073,
-            "output_len": 3273,
-            "bao_hash": "5ba075072daba2470558a171e3769fba057dc3f12375c60892bdbe73348d9fd1",
-            "encoded_blake3": "a49213d8e20de518bc871dd2d6e51569279b9f7639dc5f7fa6510c86fb7b8eba",
-            "corruptions": [
-                0,
-                8,
-                72,
-                136,
-                1160,
-                2184,
-                2248,
-                3272
-            ]
-        },
-        {
-            "input_len": 11264,
-            "output_len": 11912,
-            "bao_hash": "69fa39c8ab837dbb9e419c66a3ab7014ce9f86dba55935936b4c38cfcbc4d5f6",
-            "encoded_blake3": "1bffa084b6811992e88fd0d57f0091de2fe883c4a54348149b741afeb266f874",
+            "input_len": 180224,
+            "output_len": 180872,
+            "bao_hash": "4742cbae9485ce1b86ab359c1a84e203f819795d018b22a5c70c5c4577dd732e",
+            "encoded_blake3": "0824c251c41c70603e95c9cb4a318cbc716f5ac438f69b679424f800c8b362cf",
             "corruptions": [
                 0,
                 8,
@@ -200,29 +198,29 @@
                 136,
                 200,
                 264,
-                1288,
-                2312,
-                2376,
-                3400,
-                4424,
-                4488,
-                4552,
-                5576,
-                6600,
-                6664,
-                7688,
-                8712,
-                8776,
-                8840,
-                9864,
-                10888
+                16648,
+                33032,
+                33096,
+                49480,
+                65864,
+                65928,
+                65992,
+                82376,
+                98760,
+                98824,
+                115208,
+                131592,
+                131656,
+                131720,
+                148104,
+                164488
             ]
         },
         {
-            "input_len": 13312,
-            "output_len": 14088,
-            "bao_hash": "3e88d1dd20f426640077dcf82d6d4e18ee0062aa72f8ae547a0e65fcd36a0f06",
-            "encoded_blake3": "e5ca844ba6ac49fad8f888b63b437d7d25ee15d80a7bc01edac16f78e2a65271",
+            "input_len": 212992,
+            "output_len": 213768,
+            "bao_hash": "760c549edfe95c734b1d6a9b846d81692ed3ca022b541442949a0e42fe570df2",
+            "encoded_blake3": "b71f4dbfa962b014d13873d32af75a4b45008331e1422d974f082734765df7a7",
             "corruptions": [
                 0,
                 8,
@@ -230,26 +228,26 @@
                 136,
                 200,
                 264,
-                1288,
-                2312,
-                2376,
-                3400,
-                4424,
-                4488,
-                4552,
-                5576,
-                6600,
-                6664,
-                7688,
-                8712,
-                8776,
-                8840,
-                8904,
-                9928,
-                10952,
-                11016,
-                12040,
-                13064
+                16648,
+                33032,
+                33096,
+                49480,
+                65864,
+                65928,
+                65992,
+                82376,
+                98760,
+                98824,
+                115208,
+                131592,
+                131656,
+                131720,
+                131784,
+                148168,
+                164552,
+                164616,
+                181000,
+                197384
             ]
         }
     ],
@@ -302,51 +300,97 @@
         },
         {
             "input_len": 1025,
-            "output_len": 72,
+            "output_len": 8,
             "bao_hash": "3613596275c4ea790774dedf20835b2daf86cacc892feef6ce720c121572f1f9",
-            "encoded_blake3": "025f630e00fbdcc023b970c9f1f21016c56c0a34e384e712c66428bf1c7999b9",
+            "encoded_blake3": "e519f31e1e0f74c0774dfe0d21f1e0ed29ac6530fb6a9cf50d4a04f679fabbb5",
             "outboard_corruptions": [
-                0,
-                8
+                0
             ],
             "input_corruptions": [
-                0,
-                1024
-            ]
-        },
-        {
-            "input_len": 2047,
-            "output_len": 72,
-            "bao_hash": "89cc9b9cf2a83f03b22983c8bd7f2df392f5c1966f0e221db9ab396f7043c4d7",
-            "encoded_blake3": "f281b8a95b6c5eaea8e86732d24c88aa407df10295709e419772d615028b40a0",
-            "outboard_corruptions": [
-                0,
-                8
-            ],
-            "input_corruptions": [
-                0,
-                1024
+                0
             ]
         },
         {
             "input_len": 2048,
-            "output_len": 72,
+            "output_len": 8,
             "bao_hash": "fed8b40d6095dc7c5061f9cd832fd192337473bd392bf6f6bbaf1261ea78f8fa",
-            "encoded_blake3": "55546b68936932ac03d2a01de41517c287ddd68b79715ef892a636dc38292a90",
+            "encoded_blake3": "029d9b7be0fa598cf1cf6dadb5d22dcaad91d22a0b60b1000c6c1232cba6511e",
+            "outboard_corruptions": [
+                0
+            ],
+            "input_corruptions": [
+                0
+            ]
+        },
+        {
+            "input_len": 3072,
+            "output_len": 8,
+            "bao_hash": "9748169f2aa70258d18cef6dc6b4b4511265e268e85f73dcbea6e34ab0341da1",
+            "encoded_blake3": "253d18a7450fc939150a898482c3f1cb9fbb8eb6906a0ab2a6c00bfc4e1c38e8",
+            "outboard_corruptions": [
+                0
+            ],
+            "input_corruptions": [
+                0
+            ]
+        },
+        {
+            "input_len": 16383,
+            "output_len": 8,
+            "bao_hash": "f0970fbfe2f1c5145fa6aa31833779803d5c53743a8443ed1395218f511834ba",
+            "encoded_blake3": "1c74f8e06ab5c526b3aa6e190ec2b8483a4474971a1cf9c8379b7ce6edcd20e1",
+            "outboard_corruptions": [
+                0
+            ],
+            "input_corruptions": [
+                0
+            ]
+        },
+        {
+            "input_len": 16384,
+            "output_len": 8,
+            "bao_hash": "b318758645c4467406c829a5f3da7cab00010fccccf4b7c314525cd85e2d0af8",
+            "encoded_blake3": "4ad966242470e4936fb47468105acdb0fb5d89ec383379f806e1d8c454406a3a",
+            "outboard_corruptions": [
+                0
+            ],
+            "input_corruptions": [
+                0
+            ]
+        },
+        {
+            "input_len": 16385,
+            "output_len": 72,
+            "bao_hash": "12a6a6b0554e7f3eed485f668bfd3b37382a2beee5e7ed5594c4a91c4c70f4aa",
+            "encoded_blake3": "2090a0b5814faa2cec9f54346176e26f7db1ec9d5db470d3b32d7fbe5d98e365",
             "outboard_corruptions": [
                 0,
                 8
             ],
             "input_corruptions": [
                 0,
-                1024
+                16384
             ]
         },
         {
-            "input_len": 2049,
+            "input_len": 32768,
+            "output_len": 72,
+            "bao_hash": "8008de557073cab60f851191359ad9dc1afe9dc6152668ee01825c56ac5a754e",
+            "encoded_blake3": "6eab9c600c8da951b47a21d28575abfd86eefa8a9a8072076166c93a546d4cf8",
+            "outboard_corruptions": [
+                0,
+                8
+            ],
+            "input_corruptions": [
+                0,
+                16384
+            ]
+        },
+        {
+            "input_len": 49152,
             "output_len": 136,
-            "bao_hash": "64770fa15a4bbe7770654c4ac68ed4f0e975ad6c85b5edb4d3db3b4b604e084e",
-            "encoded_blake3": "f2afc0716690e8513d8697e3e75f5c3532d51e0c704416e7fb0bbf7c0abfb57e",
+            "bao_hash": "91823357fefc308b57bb85ebed1d1edeba3c355e804dc63fa98fcb82554b1566",
+            "encoded_blake3": "b75877003df4c529d1ba46a121ada08f20acadcd466400f24fd691291c9e4477",
             "outboard_corruptions": [
                 0,
                 8,
@@ -354,65 +398,15 @@
             ],
             "input_corruptions": [
                 0,
-                1024,
-                2048
+                16384,
+                32768
             ]
         },
         {
-            "input_len": 3071,
-            "output_len": 136,
-            "bao_hash": "3bf36194161a10a32843a84568d0ce0a524b3bc6182abc492ddaaa3dae785279",
-            "encoded_blake3": "2dba3a5aa0e356e279760280e147245429d6360581b0eb5c7e0b9c265d915b2c",
-            "outboard_corruptions": [
-                0,
-                8,
-                72
-            ],
-            "input_corruptions": [
-                0,
-                1024,
-                2048
-            ]
-        },
-        {
-            "input_len": 3072,
-            "output_len": 136,
-            "bao_hash": "9748169f2aa70258d18cef6dc6b4b4511265e268e85f73dcbea6e34ab0341da1",
-            "encoded_blake3": "4dd51a45418589b1d12a183f80e3e3ba39b200094287c6e07f489def70a42e48",
-            "outboard_corruptions": [
-                0,
-                8,
-                72
-            ],
-            "input_corruptions": [
-                0,
-                1024,
-                2048
-            ]
-        },
-        {
-            "input_len": 3073,
-            "output_len": 200,
-            "bao_hash": "5ba075072daba2470558a171e3769fba057dc3f12375c60892bdbe73348d9fd1",
-            "encoded_blake3": "fa89135a2c00ff1a073321ed79fd17b9fdd53c2d2549236cd8d796232a89dc83",
-            "outboard_corruptions": [
-                0,
-                8,
-                72,
-                136
-            ],
-            "input_corruptions": [
-                0,
-                1024,
-                2048,
-                3072
-            ]
-        },
-        {
-            "input_len": 11264,
+            "input_len": 180224,
             "output_len": 648,
-            "bao_hash": "69fa39c8ab837dbb9e419c66a3ab7014ce9f86dba55935936b4c38cfcbc4d5f6",
-            "encoded_blake3": "651f08a23902499142f6a28fadb99a8cba2bc32fbefe5237fd3a9cb5edec70da",
+            "bao_hash": "4742cbae9485ce1b86ab359c1a84e203f819795d018b22a5c70c5c4577dd732e",
+            "encoded_blake3": "83eea8f8b750d708bf0dad12635ffa2a3221190d2c179b1eccbe060925ef83fe",
             "outboard_corruptions": [
                 0,
                 8,
@@ -428,23 +422,23 @@
             ],
             "input_corruptions": [
                 0,
-                1024,
-                2048,
-                3072,
-                4096,
-                5120,
-                6144,
-                7168,
-                8192,
-                9216,
-                10240
+                16384,
+                32768,
+                49152,
+                65536,
+                81920,
+                98304,
+                114688,
+                131072,
+                147456,
+                163840
             ]
         },
         {
-            "input_len": 13312,
+            "input_len": 212992,
             "output_len": 776,
-            "bao_hash": "3e88d1dd20f426640077dcf82d6d4e18ee0062aa72f8ae547a0e65fcd36a0f06",
-            "encoded_blake3": "ad01dbb6b7d0fefd1f8e52783d6212856546f382b815a7c370377bc79e0bd41a",
+            "bao_hash": "760c549edfe95c734b1d6a9b846d81692ed3ca022b541442949a0e42fe570df2",
+            "encoded_blake3": "c755eac3b86afeeeb099b71353f80db1a84c2f0197f4f948f4c9c470252d7ca5",
             "outboard_corruptions": [
                 0,
                 8,
@@ -462,18 +456,18 @@
             ],
             "input_corruptions": [
                 0,
-                1024,
-                2048,
-                3072,
-                4096,
-                5120,
-                6144,
-                7168,
-                8192,
-                9216,
-                10240,
-                11264,
-                12288
+                16384,
+                32768,
+                49152,
+                65536,
+                81920,
+                98304,
+                114688,
+                131072,
+                147456,
+                163840,
+                180224,
+                196608
             ]
         }
     ],
@@ -521,137 +515,134 @@
             ]
         },
         {
-            "input_len": 2047,
-            "seek_offsets": [
-                0,
-                1023,
-                1024,
-                2046,
-                2047,
-                2048
-            ]
-        },
-        {
             "input_len": 2048,
             "seek_offsets": [
                 0,
-                1023,
-                1024,
                 2047,
                 2048,
                 2049
             ]
         },
         {
-            "input_len": 2049,
-            "seek_offsets": [
-                0,
-                1023,
-                1024,
-                2048,
-                2049,
-                2050
-            ]
-        },
-        {
-            "input_len": 3071,
-            "seek_offsets": [
-                0,
-                1023,
-                1024,
-                2047,
-                2048,
-                3070,
-                3071,
-                3072
-            ]
-        },
-        {
             "input_len": 3072,
             "seek_offsets": [
                 0,
-                1023,
-                1024,
-                2047,
-                2048,
                 3071,
                 3072,
                 3073
             ]
         },
         {
-            "input_len": 3073,
+            "input_len": 16383,
             "seek_offsets": [
                 0,
-                1023,
-                1024,
-                2047,
-                2048,
-                3072,
-                3073,
-                3074
+                16382,
+                16383,
+                16384
             ]
         },
         {
-            "input_len": 11264,
+            "input_len": 16384,
             "seek_offsets": [
                 0,
-                1023,
-                1024,
-                2047,
-                2048,
-                3071,
-                3072,
-                4095,
-                4096,
-                5119,
-                5120,
-                6143,
-                6144,
-                7167,
-                7168,
-                8191,
-                8192,
-                9215,
-                9216,
-                10239,
-                10240,
-                11263,
-                11264,
-                11265
+                16383,
+                16384,
+                16385
             ]
         },
         {
-            "input_len": 13312,
+            "input_len": 16385,
             "seek_offsets": [
                 0,
-                1023,
-                1024,
-                2047,
-                2048,
-                3071,
-                3072,
-                4095,
-                4096,
-                5119,
-                5120,
-                6143,
-                6144,
-                7167,
-                7168,
-                8191,
-                8192,
-                9215,
-                9216,
-                10239,
-                10240,
-                11263,
-                11264,
-                12287,
-                12288,
-                13311,
-                13312,
-                13313
+                16384,
+                16385,
+                16386
+            ]
+        },
+        {
+            "input_len": 32768,
+            "seek_offsets": [
+                0,
+                16383,
+                16384,
+                32767,
+                32768,
+                32769
+            ]
+        },
+        {
+            "input_len": 49152,
+            "seek_offsets": [
+                0,
+                16383,
+                16384,
+                32767,
+                32768,
+                49151,
+                49152,
+                49153
+            ]
+        },
+        {
+            "input_len": 180224,
+            "seek_offsets": [
+                0,
+                16383,
+                16384,
+                32767,
+                32768,
+                49151,
+                49152,
+                65535,
+                65536,
+                81919,
+                81920,
+                98303,
+                98304,
+                114687,
+                114688,
+                131071,
+                131072,
+                147455,
+                147456,
+                163839,
+                163840,
+                180223,
+                180224,
+                180225
+            ]
+        },
+        {
+            "input_len": 212992,
+            "seek_offsets": [
+                0,
+                16383,
+                16384,
+                32767,
+                32768,
+                49151,
+                49152,
+                65535,
+                65536,
+                81919,
+                81920,
+                98303,
+                98304,
+                114687,
+                114688,
+                131071,
+                131072,
+                147455,
+                147456,
+                163839,
+                163840,
+                180223,
+                180224,
+                196607,
+                196608,
+                212991,
+                212992,
+                212993
             ]
         }
     ],
@@ -671,7 +662,7 @@
                 },
                 {
                     "start": 0,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 8,
                     "output_blake3": "71e0a99173564931c0b8acc52d2685a8e39c64dc52e3d02390fdac2a12b155cb",
                     "corruptions": [
@@ -689,7 +680,7 @@
                 },
                 {
                     "start": 1,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 8,
                     "output_blake3": "71e0a99173564931c0b8acc52d2685a8e39c64dc52e3d02390fdac2a12b155cb",
                     "corruptions": [
@@ -714,7 +705,7 @@
                 },
                 {
                     "start": 0,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 9,
                     "output_blake3": "fa1fd2786e8860a7aa94276683579b3ed999ebdc2257a924811c4bcdbe5ee9f4",
                     "corruptions": [
@@ -734,7 +725,7 @@
                 },
                 {
                     "start": 1,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 9,
                     "output_blake3": "fa1fd2786e8860a7aa94276683579b3ed999ebdc2257a924811c4bcdbe5ee9f4",
                     "corruptions": [
@@ -754,7 +745,7 @@
                 },
                 {
                     "start": 2,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 9,
                     "output_blake3": "fa1fd2786e8860a7aa94276683579b3ed999ebdc2257a924811c4bcdbe5ee9f4",
                     "corruptions": [
@@ -780,7 +771,7 @@
                 },
                 {
                     "start": 0,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 1031,
                     "output_blake3": "94c16da9b8aab7077c49f73658b3d522c55f5cf94f9a22e1c91f7e2e75953803",
                     "corruptions": [
@@ -800,7 +791,7 @@
                 },
                 {
                     "start": 1022,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 1031,
                     "output_blake3": "94c16da9b8aab7077c49f73658b3d522c55f5cf94f9a22e1c91f7e2e75953803",
                     "corruptions": [
@@ -820,7 +811,7 @@
                 },
                 {
                     "start": 1023,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 1031,
                     "output_blake3": "94c16da9b8aab7077c49f73658b3d522c55f5cf94f9a22e1c91f7e2e75953803",
                     "corruptions": [
@@ -840,7 +831,7 @@
                 },
                 {
                     "start": 1024,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 1031,
                     "output_blake3": "94c16da9b8aab7077c49f73658b3d522c55f5cf94f9a22e1c91f7e2e75953803",
                     "corruptions": [
@@ -866,7 +857,7 @@
                 },
                 {
                     "start": 0,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 1032,
                     "output_blake3": "62881f0fbd8b62d69f23b75abe62f4c56874a58699ff6741686f40dfcc20f05e",
                     "corruptions": [
@@ -886,7 +877,7 @@
                 },
                 {
                     "start": 1023,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 1032,
                     "output_blake3": "62881f0fbd8b62d69f23b75abe62f4c56874a58699ff6741686f40dfcc20f05e",
                     "corruptions": [
@@ -906,7 +897,7 @@
                 },
                 {
                     "start": 1024,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 1032,
                     "output_blake3": "62881f0fbd8b62d69f23b75abe62f4c56874a58699ff6741686f40dfcc20f05e",
                     "corruptions": [
@@ -926,7 +917,7 @@
                 },
                 {
                     "start": 1025,
-                    "len": 1024,
+                    "len": 16384,
                     "output_len": 1032,
                     "output_blake3": "62881f0fbd8b62d69f23b75abe62f4c56874a58699ff6741686f40dfcc20f05e",
                     "corruptions": [
@@ -943,8 +934,8 @@
                 {
                     "start": 0,
                     "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "4f0cdbee78cfb059fdcaa30d08fbe9c1e0477f924e671a1de8742ba8340c2c5d",
+                    "output_len": 1033,
+                    "output_blake3": "da1d4119ba1bfb5c71a2a731b85c0c6c2b04fcfdf022a6c29c52538dc2142646",
                     "corruptions": [
                         7,
                         8
@@ -952,20 +943,9 @@
                 },
                 {
                     "start": 0,
-                    "len": 1024,
-                    "output_len": 1096,
-                    "output_blake3": "4f0cdbee78cfb059fdcaa30d08fbe9c1e0477f924e671a1de8742ba8340c2c5d",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 0,
-                    "output_len": 73,
-                    "output_blake3": "9f358569ae5d9140e2fb67e38a123d4880aa43c32dd7d680ac355448526a0610",
+                    "len": 16384,
+                    "output_len": 1033,
+                    "output_blake3": "da1d4119ba1bfb5c71a2a731b85c0c6c2b04fcfdf022a6c29c52538dc2142646",
                     "corruptions": [
                         7,
                         8
@@ -973,20 +953,19 @@
                 },
                 {
                     "start": 1024,
-                    "len": 1024,
-                    "output_len": 73,
-                    "output_blake3": "9f358569ae5d9140e2fb67e38a123d4880aa43c32dd7d680ac355448526a0610",
+                    "len": 0,
+                    "output_len": 1033,
+                    "output_blake3": "da1d4119ba1bfb5c71a2a731b85c0c6c2b04fcfdf022a6c29c52538dc2142646",
                     "corruptions": [
                         7,
-                        8,
-                        72
+                        8
                     ]
                 },
                 {
-                    "start": 1025,
-                    "len": 0,
-                    "output_len": 73,
-                    "output_blake3": "9f358569ae5d9140e2fb67e38a123d4880aa43c32dd7d680ac355448526a0610",
+                    "start": 1024,
+                    "len": 16384,
+                    "output_len": 1033,
+                    "output_blake3": "da1d4119ba1bfb5c71a2a731b85c0c6c2b04fcfdf022a6c29c52538dc2142646",
                     "corruptions": [
                         7,
                         8
@@ -994,9 +973,19 @@
                 },
                 {
                     "start": 1025,
-                    "len": 1024,
-                    "output_len": 73,
-                    "output_blake3": "9f358569ae5d9140e2fb67e38a123d4880aa43c32dd7d680ac355448526a0610",
+                    "len": 0,
+                    "output_len": 1033,
+                    "output_blake3": "da1d4119ba1bfb5c71a2a731b85c0c6c2b04fcfdf022a6c29c52538dc2142646",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 1025,
+                    "len": 16384,
+                    "output_len": 1033,
+                    "output_blake3": "da1d4119ba1bfb5c71a2a731b85c0c6c2b04fcfdf022a6c29c52538dc2142646",
                     "corruptions": [
                         7,
                         8
@@ -1005,8 +994,8 @@
                 {
                     "start": 1026,
                     "len": 0,
-                    "output_len": 73,
-                    "output_blake3": "9f358569ae5d9140e2fb67e38a123d4880aa43c32dd7d680ac355448526a0610",
+                    "output_len": 1033,
+                    "output_blake3": "da1d4119ba1bfb5c71a2a731b85c0c6c2b04fcfdf022a6c29c52538dc2142646",
                     "corruptions": [
                         7,
                         8
@@ -1014,142 +1003,9 @@
                 },
                 {
                     "start": 1026,
-                    "len": 1024,
-                    "output_len": 73,
-                    "output_blake3": "9f358569ae5d9140e2fb67e38a123d4880aa43c32dd7d680ac355448526a0610",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                }
-            ]
-        },
-        {
-            "input_len": 2047,
-            "bao_hash": "89cc9b9cf2a83f03b22983c8bd7f2df392f5c1966f0e221db9ab396f7043c4d7",
-            "slices": [
-                {
-                    "start": 0,
-                    "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "3d1c6a78eeb5431934ce15ba03268b2f2fc41b2de15a21f0690455df4149c210",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 0,
-                    "len": 1024,
-                    "output_len": 1096,
-                    "output_blake3": "3d1c6a78eeb5431934ce15ba03268b2f2fc41b2de15a21f0690455df4149c210",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "3d1c6a78eeb5431934ce15ba03268b2f2fc41b2de15a21f0690455df4149c210",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 1024,
-                    "output_len": 2119,
-                    "output_blake3": "7b74fc273e48f75185f87e9574edcf286eb267be463c056c93c39728b18d250d",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        1096
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 0,
-                    "output_len": 1095,
-                    "output_blake3": "db2e636f81c1a8e8cfd95364b9731bf89dcff6c42d4eb5172df632a2fd879f99",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 1024,
-                    "output_len": 1095,
-                    "output_blake3": "db2e636f81c1a8e8cfd95364b9731bf89dcff6c42d4eb5172df632a2fd879f99",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 2046,
-                    "len": 0,
-                    "output_len": 1095,
-                    "output_blake3": "db2e636f81c1a8e8cfd95364b9731bf89dcff6c42d4eb5172df632a2fd879f99",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 2046,
-                    "len": 1024,
-                    "output_len": 1095,
-                    "output_blake3": "db2e636f81c1a8e8cfd95364b9731bf89dcff6c42d4eb5172df632a2fd879f99",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 0,
-                    "output_len": 1095,
-                    "output_blake3": "db2e636f81c1a8e8cfd95364b9731bf89dcff6c42d4eb5172df632a2fd879f99",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 1024,
-                    "output_len": 1095,
-                    "output_blake3": "db2e636f81c1a8e8cfd95364b9731bf89dcff6c42d4eb5172df632a2fd879f99",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 0,
-                    "output_len": 1095,
-                    "output_blake3": "db2e636f81c1a8e8cfd95364b9731bf89dcff6c42d4eb5172df632a2fd879f99",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 1024,
-                    "output_len": 1095,
-                    "output_blake3": "db2e636f81c1a8e8cfd95364b9731bf89dcff6c42d4eb5172df632a2fd879f99",
+                    "len": 16384,
+                    "output_len": 1033,
+                    "output_blake3": "da1d4119ba1bfb5c71a2a731b85c0c6c2b04fcfdf022a6c29c52538dc2142646",
                     "corruptions": [
                         7,
                         8
@@ -1164,8 +1020,8 @@
                 {
                     "start": 0,
                     "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "5acbf03c1887e81495459b108c864803ba8dcc8c0ab24765dabc6b189fd74b83",
+                    "output_len": 2056,
+                    "output_blake3": "c56271512387fca0e3bf0427a2d9718fc55484a05bade75bfbaffa5519d04f90",
                     "corruptions": [
                         7,
                         8
@@ -1173,86 +1029,29 @@
                 },
                 {
                     "start": 0,
-                    "len": 1024,
-                    "output_len": 1096,
-                    "output_blake3": "5acbf03c1887e81495459b108c864803ba8dcc8c0ab24765dabc6b189fd74b83",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "5acbf03c1887e81495459b108c864803ba8dcc8c0ab24765dabc6b189fd74b83",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 1024,
-                    "output_len": 2120,
-                    "output_blake3": "d1c5ba94d24e1e3005685e53521b6110c1b16cb675f8c1a6ba95d3cca111fb15",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        1096
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "15fd511bcdb5547a19f2c052a64c7bb94a3e12001fffe2115bc9aea8d044c16e",
+                    "len": 16384,
+                    "output_len": 2056,
+                    "output_blake3": "c56271512387fca0e3bf0427a2d9718fc55484a05bade75bfbaffa5519d04f90",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 1024,
-                    "len": 1024,
-                    "output_len": 1096,
-                    "output_blake3": "15fd511bcdb5547a19f2c052a64c7bb94a3e12001fffe2115bc9aea8d044c16e",
+                    "start": 2047,
+                    "len": 0,
+                    "output_len": 2056,
+                    "output_blake3": "c56271512387fca0e3bf0427a2d9718fc55484a05bade75bfbaffa5519d04f90",
                     "corruptions": [
                         7,
-                        8,
-                        72
+                        8
                     ]
                 },
                 {
                     "start": 2047,
-                    "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "15fd511bcdb5547a19f2c052a64c7bb94a3e12001fffe2115bc9aea8d044c16e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 1024,
-                    "output_len": 1096,
-                    "output_blake3": "15fd511bcdb5547a19f2c052a64c7bb94a3e12001fffe2115bc9aea8d044c16e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "15fd511bcdb5547a19f2c052a64c7bb94a3e12001fffe2115bc9aea8d044c16e",
+                    "len": 16384,
+                    "output_len": 2056,
+                    "output_blake3": "c56271512387fca0e3bf0427a2d9718fc55484a05bade75bfbaffa5519d04f90",
                     "corruptions": [
                         7,
                         8
@@ -1260,9 +1059,19 @@
                 },
                 {
                     "start": 2048,
-                    "len": 1024,
-                    "output_len": 1096,
-                    "output_blake3": "15fd511bcdb5547a19f2c052a64c7bb94a3e12001fffe2115bc9aea8d044c16e",
+                    "len": 0,
+                    "output_len": 2056,
+                    "output_blake3": "c56271512387fca0e3bf0427a2d9718fc55484a05bade75bfbaffa5519d04f90",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 2048,
+                    "len": 16384,
+                    "output_len": 2056,
+                    "output_blake3": "c56271512387fca0e3bf0427a2d9718fc55484a05bade75bfbaffa5519d04f90",
                     "corruptions": [
                         7,
                         8
@@ -1271,8 +1080,8 @@
                 {
                     "start": 2049,
                     "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "15fd511bcdb5547a19f2c052a64c7bb94a3e12001fffe2115bc9aea8d044c16e",
+                    "output_len": 2056,
+                    "output_blake3": "c56271512387fca0e3bf0427a2d9718fc55484a05bade75bfbaffa5519d04f90",
                     "corruptions": [
                         7,
                         8
@@ -1280,330 +1089,9 @@
                 },
                 {
                     "start": 2049,
-                    "len": 1024,
-                    "output_len": 1096,
-                    "output_blake3": "15fd511bcdb5547a19f2c052a64c7bb94a3e12001fffe2115bc9aea8d044c16e",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                }
-            ]
-        },
-        {
-            "input_len": 2049,
-            "bao_hash": "64770fa15a4bbe7770654c4ac68ed4f0e975ad6c85b5edb4d3db3b4b604e084e",
-            "slices": [
-                {
-                    "start": 0,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "6b66cdfdab00c509d9bda532006566d60625bd83c9bd53015e2d19e28e854660",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 0,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "6b66cdfdab00c509d9bda532006566d60625bd83c9bd53015e2d19e28e854660",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "6b66cdfdab00c509d9bda532006566d60625bd83c9bd53015e2d19e28e854660",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 1024,
-                    "output_len": 2184,
-                    "output_blake3": "431877a82170d5307a3b6594dc2cbc3b672825e1a26f56c2aa0467f92385584a",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        1160
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "2b23c6a36ada24de7da6b26fec908137781b9e6fd4bc8044bac525dd0821f935",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "2b23c6a36ada24de7da6b26fec908137781b9e6fd4bc8044bac525dd0821f935",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 0,
-                    "output_len": 73,
-                    "output_blake3": "d50dee651f028eeceebe382c76cff809b3f33aefcc32d007b4d8e11711844a8b",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 1024,
-                    "output_len": 73,
-                    "output_blake3": "d50dee651f028eeceebe382c76cff809b3f33aefcc32d007b4d8e11711844a8b",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 2049,
-                    "len": 0,
-                    "output_len": 73,
-                    "output_blake3": "d50dee651f028eeceebe382c76cff809b3f33aefcc32d007b4d8e11711844a8b",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 2049,
-                    "len": 1024,
-                    "output_len": 73,
-                    "output_blake3": "d50dee651f028eeceebe382c76cff809b3f33aefcc32d007b4d8e11711844a8b",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 2050,
-                    "len": 0,
-                    "output_len": 73,
-                    "output_blake3": "d50dee651f028eeceebe382c76cff809b3f33aefcc32d007b4d8e11711844a8b",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 2050,
-                    "len": 1024,
-                    "output_len": 73,
-                    "output_blake3": "d50dee651f028eeceebe382c76cff809b3f33aefcc32d007b4d8e11711844a8b",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                }
-            ]
-        },
-        {
-            "input_len": 3071,
-            "bao_hash": "3bf36194161a10a32843a84568d0ce0a524b3bc6182abc492ddaaa3dae785279",
-            "slices": [
-                {
-                    "start": 0,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "e55e1fffa068362a956001d6f2d56a19412395bc6267c6f40e4aa5c8c286284c",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 0,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "e55e1fffa068362a956001d6f2d56a19412395bc6267c6f40e4aa5c8c286284c",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "e55e1fffa068362a956001d6f2d56a19412395bc6267c6f40e4aa5c8c286284c",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 1024,
-                    "output_len": 2184,
-                    "output_blake3": "bdf8b0e7ced5884c34be197680bb3d32d9f7a14b59828d38dac3e567080853da",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        1160
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "877752dedfdba4959490cb1ee4ae5a4b42c02b528629157374deb19d3e5f03c7",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "877752dedfdba4959490cb1ee4ae5a4b42c02b528629157374deb19d3e5f03c7",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "877752dedfdba4959490cb1ee4ae5a4b42c02b528629157374deb19d3e5f03c7",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 1024,
-                    "output_len": 2183,
-                    "output_blake3": "3c368931e33f466135d928b64fb2c56ccc3b342f32e6abd364bea15d2821d86d",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        1160
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 0,
-                    "output_len": 1095,
-                    "output_blake3": "4d8d402e68ba9922dc9ad7d6c7c6a92e961f8802867621d4f1bbf0a5d901fb73",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 1024,
-                    "output_len": 1095,
-                    "output_blake3": "4d8d402e68ba9922dc9ad7d6c7c6a92e961f8802867621d4f1bbf0a5d901fb73",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 3070,
-                    "len": 0,
-                    "output_len": 1095,
-                    "output_blake3": "4d8d402e68ba9922dc9ad7d6c7c6a92e961f8802867621d4f1bbf0a5d901fb73",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 3070,
-                    "len": 1024,
-                    "output_len": 1095,
-                    "output_blake3": "4d8d402e68ba9922dc9ad7d6c7c6a92e961f8802867621d4f1bbf0a5d901fb73",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 3071,
-                    "len": 0,
-                    "output_len": 1095,
-                    "output_blake3": "4d8d402e68ba9922dc9ad7d6c7c6a92e961f8802867621d4f1bbf0a5d901fb73",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 3071,
-                    "len": 1024,
-                    "output_len": 1095,
-                    "output_blake3": "4d8d402e68ba9922dc9ad7d6c7c6a92e961f8802867621d4f1bbf0a5d901fb73",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 3072,
-                    "len": 0,
-                    "output_len": 1095,
-                    "output_blake3": "4d8d402e68ba9922dc9ad7d6c7c6a92e961f8802867621d4f1bbf0a5d901fb73",
-                    "corruptions": [
-                        7,
-                        8
-                    ]
-                },
-                {
-                    "start": 3072,
-                    "len": 1024,
-                    "output_len": 1095,
-                    "output_blake3": "4d8d402e68ba9922dc9ad7d6c7c6a92e961f8802867621d4f1bbf0a5d901fb73",
+                    "len": 16384,
+                    "output_len": 2056,
+                    "output_blake3": "c56271512387fca0e3bf0427a2d9718fc55484a05bade75bfbaffa5519d04f90",
                     "corruptions": [
                         7,
                         8
@@ -1618,8 +1106,8 @@
                 {
                     "start": 0,
                     "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "587165e79f60f9bf0e0bf02fbbec408f04f4cc471e329bead1c3797b4cc52393",
+                    "output_len": 3080,
+                    "output_blake3": "b67804efb8904058e29fa84f895d18b5c018e5c5987942dae28fc0db7189a40e",
                     "corruptions": [
                         7,
                         8
@@ -1627,137 +1115,29 @@
                 },
                 {
                     "start": 0,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "587165e79f60f9bf0e0bf02fbbec408f04f4cc471e329bead1c3797b4cc52393",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "587165e79f60f9bf0e0bf02fbbec408f04f4cc471e329bead1c3797b4cc52393",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 1024,
-                    "output_len": 2184,
-                    "output_blake3": "befb448e84bbd6899915e24162dcb350e782b4f9dd7b6c712ac3ad2fc74264b3",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        1160
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "34204424a859daf5fbf67e52a16ff28a26d17f0f27c233de0056bda00943d6f6",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "34204424a859daf5fbf67e52a16ff28a26d17f0f27c233de0056bda00943d6f6",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "34204424a859daf5fbf67e52a16ff28a26d17f0f27c233de0056bda00943d6f6",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 1024,
-                    "output_len": 2184,
-                    "output_blake3": "a40b9d5ac2d07a4dc518009dfae408084bd1c84b4d3f80ee954310082074a8ce",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        1160
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "56e1a3009440291aa69b2b9f62bac42aa2698cee5457b9d59c48faddf0af219b",
+                    "len": 16384,
+                    "output_len": 3080,
+                    "output_blake3": "b67804efb8904058e29fa84f895d18b5c018e5c5987942dae28fc0db7189a40e",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 2048,
-                    "len": 1024,
-                    "output_len": 1096,
-                    "output_blake3": "56e1a3009440291aa69b2b9f62bac42aa2698cee5457b9d59c48faddf0af219b",
+                    "start": 3071,
+                    "len": 0,
+                    "output_len": 3080,
+                    "output_blake3": "b67804efb8904058e29fa84f895d18b5c018e5c5987942dae28fc0db7189a40e",
                     "corruptions": [
                         7,
-                        8,
-                        72
+                        8
                     ]
                 },
                 {
                     "start": 3071,
-                    "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "56e1a3009440291aa69b2b9f62bac42aa2698cee5457b9d59c48faddf0af219b",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 3071,
-                    "len": 1024,
-                    "output_len": 1096,
-                    "output_blake3": "56e1a3009440291aa69b2b9f62bac42aa2698cee5457b9d59c48faddf0af219b",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 3072,
-                    "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "56e1a3009440291aa69b2b9f62bac42aa2698cee5457b9d59c48faddf0af219b",
+                    "len": 16384,
+                    "output_len": 3080,
+                    "output_blake3": "b67804efb8904058e29fa84f895d18b5c018e5c5987942dae28fc0db7189a40e",
                     "corruptions": [
                         7,
                         8
@@ -1765,9 +1145,19 @@
                 },
                 {
                     "start": 3072,
-                    "len": 1024,
-                    "output_len": 1096,
-                    "output_blake3": "56e1a3009440291aa69b2b9f62bac42aa2698cee5457b9d59c48faddf0af219b",
+                    "len": 0,
+                    "output_len": 3080,
+                    "output_blake3": "b67804efb8904058e29fa84f895d18b5c018e5c5987942dae28fc0db7189a40e",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 3072,
+                    "len": 16384,
+                    "output_len": 3080,
+                    "output_blake3": "b67804efb8904058e29fa84f895d18b5c018e5c5987942dae28fc0db7189a40e",
                     "corruptions": [
                         7,
                         8
@@ -1776,8 +1166,8 @@
                 {
                     "start": 3073,
                     "len": 0,
-                    "output_len": 1096,
-                    "output_blake3": "56e1a3009440291aa69b2b9f62bac42aa2698cee5457b9d59c48faddf0af219b",
+                    "output_len": 3080,
+                    "output_blake3": "b67804efb8904058e29fa84f895d18b5c018e5c5987942dae28fc0db7189a40e",
                     "corruptions": [
                         7,
                         8
@@ -1785,9 +1175,9 @@
                 },
                 {
                     "start": 3073,
-                    "len": 1024,
-                    "output_len": 1096,
-                    "output_blake3": "56e1a3009440291aa69b2b9f62bac42aa2698cee5457b9d59c48faddf0af219b",
+                    "len": 16384,
+                    "output_len": 3080,
+                    "output_blake3": "b67804efb8904058e29fa84f895d18b5c018e5c5987942dae28fc0db7189a40e",
                     "corruptions": [
                         7,
                         8
@@ -1796,14 +1186,14 @@
             ]
         },
         {
-            "input_len": 3073,
-            "bao_hash": "5ba075072daba2470558a171e3769fba057dc3f12375c60892bdbe73348d9fd1",
+            "input_len": 16383,
+            "bao_hash": "f0970fbfe2f1c5145fa6aa31833779803d5c53743a8443ed1395218f511834ba",
             "slices": [
                 {
                     "start": 0,
                     "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "0280d8f65473e1f03d7ec5d05f3e7313a01b0f25023c6ed29ddfe0143e43d731",
+                    "output_len": 16391,
+                    "output_blake3": "67fcd82efd41730e6d49500bf56c79cd07bde3d4a850e32e2e3df2f478485fce",
                     "corruptions": [
                         7,
                         8
@@ -1811,170 +1201,69 @@
                 },
                 {
                     "start": 0,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "0280d8f65473e1f03d7ec5d05f3e7313a01b0f25023c6ed29ddfe0143e43d731",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "0280d8f65473e1f03d7ec5d05f3e7313a01b0f25023c6ed29ddfe0143e43d731",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 1024,
-                    "output_len": 2184,
-                    "output_blake3": "8f4135001c2e611e641d97e7f1b7c7c88d6c3d6d2e8f857e970044e4465ca80f",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        1160
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "70d4b63e74780248d3f8d3ac9d1e39dae7549173e2097d9a8b167932f61a0913",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "70d4b63e74780248d3f8d3ac9d1e39dae7549173e2097d9a8b167932f61a0913",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "70d4b63e74780248d3f8d3ac9d1e39dae7549173e2097d9a8b167932f61a0913",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 1024,
-                    "output_len": 2248,
-                    "output_blake3": "691d82956447439c6402c76b5b90e6dab76963e6b12aea78259e586dd43bb88c",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        1160,
-                        1224
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "2d2ab3599aa6f275e6aa3ccfd278dabcde6f9b6a305d3b2c9db7805d6fe9b508",
+                    "len": 16384,
+                    "output_len": 16391,
+                    "output_blake3": "67fcd82efd41730e6d49500bf56c79cd07bde3d4a850e32e2e3df2f478485fce",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 2048,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "2d2ab3599aa6f275e6aa3ccfd278dabcde6f9b6a305d3b2c9db7805d6fe9b508",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 3072,
+                    "start": 16382,
                     "len": 0,
-                    "output_len": 137,
-                    "output_blake3": "057778b3e6fac7b7950296b007a1a7c1464eba3bd0a00640685bf14918786638",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 3072,
-                    "len": 1024,
-                    "output_len": 137,
-                    "output_blake3": "057778b3e6fac7b7950296b007a1a7c1464eba3bd0a00640685bf14918786638",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 3073,
-                    "len": 0,
-                    "output_len": 137,
-                    "output_blake3": "057778b3e6fac7b7950296b007a1a7c1464eba3bd0a00640685bf14918786638",
+                    "output_len": 16391,
+                    "output_blake3": "67fcd82efd41730e6d49500bf56c79cd07bde3d4a850e32e2e3df2f478485fce",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 3073,
-                    "len": 1024,
-                    "output_len": 137,
-                    "output_blake3": "057778b3e6fac7b7950296b007a1a7c1464eba3bd0a00640685bf14918786638",
+                    "start": 16382,
+                    "len": 16384,
+                    "output_len": 16391,
+                    "output_blake3": "67fcd82efd41730e6d49500bf56c79cd07bde3d4a850e32e2e3df2f478485fce",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 3074,
+                    "start": 16383,
                     "len": 0,
-                    "output_len": 137,
-                    "output_blake3": "057778b3e6fac7b7950296b007a1a7c1464eba3bd0a00640685bf14918786638",
+                    "output_len": 16391,
+                    "output_blake3": "67fcd82efd41730e6d49500bf56c79cd07bde3d4a850e32e2e3df2f478485fce",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 3074,
-                    "len": 1024,
-                    "output_len": 137,
-                    "output_blake3": "057778b3e6fac7b7950296b007a1a7c1464eba3bd0a00640685bf14918786638",
+                    "start": 16383,
+                    "len": 16384,
+                    "output_len": 16391,
+                    "output_blake3": "67fcd82efd41730e6d49500bf56c79cd07bde3d4a850e32e2e3df2f478485fce",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 16384,
+                    "len": 0,
+                    "output_len": 16391,
+                    "output_blake3": "67fcd82efd41730e6d49500bf56c79cd07bde3d4a850e32e2e3df2f478485fce",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 16384,
+                    "len": 16384,
+                    "output_len": 16391,
+                    "output_blake3": "67fcd82efd41730e6d49500bf56c79cd07bde3d4a850e32e2e3df2f478485fce",
                     "corruptions": [
                         7,
                         8
@@ -1983,14 +1272,14 @@
             ]
         },
         {
-            "input_len": 11264,
-            "bao_hash": "69fa39c8ab837dbb9e419c66a3ab7014ce9f86dba55935936b4c38cfcbc4d5f6",
+            "input_len": 16384,
+            "bao_hash": "b318758645c4467406c829a5f3da7cab00010fccccf4b7c314525cd85e2d0af8",
             "slices": [
                 {
                     "start": 0,
                     "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "62947903d9b957c93f241a7a948141ef6fdd3ae4a55031ea845a622b51a15ad0",
+                    "output_len": 16392,
+                    "output_blake3": "60d9a72e5c11b19e7559fef0b21c5bdf9eb571332aed298c76379931bf2c37e1",
                     "corruptions": [
                         7,
                         8
@@ -1998,625 +1287,69 @@
                 },
                 {
                     "start": 0,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "62947903d9b957c93f241a7a948141ef6fdd3ae4a55031ea845a622b51a15ad0",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "62947903d9b957c93f241a7a948141ef6fdd3ae4a55031ea845a622b51a15ad0",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 1024,
-                    "output_len": 2312,
-                    "output_blake3": "2adc26e9dcf6b932262b01f172c2e3228929f7806ff9ea4d5cbe2fc079c850c4",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "9fa5fc9ac6f34743ab103137310df80cd01bd45fc3afd62ec3dca95054308544",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "9fa5fc9ac6f34743ab103137310df80cd01bd45fc3afd62ec3dca95054308544",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "9fa5fc9ac6f34743ab103137310df80cd01bd45fc3afd62ec3dca95054308544",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 1024,
-                    "output_len": 2376,
-                    "output_blake3": "19fb9cbf9121f74af14e54b72b870dad2f0e8fdd112a8d51dc84d1da17f2bb37",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288,
-                        1352
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "4f4643ae5deca65fed6af3ac271f719d8659919d61562605359933f319214192",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "4f4643ae5deca65fed6af3ac271f719d8659919d61562605359933f319214192",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 3071,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "4f4643ae5deca65fed6af3ac271f719d8659919d61562605359933f319214192",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 3071,
-                    "len": 1024,
-                    "output_len": 2312,
-                    "output_blake3": "9dde3220cda47af57cb788bb750e3ed13a3b2176c51da5cf69bdffc2dd28b870",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288
-                    ]
-                },
-                {
-                    "start": 3072,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "91451c07097f1867384979e6ef9a1f9f826796e3c2bee827003cf9f01c88a5c6",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 3072,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "91451c07097f1867384979e6ef9a1f9f826796e3c2bee827003cf9f01c88a5c6",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 4095,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "91451c07097f1867384979e6ef9a1f9f826796e3c2bee827003cf9f01c88a5c6",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 4095,
-                    "len": 1024,
-                    "output_len": 2440,
-                    "output_blake3": "336de152490417baed359d9b0eb16e52a83c1052d53c9fbafc211c8294d5d5d9",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288,
-                        1352,
-                        1416
-                    ]
-                },
-                {
-                    "start": 4096,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "6002c6d0e59e1556bc6b8c3ef38e776270b1711c1cfe1e64a6c36d026e6b2283",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 4096,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "6002c6d0e59e1556bc6b8c3ef38e776270b1711c1cfe1e64a6c36d026e6b2283",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 5119,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "6002c6d0e59e1556bc6b8c3ef38e776270b1711c1cfe1e64a6c36d026e6b2283",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 5119,
-                    "len": 1024,
-                    "output_len": 2312,
-                    "output_blake3": "f3d9e6ed2d7558f79f840961c4916249532ca504b2e0f0c61b17f67ed2370036",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288
-                    ]
-                },
-                {
-                    "start": 5120,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "63f2bcd6c4868ff2380a69be60ba0f1a37984477ba03d4d137b40410a457f867",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 5120,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "63f2bcd6c4868ff2380a69be60ba0f1a37984477ba03d4d137b40410a457f867",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 6143,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "63f2bcd6c4868ff2380a69be60ba0f1a37984477ba03d4d137b40410a457f867",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 6143,
-                    "len": 1024,
-                    "output_len": 2376,
-                    "output_blake3": "1b3205be61625566101d23d3bf2383c463388d361015cc31e52d532ddc0e2ee5",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288,
-                        1352
-                    ]
-                },
-                {
-                    "start": 6144,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "c841d673c2b68cb8313efd93ee0c5ab3ee2eb080ffa365429c9d0e2f43b23637",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 6144,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "c841d673c2b68cb8313efd93ee0c5ab3ee2eb080ffa365429c9d0e2f43b23637",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 7167,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "c841d673c2b68cb8313efd93ee0c5ab3ee2eb080ffa365429c9d0e2f43b23637",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 7167,
-                    "len": 1024,
-                    "output_len": 2312,
-                    "output_blake3": "0ca1561ecd96f33859199ee92587a23c1cd1275d51ba8e697ef33807afeca1c0",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288
-                    ]
-                },
-                {
-                    "start": 7168,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "0c360dba230a01b742ee305b4e280322ef74bfba386009b8b564522f09395d90",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 7168,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "0c360dba230a01b742ee305b4e280322ef74bfba386009b8b564522f09395d90",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 8191,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "0c360dba230a01b742ee305b4e280322ef74bfba386009b8b564522f09395d90",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 8191,
-                    "len": 1024,
-                    "output_len": 2440,
-                    "output_blake3": "d55ed33043b5f2b540ad200ac7ac264dbb379aa97470c10ebc4515fea7a96d5c",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288,
-                        1352,
-                        1416
-                    ]
-                },
-                {
-                    "start": 8192,
-                    "len": 0,
-                    "output_len": 1224,
-                    "output_blake3": "8a6508f1ee90b42ce69ba428b6bb1d6d02d813a7ba4d1d86c046189034eb2ed4",
+                    "len": 16384,
+                    "output_len": 16392,
+                    "output_blake3": "60d9a72e5c11b19e7559fef0b21c5bdf9eb571332aed298c76379931bf2c37e1",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 8192,
-                    "len": 1024,
-                    "output_len": 1224,
-                    "output_blake3": "8a6508f1ee90b42ce69ba428b6bb1d6d02d813a7ba4d1d86c046189034eb2ed4",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 9215,
+                    "start": 16383,
                     "len": 0,
-                    "output_len": 1224,
-                    "output_blake3": "8a6508f1ee90b42ce69ba428b6bb1d6d02d813a7ba4d1d86c046189034eb2ed4",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 9215,
-                    "len": 1024,
-                    "output_len": 2248,
-                    "output_blake3": "c078b57ece269683438cabc7a529540fcb38ed7aa0b58e2821a2a981c7c19d88",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        1224
-                    ]
-                },
-                {
-                    "start": 9216,
-                    "len": 0,
-                    "output_len": 1224,
-                    "output_blake3": "bd729d8c3aea61c18bb7bdcacc550f2a7c6612b31d4894915a05bbe0dfc2ffb9",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 9216,
-                    "len": 1024,
-                    "output_len": 1224,
-                    "output_blake3": "bd729d8c3aea61c18bb7bdcacc550f2a7c6612b31d4894915a05bbe0dfc2ffb9",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 10239,
-                    "len": 0,
-                    "output_len": 1224,
-                    "output_blake3": "bd729d8c3aea61c18bb7bdcacc550f2a7c6612b31d4894915a05bbe0dfc2ffb9",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 10239,
-                    "len": 1024,
-                    "output_len": 2248,
-                    "output_blake3": "5ddcf50f4a51a745730e9193389551e87049ed7d22eed50bfa322b764bcff485",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        1224
-                    ]
-                },
-                {
-                    "start": 10240,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "7a34905894da772ad5be3b918574d7ce421ec06b970dc7f06ac83048cc071a2e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72
-                    ]
-                },
-                {
-                    "start": 10240,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "7a34905894da772ad5be3b918574d7ce421ec06b970dc7f06ac83048cc071a2e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 11263,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "7a34905894da772ad5be3b918574d7ce421ec06b970dc7f06ac83048cc071a2e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 11263,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "7a34905894da772ad5be3b918574d7ce421ec06b970dc7f06ac83048cc071a2e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 11264,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "7a34905894da772ad5be3b918574d7ce421ec06b970dc7f06ac83048cc071a2e",
+                    "output_len": 16392,
+                    "output_blake3": "60d9a72e5c11b19e7559fef0b21c5bdf9eb571332aed298c76379931bf2c37e1",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 11264,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "7a34905894da772ad5be3b918574d7ce421ec06b970dc7f06ac83048cc071a2e",
+                    "start": 16383,
+                    "len": 16384,
+                    "output_len": 16392,
+                    "output_blake3": "60d9a72e5c11b19e7559fef0b21c5bdf9eb571332aed298c76379931bf2c37e1",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 11265,
+                    "start": 16384,
                     "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "7a34905894da772ad5be3b918574d7ce421ec06b970dc7f06ac83048cc071a2e",
+                    "output_len": 16392,
+                    "output_blake3": "60d9a72e5c11b19e7559fef0b21c5bdf9eb571332aed298c76379931bf2c37e1",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 11265,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "7a34905894da772ad5be3b918574d7ce421ec06b970dc7f06ac83048cc071a2e",
+                    "start": 16384,
+                    "len": 16384,
+                    "output_len": 16392,
+                    "output_blake3": "60d9a72e5c11b19e7559fef0b21c5bdf9eb571332aed298c76379931bf2c37e1",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 16385,
+                    "len": 0,
+                    "output_len": 16392,
+                    "output_blake3": "60d9a72e5c11b19e7559fef0b21c5bdf9eb571332aed298c76379931bf2c37e1",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 16385,
+                    "len": 16384,
+                    "output_len": 16392,
+                    "output_blake3": "60d9a72e5c11b19e7559fef0b21c5bdf9eb571332aed298c76379931bf2c37e1",
                     "corruptions": [
                         7,
                         8
@@ -2625,14 +1358,14 @@
             ]
         },
         {
-            "input_len": 13312,
-            "bao_hash": "3e88d1dd20f426640077dcf82d6d4e18ee0062aa72f8ae547a0e65fcd36a0f06",
+            "input_len": 16385,
+            "bao_hash": "12a6a6b0554e7f3eed485f668bfd3b37382a2beee5e7ed5594c4a91c4c70f4aa",
             "slices": [
                 {
                     "start": 0,
                     "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "41c1167277cf218d521221135c46b5e9a75604bb491a6dc06a8a026ee737a748",
+                    "output_len": 16456,
+                    "output_blake3": "45bcedbb3b861c0d5a4af237f8a8d75e4d418921071cdbd3c08a337ca918cbde",
                     "corruptions": [
                         7,
                         8
@@ -2640,222 +1373,9 @@
                 },
                 {
                     "start": 0,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "41c1167277cf218d521221135c46b5e9a75604bb491a6dc06a8a026ee737a748",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "41c1167277cf218d521221135c46b5e9a75604bb491a6dc06a8a026ee737a748",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 1023,
-                    "len": 1024,
-                    "output_len": 2312,
-                    "output_blake3": "8eddca1f1f879336fa61e953502eef131d7496534e5d1fc41e5709d552cbeb49",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "5d28684321edc332c061d7089736c7eae3916aacdb6a8b61912b53fc3127333e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 1024,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "5d28684321edc332c061d7089736c7eae3916aacdb6a8b61912b53fc3127333e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "5d28684321edc332c061d7089736c7eae3916aacdb6a8b61912b53fc3127333e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 2047,
-                    "len": 1024,
-                    "output_len": 2376,
-                    "output_blake3": "04caae4d370ca619a5e16c3e04706abfa350c7c8c4db46cf51d72d687f8b22c9",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288,
-                        1352
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "4a41e4b0529f98aaa354fe1cb22880d9cbe850aa8291db1f85e2c73a9954a462",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 2048,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "4a41e4b0529f98aaa354fe1cb22880d9cbe850aa8291db1f85e2c73a9954a462",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 3071,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "4a41e4b0529f98aaa354fe1cb22880d9cbe850aa8291db1f85e2c73a9954a462",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 3071,
-                    "len": 1024,
-                    "output_len": 2312,
-                    "output_blake3": "b570d29891fc456429837d161082430ab4214b0269c7b8b01feb88fd9956ffc5",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288
-                    ]
-                },
-                {
-                    "start": 3072,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "48b346a012751417fb9ce0d2f468fb267bb784d4b1c5e64b68499990974c42e4",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 3072,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "48b346a012751417fb9ce0d2f468fb267bb784d4b1c5e64b68499990974c42e4",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 4095,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "48b346a012751417fb9ce0d2f468fb267bb784d4b1c5e64b68499990974c42e4",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 4095,
-                    "len": 1024,
-                    "output_len": 2440,
-                    "output_blake3": "1eda466bd56851ba75a191442e2b77927ddc64ec7c943875b3da99363fd40c4b",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288,
-                        1352,
-                        1416
-                    ]
-                },
-                {
-                    "start": 4096,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "ec32c6da20fc805c578e6969042278f9deb1f05dbbe04e052cb690b8fe640c2d",
+                    "len": 16384,
+                    "output_len": 16456,
+                    "output_blake3": "45bcedbb3b861c0d5a4af237f8a8d75e4d418921071cdbd3c08a337ca918cbde",
                     "corruptions": [
                         7,
                         8,
@@ -2863,445 +1383,20 @@
                     ]
                 },
                 {
-                    "start": 4096,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "ec32c6da20fc805c578e6969042278f9deb1f05dbbe04e052cb690b8fe640c2d",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 5119,
+                    "start": 16384,
                     "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "ec32c6da20fc805c578e6969042278f9deb1f05dbbe04e052cb690b8fe640c2d",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 5119,
-                    "len": 1024,
-                    "output_len": 2312,
-                    "output_blake3": "cfe9f20b5472731933ddcbf4a5195b5e83b387569b068eede93b132ab4cac5b0",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288
-                    ]
-                },
-                {
-                    "start": 5120,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "c0bda2b2d9264831314837582e6025879f2ff8e98920f4fb6ce1f15c200e967f",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 5120,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "c0bda2b2d9264831314837582e6025879f2ff8e98920f4fb6ce1f15c200e967f",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 6143,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "c0bda2b2d9264831314837582e6025879f2ff8e98920f4fb6ce1f15c200e967f",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 6143,
-                    "len": 1024,
-                    "output_len": 2376,
-                    "output_blake3": "8c9702a45ee45cb83aaf26df01846dfcd1ab1796794c7eab23ad4b72150b80f4",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288,
-                        1352
-                    ]
-                },
-                {
-                    "start": 6144,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "461bb5d070c0531673aef2590d6d59914ccaa5ed351e296e2e8e6bd52930d0e2",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 6144,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "461bb5d070c0531673aef2590d6d59914ccaa5ed351e296e2e8e6bd52930d0e2",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 7167,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "461bb5d070c0531673aef2590d6d59914ccaa5ed351e296e2e8e6bd52930d0e2",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 7167,
-                    "len": 1024,
-                    "output_len": 2312,
-                    "output_blake3": "63300b203f83b970d50d77abec40bf832342f1652bbef1c280bea954ee077b39",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288
-                    ]
-                },
-                {
-                    "start": 7168,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "0270c4da4cee4e01f496530305e51140edc1ffc956294c5d2c7389613cb7587d",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 7168,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "0270c4da4cee4e01f496530305e51140edc1ffc956294c5d2c7389613cb7587d",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 8191,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "0270c4da4cee4e01f496530305e51140edc1ffc956294c5d2c7389613cb7587d",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 8191,
-                    "len": 1024,
-                    "output_len": 2504,
-                    "output_blake3": "627157dc167726ffce845e689bb8525cbd0b7f64682c918ad58d2129dd2e2c68",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288,
-                        1352,
-                        1416,
-                        1480
-                    ]
-                },
-                {
-                    "start": 8192,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "2045ad9a4babe21a109593741545a7913e225d1cfded3d2b2ab69971e7404fec",
+                    "output_len": 73,
+                    "output_blake3": "18e4834d6427d20ccdc740f08997cd7305c785b9360bf36be99f3d2c46e0a56e",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 8192,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "2045ad9a4babe21a109593741545a7913e225d1cfded3d2b2ab69971e7404fec",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 9215,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "2045ad9a4babe21a109593741545a7913e225d1cfded3d2b2ab69971e7404fec",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 9215,
-                    "len": 1024,
-                    "output_len": 2312,
-                    "output_blake3": "87795016564078bbced5d2ad9d0c486247bb4ccb8b209c9eac1dfda32dc312b9",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288
-                    ]
-                },
-                {
-                    "start": 9216,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "4527a6f12c9254f4416e8b152483b11d68be83aa782db27cbb638dc297f05a16",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 9216,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "4527a6f12c9254f4416e8b152483b11d68be83aa782db27cbb638dc297f05a16",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 10239,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "4527a6f12c9254f4416e8b152483b11d68be83aa782db27cbb638dc297f05a16",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 10239,
-                    "len": 1024,
-                    "output_len": 2376,
-                    "output_blake3": "ecdce7fedf9b8ea32a21fc9aa6b525e0ebc40949284f9bd10ce11f82c60b2334",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288,
-                        1352
-                    ]
-                },
-                {
-                    "start": 10240,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "08e1b6e8de33080fb17a666506131ffbc44b424dc3d90224933bed1c9f7ea99e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136
-                    ]
-                },
-                {
-                    "start": 10240,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "08e1b6e8de33080fb17a666506131ffbc44b424dc3d90224933bed1c9f7ea99e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 11263,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "08e1b6e8de33080fb17a666506131ffbc44b424dc3d90224933bed1c9f7ea99e",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 11263,
-                    "len": 1024,
-                    "output_len": 2312,
-                    "output_blake3": "fcdfed7e3d34e1127476f9308029c26ba1c3213128a066ef584f6bfbebc9701a",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288
-                    ]
-                },
-                {
-                    "start": 11264,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "ec98ac27e4144494a3d91dcaacc9487b62afd01b72aa5da52d777b0e0181dd66",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200
-                    ]
-                },
-                {
-                    "start": 11264,
-                    "len": 1024,
-                    "output_len": 1288,
-                    "output_blake3": "ec98ac27e4144494a3d91dcaacc9487b62afd01b72aa5da52d777b0e0181dd66",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 12287,
-                    "len": 0,
-                    "output_len": 1288,
-                    "output_blake3": "ec98ac27e4144494a3d91dcaacc9487b62afd01b72aa5da52d777b0e0181dd66",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264
-                    ]
-                },
-                {
-                    "start": 12287,
-                    "len": 1024,
-                    "output_len": 2312,
-                    "output_blake3": "a2ff063d77ce8ab2f64ed9ad38fb4813dfb50f41bab06f501b5b4062cb14640f",
-                    "corruptions": [
-                        7,
-                        8,
-                        72,
-                        136,
-                        200,
-                        264,
-                        1288
-                    ]
-                },
-                {
-                    "start": 12288,
-                    "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "a769554f29020e2366cc67782c2778146b7b559e90b4de2356f67568dda46edd",
+                    "start": 16384,
+                    "len": 16384,
+                    "output_len": 73,
+                    "output_blake3": "18e4834d6427d20ccdc740f08997cd7305c785b9360bf36be99f3d2c46e0a56e",
                     "corruptions": [
                         7,
                         8,
@@ -3309,10 +1404,199 @@
                     ]
                 },
                 {
-                    "start": 12288,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "a769554f29020e2366cc67782c2778146b7b559e90b4de2356f67568dda46edd",
+                    "start": 16385,
+                    "len": 0,
+                    "output_len": 73,
+                    "output_blake3": "18e4834d6427d20ccdc740f08997cd7305c785b9360bf36be99f3d2c46e0a56e",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 16385,
+                    "len": 16384,
+                    "output_len": 73,
+                    "output_blake3": "18e4834d6427d20ccdc740f08997cd7305c785b9360bf36be99f3d2c46e0a56e",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 16386,
+                    "len": 0,
+                    "output_len": 73,
+                    "output_blake3": "18e4834d6427d20ccdc740f08997cd7305c785b9360bf36be99f3d2c46e0a56e",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 16386,
+                    "len": 16384,
+                    "output_len": 73,
+                    "output_blake3": "18e4834d6427d20ccdc740f08997cd7305c785b9360bf36be99f3d2c46e0a56e",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                }
+            ]
+        },
+        {
+            "input_len": 32768,
+            "bao_hash": "8008de557073cab60f851191359ad9dc1afe9dc6152668ee01825c56ac5a754e",
+            "slices": [
+                {
+                    "start": 0,
+                    "len": 0,
+                    "output_len": 16456,
+                    "output_blake3": "fda9266a69dc224dbf192a3e22de2946e023274e6431b42ece0b91d5327f67a4",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 0,
+                    "len": 16384,
+                    "output_len": 16456,
+                    "output_blake3": "fda9266a69dc224dbf192a3e22de2946e023274e6431b42ece0b91d5327f67a4",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 16383,
+                    "len": 0,
+                    "output_len": 16456,
+                    "output_blake3": "fda9266a69dc224dbf192a3e22de2946e023274e6431b42ece0b91d5327f67a4",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 16383,
+                    "len": 16384,
+                    "output_len": 32840,
+                    "output_blake3": "5dd1efa9f2ce74cd0b4d968aa286396aa1783c6974882c7dff3545f2284401bc",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        16456
+                    ]
+                },
+                {
+                    "start": 16384,
+                    "len": 0,
+                    "output_len": 16456,
+                    "output_blake3": "82a074cda924b2d70cb648815ac9f331244c9108188c00e4f57a1a7046912a04",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 16384,
+                    "len": 16384,
+                    "output_len": 16456,
+                    "output_blake3": "82a074cda924b2d70cb648815ac9f331244c9108188c00e4f57a1a7046912a04",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 32767,
+                    "len": 0,
+                    "output_len": 16456,
+                    "output_blake3": "82a074cda924b2d70cb648815ac9f331244c9108188c00e4f57a1a7046912a04",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 32767,
+                    "len": 16384,
+                    "output_len": 16456,
+                    "output_blake3": "82a074cda924b2d70cb648815ac9f331244c9108188c00e4f57a1a7046912a04",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 32768,
+                    "len": 0,
+                    "output_len": 16456,
+                    "output_blake3": "82a074cda924b2d70cb648815ac9f331244c9108188c00e4f57a1a7046912a04",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 32768,
+                    "len": 16384,
+                    "output_len": 16456,
+                    "output_blake3": "82a074cda924b2d70cb648815ac9f331244c9108188c00e4f57a1a7046912a04",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 32769,
+                    "len": 0,
+                    "output_len": 16456,
+                    "output_blake3": "82a074cda924b2d70cb648815ac9f331244c9108188c00e4f57a1a7046912a04",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 32769,
+                    "len": 16384,
+                    "output_len": 16456,
+                    "output_blake3": "82a074cda924b2d70cb648815ac9f331244c9108188c00e4f57a1a7046912a04",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                }
+            ]
+        },
+        {
+            "input_len": 49152,
+            "bao_hash": "91823357fefc308b57bb85ebed1d1edeba3c355e804dc63fa98fcb82554b1566",
+            "slices": [
+                {
+                    "start": 0,
+                    "len": 0,
+                    "output_len": 16520,
+                    "output_blake3": "93d6f103087b56e2ffad7a52ae04607615a527c43f141fa7422e910f1d0e4f9c",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 0,
+                    "len": 16384,
+                    "output_len": 16520,
+                    "output_blake3": "93d6f103087b56e2ffad7a52ae04607615a527c43f141fa7422e910f1d0e4f9c",
                     "corruptions": [
                         7,
                         8,
@@ -3321,10 +1605,10 @@
                     ]
                 },
                 {
-                    "start": 13311,
+                    "start": 16383,
                     "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "a769554f29020e2366cc67782c2778146b7b559e90b4de2356f67568dda46edd",
+                    "output_len": 16520,
+                    "output_blake3": "93d6f103087b56e2ffad7a52ae04607615a527c43f141fa7422e910f1d0e4f9c",
                     "corruptions": [
                         7,
                         8,
@@ -3333,10 +1617,34 @@
                     ]
                 },
                 {
-                    "start": 13311,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "a769554f29020e2366cc67782c2778146b7b559e90b4de2356f67568dda46edd",
+                    "start": 16383,
+                    "len": 16384,
+                    "output_len": 32904,
+                    "output_blake3": "beebbc14cce937fc4bc4e553d3a0b19dbe710843c57b5c47f8a169e1f13bc51f",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        16520
+                    ]
+                },
+                {
+                    "start": 16384,
+                    "len": 0,
+                    "output_len": 16520,
+                    "output_blake3": "f55acbf9f5aae05b82f92c8fbc25b25cea87d5aa4a5cb1e1a8c7dfff7fbe17bd",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 16384,
+                    "len": 16384,
+                    "output_len": 16520,
+                    "output_blake3": "f55acbf9f5aae05b82f92c8fbc25b25cea87d5aa4a5cb1e1a8c7dfff7fbe17bd",
                     "corruptions": [
                         7,
                         8,
@@ -3345,40 +1653,1512 @@
                     ]
                 },
                 {
-                    "start": 13312,
+                    "start": 32767,
                     "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "a769554f29020e2366cc67782c2778146b7b559e90b4de2356f67568dda46edd",
+                    "output_len": 16520,
+                    "output_blake3": "f55acbf9f5aae05b82f92c8fbc25b25cea87d5aa4a5cb1e1a8c7dfff7fbe17bd",
                     "corruptions": [
                         7,
-                        8
+                        8,
+                        72,
+                        136
                     ]
                 },
                 {
-                    "start": 13312,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "a769554f29020e2366cc67782c2778146b7b559e90b4de2356f67568dda46edd",
+                    "start": 32767,
+                    "len": 16384,
+                    "output_len": 32904,
+                    "output_blake3": "04dc463978c19acd1a6182f8a1e35eb0cf59e206aeda11ddfe018a504e9a071a",
                     "corruptions": [
                         7,
-                        8
+                        8,
+                        72,
+                        136,
+                        16520
                     ]
                 },
                 {
-                    "start": 13313,
+                    "start": 32768,
                     "len": 0,
-                    "output_len": 1160,
-                    "output_blake3": "a769554f29020e2366cc67782c2778146b7b559e90b4de2356f67568dda46edd",
+                    "output_len": 16456,
+                    "output_blake3": "907f27001df160791f003d2996636c1c89660a8fd5b4e451af70ff209139dac6",
                     "corruptions": [
                         7,
                         8
                     ]
                 },
                 {
-                    "start": 13313,
-                    "len": 1024,
-                    "output_len": 1160,
-                    "output_blake3": "a769554f29020e2366cc67782c2778146b7b559e90b4de2356f67568dda46edd",
+                    "start": 32768,
+                    "len": 16384,
+                    "output_len": 16456,
+                    "output_blake3": "907f27001df160791f003d2996636c1c89660a8fd5b4e451af70ff209139dac6",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 49151,
+                    "len": 0,
+                    "output_len": 16456,
+                    "output_blake3": "907f27001df160791f003d2996636c1c89660a8fd5b4e451af70ff209139dac6",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 49151,
+                    "len": 16384,
+                    "output_len": 16456,
+                    "output_blake3": "907f27001df160791f003d2996636c1c89660a8fd5b4e451af70ff209139dac6",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 49152,
+                    "len": 0,
+                    "output_len": 16456,
+                    "output_blake3": "907f27001df160791f003d2996636c1c89660a8fd5b4e451af70ff209139dac6",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 49152,
+                    "len": 16384,
+                    "output_len": 16456,
+                    "output_blake3": "907f27001df160791f003d2996636c1c89660a8fd5b4e451af70ff209139dac6",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 49153,
+                    "len": 0,
+                    "output_len": 16456,
+                    "output_blake3": "907f27001df160791f003d2996636c1c89660a8fd5b4e451af70ff209139dac6",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 49153,
+                    "len": 16384,
+                    "output_len": 16456,
+                    "output_blake3": "907f27001df160791f003d2996636c1c89660a8fd5b4e451af70ff209139dac6",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                }
+            ]
+        },
+        {
+            "input_len": 180224,
+            "bao_hash": "4742cbae9485ce1b86ab359c1a84e203f819795d018b22a5c70c5c4577dd732e",
+            "slices": [
+                {
+                    "start": 0,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "2184b3f0910013881e9689b9632cb4b557f5955f48a2710cb199735a1941f916",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 0,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "2184b3f0910013881e9689b9632cb4b557f5955f48a2710cb199735a1941f916",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 16383,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "2184b3f0910013881e9689b9632cb4b557f5955f48a2710cb199735a1941f916",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 16383,
+                    "len": 16384,
+                    "output_len": 33032,
+                    "output_blake3": "b9d3810f59e0b16faa5b0cd3b8a5a29ad88fb5272748431c8823d198b17e0881",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648
+                    ]
+                },
+                {
+                    "start": 16384,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "b46b1aa63670f9325a6c7187b33ab4e2d0a97c499ceacf68b5c9ced6421fa831",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 16384,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "b46b1aa63670f9325a6c7187b33ab4e2d0a97c499ceacf68b5c9ced6421fa831",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 32767,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "b46b1aa63670f9325a6c7187b33ab4e2d0a97c499ceacf68b5c9ced6421fa831",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 32767,
+                    "len": 16384,
+                    "output_len": 33096,
+                    "output_blake3": "946d6cd9fe86d706075909c8a39787c747cf2307827e0c5ee8464f6f1ac7b65b",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648,
+                        16712
+                    ]
+                },
+                {
+                    "start": 32768,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "e76a4f631347faef0e33f6f9e1cdc117e5bcc382e970831313cc8a57b28b8a4e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 32768,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "e76a4f631347faef0e33f6f9e1cdc117e5bcc382e970831313cc8a57b28b8a4e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 49151,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "e76a4f631347faef0e33f6f9e1cdc117e5bcc382e970831313cc8a57b28b8a4e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 49151,
+                    "len": 16384,
+                    "output_len": 33032,
+                    "output_blake3": "d77dc4dd2ed664deee0a2a5885db9a1d53a1b383c6eb4d846f9a83e8e8c665bc",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648
+                    ]
+                },
+                {
+                    "start": 49152,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "58b94c17aad54086a446219f77c84b2e61c9531c66ff9b9b235291345b8fc58e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 49152,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "58b94c17aad54086a446219f77c84b2e61c9531c66ff9b9b235291345b8fc58e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 65535,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "58b94c17aad54086a446219f77c84b2e61c9531c66ff9b9b235291345b8fc58e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 65535,
+                    "len": 16384,
+                    "output_len": 33160,
+                    "output_blake3": "808e91d8cd1443f5e390cc8698f34716e4ef401ef8653a089e3c898e1ebfd359",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648,
+                        16712,
+                        16776
+                    ]
+                },
+                {
+                    "start": 65536,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "0c107708be5bf12bb107df943bdfdaad5fcbe88e5d1109259ae48f40fd850f36",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 65536,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "0c107708be5bf12bb107df943bdfdaad5fcbe88e5d1109259ae48f40fd850f36",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 81919,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "0c107708be5bf12bb107df943bdfdaad5fcbe88e5d1109259ae48f40fd850f36",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 81919,
+                    "len": 16384,
+                    "output_len": 33032,
+                    "output_blake3": "13f160640b3d54d0facbf4af28f5d84d1a97bf22b1404ec47ab7be478f1ce1ee",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648
+                    ]
+                },
+                {
+                    "start": 81920,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "51cdcf60db153f23daf95d7f7ceb8a662e216075a1ff7014841c569b9cd0a593",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 81920,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "51cdcf60db153f23daf95d7f7ceb8a662e216075a1ff7014841c569b9cd0a593",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 98303,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "51cdcf60db153f23daf95d7f7ceb8a662e216075a1ff7014841c569b9cd0a593",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 98303,
+                    "len": 16384,
+                    "output_len": 33096,
+                    "output_blake3": "b7519b635ae3e816456c0b6d1ecbb01cdf6d7c099739f2a3ef95651b01f83f5b",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648,
+                        16712
+                    ]
+                },
+                {
+                    "start": 98304,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "d69daf827c7db5648c078bb7c6af4c1d5bce3e546be739b55ec3d54dae1b8134",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 98304,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "d69daf827c7db5648c078bb7c6af4c1d5bce3e546be739b55ec3d54dae1b8134",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 114687,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "d69daf827c7db5648c078bb7c6af4c1d5bce3e546be739b55ec3d54dae1b8134",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 114687,
+                    "len": 16384,
+                    "output_len": 33032,
+                    "output_blake3": "19266ca2a39966676728929691ca955bdae0e7ffc6b54c6c901ab9bf25e06398",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648
+                    ]
+                },
+                {
+                    "start": 114688,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "cb94ed6b6a1cb1d495d75c33140643de04594a56c5dcf13d990d3a4d4945bd3c",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 114688,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "cb94ed6b6a1cb1d495d75c33140643de04594a56c5dcf13d990d3a4d4945bd3c",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 131071,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "cb94ed6b6a1cb1d495d75c33140643de04594a56c5dcf13d990d3a4d4945bd3c",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 131071,
+                    "len": 16384,
+                    "output_len": 33160,
+                    "output_blake3": "bf0084ea43c4791a4dfdf12f349376c76045f3deca676d7ec80cb1dc3010a6e0",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648,
+                        16712,
+                        16776
+                    ]
+                },
+                {
+                    "start": 131072,
+                    "len": 0,
+                    "output_len": 16584,
+                    "output_blake3": "a15c5681f1f518d6822dcd9023208c281e56828d556dbc1a74b4d746054f1a7e",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 131072,
+                    "len": 16384,
+                    "output_len": 16584,
+                    "output_blake3": "a15c5681f1f518d6822dcd9023208c281e56828d556dbc1a74b4d746054f1a7e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 147455,
+                    "len": 0,
+                    "output_len": 16584,
+                    "output_blake3": "a15c5681f1f518d6822dcd9023208c281e56828d556dbc1a74b4d746054f1a7e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 147455,
+                    "len": 16384,
+                    "output_len": 32968,
+                    "output_blake3": "3d9211f1aeecd6b27a281a748909f64ad1ca4b261fd1475b07718629d9b700d4",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        16584
+                    ]
+                },
+                {
+                    "start": 147456,
+                    "len": 0,
+                    "output_len": 16584,
+                    "output_blake3": "843e6a3f4936a4227325b5e4be5e271f7ef0ac5ef1e6f2828033763e1494ef96",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 147456,
+                    "len": 16384,
+                    "output_len": 16584,
+                    "output_blake3": "843e6a3f4936a4227325b5e4be5e271f7ef0ac5ef1e6f2828033763e1494ef96",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 163839,
+                    "len": 0,
+                    "output_len": 16584,
+                    "output_blake3": "843e6a3f4936a4227325b5e4be5e271f7ef0ac5ef1e6f2828033763e1494ef96",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 163839,
+                    "len": 16384,
+                    "output_len": 32968,
+                    "output_blake3": "1d7b5a6bada0b7f1c74e2f53541d52d4e9d857969b07bb54c14cf6b0acae8425",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        16584
+                    ]
+                },
+                {
+                    "start": 163840,
+                    "len": 0,
+                    "output_len": 16520,
+                    "output_blake3": "28119dbc5b9334f7aa31c087b147aa40ddee4a8ea31a7a6fcb4ce8dc694c894f",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 163840,
+                    "len": 16384,
+                    "output_len": 16520,
+                    "output_blake3": "28119dbc5b9334f7aa31c087b147aa40ddee4a8ea31a7a6fcb4ce8dc694c894f",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 180223,
+                    "len": 0,
+                    "output_len": 16520,
+                    "output_blake3": "28119dbc5b9334f7aa31c087b147aa40ddee4a8ea31a7a6fcb4ce8dc694c894f",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 180223,
+                    "len": 16384,
+                    "output_len": 16520,
+                    "output_blake3": "28119dbc5b9334f7aa31c087b147aa40ddee4a8ea31a7a6fcb4ce8dc694c894f",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 180224,
+                    "len": 0,
+                    "output_len": 16520,
+                    "output_blake3": "28119dbc5b9334f7aa31c087b147aa40ddee4a8ea31a7a6fcb4ce8dc694c894f",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 180224,
+                    "len": 16384,
+                    "output_len": 16520,
+                    "output_blake3": "28119dbc5b9334f7aa31c087b147aa40ddee4a8ea31a7a6fcb4ce8dc694c894f",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 180225,
+                    "len": 0,
+                    "output_len": 16520,
+                    "output_blake3": "28119dbc5b9334f7aa31c087b147aa40ddee4a8ea31a7a6fcb4ce8dc694c894f",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 180225,
+                    "len": 16384,
+                    "output_len": 16520,
+                    "output_blake3": "28119dbc5b9334f7aa31c087b147aa40ddee4a8ea31a7a6fcb4ce8dc694c894f",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                }
+            ]
+        },
+        {
+            "input_len": 212992,
+            "bao_hash": "760c549edfe95c734b1d6a9b846d81692ed3ca022b541442949a0e42fe570df2",
+            "slices": [
+                {
+                    "start": 0,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "d1686f5ffd9ceef80fa6985f6506fe0752626d8fbcb09d8bb594e83cb2784e74",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 0,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "d1686f5ffd9ceef80fa6985f6506fe0752626d8fbcb09d8bb594e83cb2784e74",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 16383,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "d1686f5ffd9ceef80fa6985f6506fe0752626d8fbcb09d8bb594e83cb2784e74",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 16383,
+                    "len": 16384,
+                    "output_len": 33032,
+                    "output_blake3": "19a6b8f474b2e511cfa99e44718c36140c0f743e3ff180313e2871cc925ec913",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648
+                    ]
+                },
+                {
+                    "start": 16384,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "8ae2cd6da3426f62ef9b18440ac2e65f4c9e3ef6c9ff7f9b8168b5e7c26d6c7b",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 16384,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "8ae2cd6da3426f62ef9b18440ac2e65f4c9e3ef6c9ff7f9b8168b5e7c26d6c7b",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 32767,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "8ae2cd6da3426f62ef9b18440ac2e65f4c9e3ef6c9ff7f9b8168b5e7c26d6c7b",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 32767,
+                    "len": 16384,
+                    "output_len": 33096,
+                    "output_blake3": "83a2c5a20ca3a8a0e3064b12e0b8b82eaddcc68d8199f2b51edc2420068af41e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648,
+                        16712
+                    ]
+                },
+                {
+                    "start": 32768,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "fc62df862a67ed604d3ca21c450d3cafb756a28fde66045821c7f724ea0395ee",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 32768,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "fc62df862a67ed604d3ca21c450d3cafb756a28fde66045821c7f724ea0395ee",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 49151,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "fc62df862a67ed604d3ca21c450d3cafb756a28fde66045821c7f724ea0395ee",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 49151,
+                    "len": 16384,
+                    "output_len": 33032,
+                    "output_blake3": "255415bbf05b0acb1f7df97d2f95966f2dd455e51944151238ddd9bad5486345",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648
+                    ]
+                },
+                {
+                    "start": 49152,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "b8ad0e03241c5df1f7b791705365e7ca504a87fe9f95c3963c7f51ecb61b50d1",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 49152,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "b8ad0e03241c5df1f7b791705365e7ca504a87fe9f95c3963c7f51ecb61b50d1",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 65535,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "b8ad0e03241c5df1f7b791705365e7ca504a87fe9f95c3963c7f51ecb61b50d1",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 65535,
+                    "len": 16384,
+                    "output_len": 33160,
+                    "output_blake3": "cb004bd588a554b6d518877c7e76636bc0c601f1ce6cf28be16128ea29c033d8",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648,
+                        16712,
+                        16776
+                    ]
+                },
+                {
+                    "start": 65536,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "a2ae7d3a3e401a2849f22a056102d1c89c1365af53ad3d48a40d57f77ba392f2",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 65536,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "a2ae7d3a3e401a2849f22a056102d1c89c1365af53ad3d48a40d57f77ba392f2",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 81919,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "a2ae7d3a3e401a2849f22a056102d1c89c1365af53ad3d48a40d57f77ba392f2",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 81919,
+                    "len": 16384,
+                    "output_len": 33032,
+                    "output_blake3": "7e9ad70cc39adfcfb8b668ec828ed3a5cb769e28def62ea790c0ea9978421190",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648
+                    ]
+                },
+                {
+                    "start": 81920,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "dbb6ed8e1da4cedf601a4f664292e22e3d06ef311fe302a5b233efdd9b08656c",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 81920,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "dbb6ed8e1da4cedf601a4f664292e22e3d06ef311fe302a5b233efdd9b08656c",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 98303,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "dbb6ed8e1da4cedf601a4f664292e22e3d06ef311fe302a5b233efdd9b08656c",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 98303,
+                    "len": 16384,
+                    "output_len": 33096,
+                    "output_blake3": "c82a60a8dc9ae9e448eb052f8b3aa49d3854ff6383e15a53f04752ad232d7f2e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648,
+                        16712
+                    ]
+                },
+                {
+                    "start": 98304,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "d6d9c28c42c0b6da3b19218a72d0173290b75ce7e54936a674a7ed13e1d957c8",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 98304,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "d6d9c28c42c0b6da3b19218a72d0173290b75ce7e54936a674a7ed13e1d957c8",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 114687,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "d6d9c28c42c0b6da3b19218a72d0173290b75ce7e54936a674a7ed13e1d957c8",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 114687,
+                    "len": 16384,
+                    "output_len": 33032,
+                    "output_blake3": "4ed5b921e8a8476ff117d2c52473f634e00ee135dff3ac0b36f2db5595e25f3b",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648
+                    ]
+                },
+                {
+                    "start": 114688,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "94701a5e50ca33296c5ac14d60f93af2003d7a0874b672b1176474e5f8e9d072",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 114688,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "94701a5e50ca33296c5ac14d60f93af2003d7a0874b672b1176474e5f8e9d072",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 131071,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "94701a5e50ca33296c5ac14d60f93af2003d7a0874b672b1176474e5f8e9d072",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 131071,
+                    "len": 16384,
+                    "output_len": 33224,
+                    "output_blake3": "0d3680cfea46a23bfbbaaa6cae7c107b00c878e60502964903452d363f9bf810",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648,
+                        16712,
+                        16776,
+                        16840
+                    ]
+                },
+                {
+                    "start": 131072,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "e98655f2e83889f937eb75126d9e8e7e1ff2adff8718928c682ea1058396dd1b",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 131072,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "e98655f2e83889f937eb75126d9e8e7e1ff2adff8718928c682ea1058396dd1b",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 147455,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "e98655f2e83889f937eb75126d9e8e7e1ff2adff8718928c682ea1058396dd1b",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 147455,
+                    "len": 16384,
+                    "output_len": 33032,
+                    "output_blake3": "0fbce7eef144077300907c3dcd5937188c895cb079bad91dd4b28c0c1f6f5f5e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648
+                    ]
+                },
+                {
+                    "start": 147456,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "ce48ddc5ec3264d6b4cd27a4b1f328c2883fb9239034f87f03f003e29a8684cb",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 147456,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "ce48ddc5ec3264d6b4cd27a4b1f328c2883fb9239034f87f03f003e29a8684cb",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 163839,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "ce48ddc5ec3264d6b4cd27a4b1f328c2883fb9239034f87f03f003e29a8684cb",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 163839,
+                    "len": 16384,
+                    "output_len": 33096,
+                    "output_blake3": "4c552ff26c6057973a33e7820a5946c4031c3e8c25dc73a500c7509416275bcb",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648,
+                        16712
+                    ]
+                },
+                {
+                    "start": 163840,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "5cb4c10b7ee9af87aeb7d4c2c57196decea7369c928968d59b7b7ccb0e09c5a0",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 163840,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "5cb4c10b7ee9af87aeb7d4c2c57196decea7369c928968d59b7b7ccb0e09c5a0",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 180223,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "5cb4c10b7ee9af87aeb7d4c2c57196decea7369c928968d59b7b7ccb0e09c5a0",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 180223,
+                    "len": 16384,
+                    "output_len": 33032,
+                    "output_blake3": "686b67b5789cda70a48f6e437ebb5c74f5071517b6d793f5c5a002fb555e3700",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648
+                    ]
+                },
+                {
+                    "start": 180224,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "26ee8195383c42a93b107710cc7bb826e505a1357598f7162fc08c852d2c6fba",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200
+                    ]
+                },
+                {
+                    "start": 180224,
+                    "len": 16384,
+                    "output_len": 16648,
+                    "output_blake3": "26ee8195383c42a93b107710cc7bb826e505a1357598f7162fc08c852d2c6fba",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 196607,
+                    "len": 0,
+                    "output_len": 16648,
+                    "output_blake3": "26ee8195383c42a93b107710cc7bb826e505a1357598f7162fc08c852d2c6fba",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264
+                    ]
+                },
+                {
+                    "start": 196607,
+                    "len": 16384,
+                    "output_len": 33032,
+                    "output_blake3": "98fcbcbd2ca7630126426af9f54c6eaee4f464084f1fa5d8b20e89b0004a9c82",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136,
+                        200,
+                        264,
+                        16648
+                    ]
+                },
+                {
+                    "start": 196608,
+                    "len": 0,
+                    "output_len": 16520,
+                    "output_blake3": "31d2997721b25261be762cc27c703007da79e58d95b7d7a631252489366b1c1e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72
+                    ]
+                },
+                {
+                    "start": 196608,
+                    "len": 16384,
+                    "output_len": 16520,
+                    "output_blake3": "31d2997721b25261be762cc27c703007da79e58d95b7d7a631252489366b1c1e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 212991,
+                    "len": 0,
+                    "output_len": 16520,
+                    "output_blake3": "31d2997721b25261be762cc27c703007da79e58d95b7d7a631252489366b1c1e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 212991,
+                    "len": 16384,
+                    "output_len": 16520,
+                    "output_blake3": "31d2997721b25261be762cc27c703007da79e58d95b7d7a631252489366b1c1e",
+                    "corruptions": [
+                        7,
+                        8,
+                        72,
+                        136
+                    ]
+                },
+                {
+                    "start": 212992,
+                    "len": 0,
+                    "output_len": 16520,
+                    "output_blake3": "31d2997721b25261be762cc27c703007da79e58d95b7d7a631252489366b1c1e",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 212992,
+                    "len": 16384,
+                    "output_len": 16520,
+                    "output_blake3": "31d2997721b25261be762cc27c703007da79e58d95b7d7a631252489366b1c1e",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 212993,
+                    "len": 0,
+                    "output_len": 16520,
+                    "output_blake3": "31d2997721b25261be762cc27c703007da79e58d95b7d7a631252489366b1c1e",
+                    "corruptions": [
+                        7,
+                        8
+                    ]
+                },
+                {
+                    "start": 212993,
+                    "len": 16384,
+                    "output_len": 16520,
+                    "output_blake3": "31d2997721b25261be762cc27c703007da79e58d95b7d7a631252489366b1c1e",
                     "corruptions": [
                         7,
                         8

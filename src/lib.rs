@@ -49,10 +49,11 @@ use std::mem;
 
 /// The size of a `Hash`, 32 bytes.
 pub const HASH_SIZE: usize = 32;
-pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
-pub(crate) const HEADER_SIZE: usize = 8;
-pub(crate) const CHUNK_SIZE: usize = 1024;
-pub(crate) const MAX_DEPTH: usize = 54; // 2^54 * CHUNK_SIZE = 2^64
+const PARENT_SIZE: usize = 2 * HASH_SIZE;
+const HEADER_SIZE: usize = 8;
+const CHUNK_SIZE: usize = 1024;
+const GROUP_SIZE: usize = 16 * CHUNK_SIZE;
+const MAX_DEPTH: usize = 50; // 2^50 * GROUP_SIZE = 2^64
 
 /// An array of `HASH_SIZE` bytes. This will be a wrapper type in a future version.
 pub(crate) type ParentNode = [u8; 2 * HASH_SIZE];

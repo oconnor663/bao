@@ -36,8 +36,8 @@
 //! ```
 
 use crate::encode;
-use crate::encode::NextRead;
-use crate::{Finalization, Hash, CHUNK_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
+use crate::encode::{hash_group, NextRead};
+use crate::{Finalization, Hash, GROUP_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use std::cmp;
@@ -146,14 +146,14 @@ impl VerifyState {
         Ok(())
     }
 
-    fn feed_chunk(&mut self, chunk_hash: &Hash) -> Result<(), Error> {
+    fn feed_group(&mut self, group_hash: &Hash) -> Result<(), Error> {
         let expected_hash = self.stack.last().expect("unexpectedly empty stack");
         // Hash implements constant time equality.
-        if chunk_hash != expected_hash {
+        if group_hash != expected_hash {
             return Err(Error::HashMismatch);
         }
         self.stack.pop();
-        self.parser.advance_chunk();
+        self.parser.advance_group();
         Ok(())
     }
 }
@@ -209,7 +209,7 @@ struct DecoderShared<T: Read, O: Read> {
     input: T,
     outboard: Option<O>,
     state: VerifyState,
-    buf: [u8; CHUNK_SIZE],
+    buf: [u8; GROUP_SIZE],
     buf_start: usize,
     buf_end: usize,
 }
@@ -220,7 +220,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
             input,
             outboard,
             state: VerifyState::new(hash),
-            buf: [0; CHUNK_SIZE],
+            buf: [0; GROUP_SIZE],
             buf_start: 0,
             buf_end: 0,
         }
@@ -278,7 +278,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         Ok(())
     }
 
-    fn buffer_verified_chunk(
+    fn buffer_verified_group(
         &mut self,
         size: usize,
         finalization: Finalization,
@@ -297,10 +297,8 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         }
         let buf_slice = &mut self.buf[..size];
         self.input.read_exact(buf_slice)?;
-        let hash = blake3::guts::ChunkState::new(index)
-            .update(buf_slice)
-            .finalize(finalization.is_root());
-        self.state.feed_chunk(&hash)?;
+        let hash = hash_group(buf_slice, index, finalization.is_root());
+        self.state.feed_group(&hash)?;
         self.buf_start = skip;
         self.buf_end = size;
         Ok(())
@@ -335,7 +333,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                 NextRead::Parent => {
                     self.get_and_feed_parent()?;
                 }
-                NextRead::Chunk {
+                NextRead::Group {
                     size,
                     finalization,
                     skip,
@@ -359,10 +357,8 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                     // Hash it and push its hash into the VerifyState. This
                     // returns an error if the hash is bad. Otherwise, the
                     // chunk is verifiied.
-                    let chunk_hash = blake3::guts::ChunkState::new(index)
-                        .update(read_buf)
-                        .finalize(finalization.is_root());
-                    self.state.feed_chunk(&chunk_hash)?;
+                    let group_hash = hash_group(read_buf, index, finalization.is_root());
+                    self.state.feed_group(&group_hash)?;
 
                     // If the output buffer was large enough for direct output,
                     // we're done. Otherwise, we need to update the internal
@@ -390,13 +386,13 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         match next {
             NextRead::Header => self.get_and_feed_header()?,
             NextRead::Parent => self.get_and_feed_parent()?,
-            NextRead::Chunk {
+            NextRead::Group {
                 size,
                 finalization,
                 skip,
                 index,
             } => {
-                self.buffer_verified_chunk(
+                self.buffer_verified_group(
                     size,
                     finalization,
                     skip,
@@ -766,8 +762,11 @@ mod test {
             if encoded.len() > HEADER_SIZE + PARENT_SIZE {
                 tweaks.push(HEADER_SIZE + PARENT_SIZE);
             }
-            if encoded.len() > CHUNK_SIZE {
-                tweaks.push(CHUNK_SIZE);
+            if encoded.len() > crate::CHUNK_SIZE {
+                tweaks.push(crate::CHUNK_SIZE);
+            }
+            if encoded.len() > GROUP_SIZE {
+                tweaks.push(GROUP_SIZE);
             }
             for tweak in tweaks {
                 println!("tweak {}", tweak);
@@ -813,15 +812,15 @@ mod test {
 
     #[test]
     fn test_repeated_random_seeks() {
-        // A chunk number like this (37) with consecutive zeroes should exercise some of the more
+        // A group number like this (37) with consecutive zeroes should exercise some of the more
         // interesting geometry cases.
-        let input_len = 0b100101 * CHUNK_SIZE;
+        let input_len = 0b100101 * GROUP_SIZE;
         println!("\n\ninput_len {}", input_len);
         let mut prng = ChaChaRng::from_seed([0; 32]);
         let input = make_test_input(input_len);
         let (encoded, hash) = encode::encode(&input);
         let mut decoder = Decoder::new(Cursor::new(&encoded), &hash);
-        // Do a thousand random seeks and chunk-sized reads.
+        // Do a thousand random seeks and group-sized reads.
         for _ in 0..1000 {
             let seek = prng.gen_range(0..input_len + 1);
             println!("\nseek {}", seek);
@@ -832,11 +831,11 @@ mod test {
             let mut output = Vec::new();
             decoder
                 .clone()
-                .take(CHUNK_SIZE as u64)
+                .take(GROUP_SIZE as u64)
                 .read_to_end(&mut output)
                 .expect("decoder error");
             let input_start = cmp::min(seek, input_len);
-            let input_end = cmp::min(input_start + CHUNK_SIZE, input_len);
+            let input_end = cmp::min(input_start + GROUP_SIZE, input_len);
             assert_eq!(
                 &input[input_start..input_end],
                 &output[..],
@@ -873,9 +872,9 @@ mod test {
     #[test]
     fn test_seeking_around_invalid_data() {
         for &case in crate::test::TEST_CASES {
-            // Skip the cases with only one or two chunks, so we have valid
+            // Skip the cases with only one or two groups, so we have valid
             // reads before and after the tweak.
-            if case <= 2 * CHUNK_SIZE {
+            if case <= 2 * GROUP_SIZE {
                 continue;
             }
 
@@ -887,17 +886,17 @@ mod test {
             // Tweak a bit at the start of a chunk about halfway through. Loop
             // over prior parent nodes and chunks to figure out where the
             // target chunk actually starts.
-            let tweak_chunk = encode::count_chunks(case as u64) / 2;
-            let tweak_position = tweak_chunk as usize * CHUNK_SIZE;
+            let tweak_group = encode::count_groups(case as u64) / 2;
+            let tweak_position = tweak_group as usize * GROUP_SIZE;
             println!("tweak position {}", tweak_position);
             let mut tweak_encoded_offset = HEADER_SIZE;
-            for chunk in 0..tweak_chunk {
+            for group in 0..tweak_group {
                 tweak_encoded_offset +=
-                    encode::pre_order_parent_nodes(chunk, case as u64) as usize * PARENT_SIZE;
-                tweak_encoded_offset += CHUNK_SIZE;
+                    encode::pre_order_parent_nodes(group, case as u64) as usize * PARENT_SIZE;
+                tweak_encoded_offset += GROUP_SIZE;
             }
             tweak_encoded_offset +=
-                encode::pre_order_parent_nodes(tweak_chunk, case as u64) as usize * PARENT_SIZE;
+                encode::pre_order_parent_nodes(tweak_group, case as u64) as usize * PARENT_SIZE;
             println!("tweak encoded offset {}", tweak_encoded_offset);
             encoded[tweak_encoded_offset] ^= 1;
 
@@ -909,12 +908,12 @@ mod test {
             assert_eq!(&input[..tweak_position], &*output);
 
             // Further reads at this point should fail.
-            let mut buf = [0; CHUNK_SIZE];
+            let mut buf = [0; GROUP_SIZE];
             let res = decoder.read(&mut buf);
             assert_eq!(res.unwrap_err().kind(), io::ErrorKind::InvalidData);
 
             // But now if we seek past the bad chunk, things should succeed again.
-            let new_start = tweak_position + CHUNK_SIZE;
+            let new_start = tweak_position + GROUP_SIZE;
             decoder.seek(SeekFrom::Start(new_start as u64)).unwrap();
             let mut output = Vec::new();
             decoder.read_to_end(&mut output).unwrap();
@@ -968,7 +967,7 @@ mod test {
             assert_eq!(hash, outboard_hash);
             for &slice_start in crate::test::TEST_CASES {
                 let expected_start = cmp::min(input.len(), slice_start);
-                let slice_lens = [0, 1, 2, CHUNK_SIZE - 1, CHUNK_SIZE, CHUNK_SIZE + 1];
+                let slice_lens = [0, 1, 2, GROUP_SIZE - 1, GROUP_SIZE, GROUP_SIZE + 1];
                 for &slice_len in slice_lens.iter() {
                     println!("\ncase {} start {} len {}", case, slice_start, slice_len);
                     let expected_end = cmp::min(input.len(), slice_start + slice_len);

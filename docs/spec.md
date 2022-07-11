@@ -19,21 +19,26 @@
 
 ## Combined Encoding Format
 
-The combined encoding file format is the contents of the chunks and parent nodes of the
-[BLAKE3 tree](https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf)
+The combined encoding file format is the contents of the chunks and parent
+nodes of the [BLAKE3
+tree](https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf)
 concatenated together in pre-order (that is a parent, followed by its left
 subtree, followed by its right subtree), with the 8-byte little-endian unsigned
 input length prepended to the very front. This makes the order of nodes on disk
 the same as the order in which a depth-first traversal would encounter them, so
 a decoder reading the tree from beginning to end doesn't need to do any
 seeking. The contents of each parent node are the concatenated hashes
-("chaining values") of its left and right children. Here's the example input of
-2049 zero bytes (two full chunks and a third chunk with just one byte),
-formatted as an encoded file:
+("chaining values") of its left and right children. To reduce space overhead,
+parent nodes of subtrees with less than 16 chunks are omitted from the
+encoding. This "pruning" effectively increases the chunk size from 1 KiB to 16
+KiB, without changing the root hash.
+
+Here's the example input of 32769 zero bytes (two full 16 KiB subtrees and a
+third subtree with just one byte), formatted as an encoded file:
 
 ```
-input length    |root parent node  |left parent node  |first chunk|second chunk|last chunk
-0108000000000000|a04fc7...c37466...|91715a...f0eef3...|000000...  |000000...   |00
+input length    |root parent node  |left parent node  |first subtree|second subtree|last subtree
+0180000000000000|ee3013...e03d34...|97d590...1bbec3...|000000...    |000000...     |00
 ```
 
 ## Outboard Encoding Format
@@ -50,13 +55,13 @@ The slice format is very similar to the combined encoding format above. The
 difference is that the caller requests a specific start point and byte count,
 and chunks and parent nodes that wouldn't be encountered when seeking to that
 start point and reading that many bytes are omitted. For example, if we slice
-the tree above starting at input byte 1024 (the beginning of the second chunk),
-and request any count of bytes less than or equal to 1024 (up to the end of
-that chunk), the resulting slice will be this:
+the tree above starting at input byte 16384 (the beginning of the second
+subtree), and request any count of bytes less than or equal to 16384 (up to the
+end of that subtree), the resulting slice will be this:
 
 ```
-input length    |root parent node  |left parent node  |second chunk
-0108000000000000|a04fc7...c37466...|91715a...f0eef3...|000000...
+input length    |root parent node  |left parent node  |second subtree
+0180000000000000|ee3013...e03d34...|97d590...1bbec3...|000000...
 ```
 
 Although slices can be extracted from both combined and outboard encodings,

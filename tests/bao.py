@@ -80,6 +80,7 @@ MSG_SCHEDULE = [
 
 BLOCK_SIZE = 64
 CHUNK_SIZE = 1024
+GROUP_SIZE = 16 * CHUNK_SIZE
 KEY_SIZE = 32
 HASH_SIZE = 32
 PARENT_SIZE = 2 * HASH_SIZE
@@ -212,15 +213,44 @@ def parent_chaining_value(parent_bytes, finalization):
     return bytes_from_words(cv)
 
 
-# Verify a chunk chaining value with a constant-time comparison.
-def verify_chunk(expected_cv, chunk_bytes, chunk_index, finalization):
-    found_cv = chunk_chaining_value(chunk_bytes, chunk_index, finalization)
-    assert hmac.compare_digest(expected_cv, found_cv), "hash mismatch"
+# Left subtrees contain the largest possible power of two chunks, with at least
+# one byte left for the right subtree.
+def left_len(parent_len):
+    available_chunks = (parent_len - 1) // CHUNK_SIZE
+    power_of_two_chunks = 2 ** (available_chunks.bit_length() - 1)
+    return CHUNK_SIZE * power_of_two_chunks
+
+
+# Compute the chaining value of a subtree recursively. Although we could use
+# this to hash entire inputs in memory, in this implementation we only use it
+# to hash chunk groups in group_chaining_value() immediately below.
+def subtree_chaining_value(subtree_bytes, starting_chunk_index, finalization):
+    if len(subtree_bytes) <= CHUNK_SIZE:
+        return chunk_chaining_value(subtree_bytes, starting_chunk_index, finalization)
+    llen = left_len(len(subtree_bytes))
+    chunk_index = starting_chunk_index
+    left_cv = subtree_chaining_value(subtree_bytes[:llen], chunk_index, NOT_ROOT)
+    chunk_index += llen // CHUNK_SIZE
+    right_cv = subtree_chaining_value(subtree_bytes[llen:], chunk_index, NOT_ROOT)
+    return parent_chaining_value(left_cv + right_cv, finalization)
+
+
+# Compute the chaining value of a group of chunks, up to GROUP_SIZE bytes.
+def group_chaining_value(group_bytes, group_index, finalization):
+    assert len(group_bytes) <= GROUP_SIZE
+    starting_chunk_index = group_index * (GROUP_SIZE // CHUNK_SIZE)
+    return subtree_chaining_value(group_bytes, starting_chunk_index, finalization)
 
 
 # Verify a parent node chaining value with a constant-time comparison.
 def verify_parent(expected_cv, parent_bytes, finalization):
     found_cv = parent_chaining_value(parent_bytes, finalization)
+    assert hmac.compare_digest(expected_cv, found_cv), "hash mismatch"
+
+
+# Verify a chunk group chaining value with a constant-time comparison.
+def verify_group(expected_cv, group_bytes, group_index, finalization):
+    found_cv = group_chaining_value(group_bytes, group_index, finalization)
     assert hmac.compare_digest(expected_cv, found_cv), "hash mismatch"
 
 
@@ -246,24 +276,16 @@ def decode_len(len_bytes):
     return int.from_bytes(len_bytes, "little")
 
 
-# Left subtrees contain the largest possible power of two chunks, with at least
-# one byte left for the right subtree.
-def left_len(parent_len):
-    available_chunks = (parent_len - 1) // CHUNK_SIZE
-    power_of_two_chunks = 2 ** (available_chunks.bit_length() - 1)
-    return CHUNK_SIZE * power_of_two_chunks
-
-
 def bao_encode(buf, *, outboard=False):
-    chunk_index = 0
+    group_index = 0
 
     def encode_recurse(buf, finalization):
-        nonlocal chunk_index
-        if len(buf) <= CHUNK_SIZE:
-            chunk_cv = chunk_chaining_value(buf, chunk_index, finalization)
-            chunk_encoded = b"" if outboard else buf
-            chunk_index += 1
-            return chunk_encoded, chunk_cv
+        nonlocal group_index
+        if len(buf) <= GROUP_SIZE:
+            group_cv = group_chaining_value(buf, group_index, finalization)
+            group_encoded = b"" if outboard else buf
+            group_index += 1
+            return group_encoded, group_cv
         llen = left_len(len(buf))
         # Interior nodes have no len suffix.
         left_encoded, left_cv = encode_recurse(buf[:llen], NOT_ROOT)
@@ -281,15 +303,15 @@ def bao_encode(buf, *, outboard=False):
 
 def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
     tree_stream = outboard_stream or input_stream
-    chunk_index = 0
+    group_index = 0
 
     def decode_recurse(subtree_cv, content_len, finalization):
-        nonlocal chunk_index
-        if content_len <= CHUNK_SIZE:
-            chunk = read_exact(input_stream, content_len)
-            verify_chunk(subtree_cv, chunk, chunk_index, finalization)
-            chunk_index += 1
-            output_stream.write(chunk)
+        nonlocal group_index
+        if content_len <= GROUP_SIZE:
+            group = read_exact(input_stream, content_len)
+            verify_group(subtree_cv, group, group_index, finalization)
+            group_index += 1
+            output_stream.write(group)
         else:
             parent = read_exact(tree_stream, PARENT_SIZE)
             verify_parent(subtree_cv, parent, finalization)
@@ -304,7 +326,9 @@ def bao_decode(input_stream, output_stream, hash_, *, outboard_stream=None):
     decode_recurse(hash_, content_len, IS_ROOT)
 
 
-# This is identical to the BLAKE3 hash function.
+# This is identical to the BLAKE3 hash function. Note that this works in terms
+# of chunks rather than groups, to emphasize that grouping/pruning doesn't
+# affect the root hash.
 def bao_hash(input_stream):
     buf = b""
     chunks = 0
@@ -339,17 +363,17 @@ def bao_hash(input_stream):
         buf = buf + read
 
 
-# Round up to the next full chunk, and remember that the empty tree still
-# counts as one chunk.
-def count_chunks(content_len):
+# Round up to the next full group, and remember that the empty tree still
+# counts as one group.
+def count_groups(content_len):
     if content_len == 0:
         return 1
-    return (content_len + CHUNK_SIZE - 1) // CHUNK_SIZE
+    return (content_len + GROUP_SIZE - 1) // GROUP_SIZE
 
 
-# A subtree of N chunks always has N-1 parent nodes.
+# A subtree of N groups always has N-1 parent nodes.
 def encoded_subtree_size(content_len, outboard=False):
-    parents_size = PARENT_SIZE * (count_chunks(content_len) - 1)
+    parents_size = PARENT_SIZE * (count_groups(content_len) - 1)
     return parents_size if outboard else parents_size + content_len
 
 
@@ -382,12 +406,12 @@ def bao_slice(
         elif slice_end <= subtree_start:
             # We've sliced all the requested content, and we're done.
             pass
-        elif subtree_len <= CHUNK_SIZE:
-            # The current subtree is just a chunk. Read the whole thing. The
+        elif subtree_len <= GROUP_SIZE:
+            # The current subtree is just one group. Read the whole thing. The
             # recipient will need the whole thing to verify its hash,
             # regardless of whether it overlaps slice_end.
-            chunk = read_exact(input_stream, subtree_len)
-            output_stream.write(chunk)
+            group = read_exact(input_stream, subtree_len)
+            output_stream.write(group)
         else:
             # We need to read a parent node and recurse into the current
             # subtree.
@@ -425,23 +449,23 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start, slice_len)
     def decode_slice_recurse(subtree_start, subtree_len, subtree_cv, finalization):
         subtree_end = subtree_start + subtree_len
         # Check content_len before skipping subtrees, to be sure we don't skip
-        # validating the empty chunk.
+        # validating the empty chunk / empty group.
         if subtree_end <= slice_start and content_len > 0:
             # This subtree isn't part of the slice. Keep going.
             pass
         elif slice_end <= subtree_start and content_len > 0:
             # We've verified all the requested content, and we're done.
             pass
-        elif subtree_len <= CHUNK_SIZE:
-            # The current subtree is just a chunk. Verify the whole thing, and
-            # then output however many bytes we need.
-            chunk = read_exact(input_stream, subtree_len)
-            chunk_index = subtree_start // CHUNK_SIZE
-            verify_chunk(subtree_cv, chunk, chunk_index, finalization)
-            chunk_start = max(0, min(subtree_len, slice_start - subtree_start))
-            chunk_end = max(0, min(subtree_len, slice_end - subtree_start))
+        elif subtree_len <= GROUP_SIZE:
+            # The current subtree is just one group. Verify the whole thing,
+            # and then output however many bytes we need.
+            group = read_exact(input_stream, subtree_len)
+            group_index = subtree_start // GROUP_SIZE
+            verify_group(subtree_cv, group, group_index, finalization)
+            group_start = max(0, min(subtree_len, slice_start - subtree_start))
+            group_end = max(0, min(subtree_len, slice_end - subtree_start))
             if not skip_output:
-                output_stream.write(chunk[chunk_start:chunk_end])
+                output_stream.write(group[group_start:group_end])
         else:
             # We need to read a parent node and recurse into the current
             # subtree. Note that the finalization is always NOT_ROOT after this
