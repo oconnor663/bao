@@ -141,15 +141,17 @@ def words_from_bytes(buf):
     words = [0] * (len(buf) // WORD_BYTES)
     for word_i in range(len(words)):
         words[word_i] = int.from_bytes(
-            buf[word_i * WORD_BYTES:(word_i + 1) * WORD_BYTES], "little")
+            buf[word_i * WORD_BYTES : (word_i + 1) * WORD_BYTES], "little"
+        )
     return words
 
 
 def bytes_from_words(words):
     buf = bytearray(len(words) * WORD_BYTES)
     for word_i in range(len(words)):
-        buf[WORD_BYTES * word_i:WORD_BYTES * (word_i + 1)] = \
-            words[word_i].to_bytes(WORD_BYTES, "little")
+        buf[WORD_BYTES * word_i : WORD_BYTES * (word_i + 1)] = words[word_i].to_bytes(
+            WORD_BYTES, "little"
+        )
     return buf
 
 
@@ -186,7 +188,7 @@ def chunk_chaining_value(chunk_bytes, chunk_index, finalization):
     i = 0
     flags = CHUNK_START
     while len(chunk_bytes) - i > BLOCK_SIZE:
-        block = chunk_bytes[i:i + BLOCK_SIZE]
+        block = chunk_bytes[i : i + BLOCK_SIZE]
         cv = compress(cv, block, BLOCK_SIZE, chunk_index, flags)
         flags = 0
         i += BLOCK_SIZE
@@ -248,7 +250,7 @@ def decode_len(len_bytes):
 # one byte left for the right subtree.
 def left_len(parent_len):
     available_chunks = (parent_len - 1) // CHUNK_SIZE
-    power_of_two_chunks = 2**(available_chunks.bit_length() - 1)
+    power_of_two_chunks = 2 ** (available_chunks.bit_length() - 1)
     return CHUNK_SIZE * power_of_two_chunks
 
 
@@ -325,11 +327,10 @@ def bao_hash(input_stream):
         # before adding in bytes we just read into the buffer. This order or
         # operations means we know the finalization is non-root.
         if len(buf) >= CHUNK_SIZE:
-            new_subtree = chunk_chaining_value(
-                buf[:CHUNK_SIZE], chunks, NOT_ROOT)
+            new_subtree = chunk_chaining_value(buf[:CHUNK_SIZE], chunks, NOT_ROOT)
             chunks += 1
             # This is the very cute trick described at the top.
-            total_after_merging = bin(chunks).count('1')
+            total_after_merging = bin(chunks).count("1")
             while len(subtrees) + 1 > total_after_merging:
                 parent = subtrees.pop() + new_subtree
                 new_subtree = parent_chaining_value(parent, NOT_ROOT)
@@ -352,11 +353,9 @@ def encoded_subtree_size(content_len, outboard=False):
     return parents_size if outboard else parents_size + content_len
 
 
-def bao_slice(input_stream,
-              output_stream,
-              slice_start,
-              slice_len,
-              outboard_stream=None):
+def bao_slice(
+    input_stream, output_stream, slice_start, slice_len, outboard_stream=None
+):
     tree_stream = outboard_stream or input_stream
     content_len_bytes = read_exact(tree_stream, HEADER_SIZE)
     output_stream.write(content_len_bytes)
@@ -376,8 +375,7 @@ def bao_slice(input_stream,
         subtree_end = subtree_start + subtree_len
         if subtree_end <= slice_start:
             # Seek past the current subtree.
-            parent_nodes_size = encoded_subtree_size(subtree_len,
-                                                     outboard=True)
+            parent_nodes_size = encoded_subtree_size(subtree_len, outboard=True)
             # `1` here means seek from the current position.
             tree_stream.seek(parent_nodes_size, 1)
             input_stream.seek(subtree_len, 1)
@@ -405,8 +403,7 @@ def bao_slice(input_stream,
 # Note that unlike bao_slice, there is no optional outboard parameter. Slices
 # can be created from either a combined our outboard tree, but the resulting
 # slice itself is always combined.
-def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
-                     slice_len):
+def bao_decode_slice(input_stream, output_stream, hash_, slice_start, slice_len):
     content_len_bytes = read_exact(input_stream, HEADER_SIZE)
     content_len = decode_len(content_len_bytes)
 
@@ -425,8 +422,7 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
         slice_start = content_len - 1 if content_len > 0 else 0
         skip_output = True
 
-    def decode_slice_recurse(subtree_start, subtree_len, subtree_cv,
-                             finalization):
+    def decode_slice_recurse(subtree_start, subtree_len, subtree_cv, finalization):
         subtree_end = subtree_start + subtree_len
         # Check content_len before skipping subtrees, to be sure we don't skip
         # validating the empty chunk.
@@ -455,8 +451,9 @@ def bao_decode_slice(input_stream, output_stream, hash_, slice_start,
             left_cv, right_cv = parent[:HASH_SIZE], parent[HASH_SIZE:]
             llen = left_len(subtree_len)
             decode_slice_recurse(subtree_start, llen, left_cv, NOT_ROOT)
-            decode_slice_recurse(subtree_start + llen, subtree_len - llen,
-                                 right_cv, NOT_ROOT)
+            decode_slice_recurse(
+                subtree_start + llen, subtree_len - llen, right_cv, NOT_ROOT
+            )
 
     decode_slice_recurse(0, content_len, hash_, IS_ROOT)
 
@@ -489,10 +486,7 @@ def main():
         outboard_stream = None
         if args["--outboard"] is not None:
             outboard_stream = open_input(args["--outboard"])
-        bao_decode(in_stream,
-                   out_stream,
-                   hash_,
-                   outboard_stream=outboard_stream)
+        bao_decode(in_stream, out_stream, hash_, outboard_stream=outboard_stream)
     elif args["hash"]:
         inputs = args["<inputs>"]
         if len(inputs) > 0:
@@ -510,12 +504,18 @@ def main():
         outboard_stream = None
         if args["--outboard"] is not None:
             outboard_stream = open_input(args["--outboard"])
-        bao_slice(in_stream, out_stream, int(args["<start>"]),
-                  int(args["<count>"]), outboard_stream)
+        bao_slice(
+            in_stream,
+            out_stream,
+            int(args["<start>"]),
+            int(args["<count>"]),
+            outboard_stream,
+        )
     elif args["decode-slice"]:
         hash_ = binascii.unhexlify(args["<hash>"])
-        bao_decode_slice(in_stream, out_stream, hash_, int(args["<start>"]),
-                         int(args["<count>"]))
+        bao_decode_slice(
+            in_stream, out_stream, hash_, int(args["<start>"]), int(args["<count>"])
+        )
 
 
 if __name__ == "__main__":

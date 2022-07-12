@@ -61,10 +61,9 @@ def bao_decode(hash, encoded):
 def bao_decode_outboard(hash, content, outboard):
     hashbytes = unhexlify(hash)
     output = io.BytesIO()
-    bao.bao_decode(io.BytesIO(content),
-                   output,
-                   hashbytes,
-                   outboard_stream=io.BytesIO(outboard))
+    bao.bao_decode(
+        io.BytesIO(content), output, hashbytes, outboard_stream=io.BytesIO(outboard)
+    )
     return output.getvalue()
 
 
@@ -76,19 +75,22 @@ def bao_slice(encoded, slice_start, slice_len):
 
 def bao_slice_outboard(content, outboard, slice_start, slice_len):
     output = io.BytesIO()
-    bao.bao_slice(io.BytesIO(content),
-                  output,
-                  slice_start,
-                  slice_len,
-                  outboard_stream=io.BytesIO(outboard))
+    bao.bao_slice(
+        io.BytesIO(content),
+        output,
+        slice_start,
+        slice_len,
+        outboard_stream=io.BytesIO(outboard),
+    )
     return output.getvalue()
 
 
 def bao_decode_slice(slice_bytes, hash, slice_start, slice_len):
     hashbytes = unhexlify(hash)
     output = io.BytesIO()
-    bao.bao_decode_slice(io.BytesIO(slice_bytes), output, hashbytes,
-                         slice_start, slice_len)
+    bao.bao_decode_slice(
+        io.BytesIO(slice_bytes), output, hashbytes, slice_start, slice_len
+    )
     return output.getvalue()
 
 
@@ -229,24 +231,21 @@ def test_outboard():
 
         # Make sure decoding with the wrong hash fails.
         wrong_hash = "0" * len(hash_)
-        assert_decode_failure(bao_decode_outboard, wrong_hash, input_bytes,
-                              outboard)
+        assert_decode_failure(bao_decode_outboard, wrong_hash, input_bytes, outboard)
 
         # Make sure each of the outboard corruption points causes decoding to
         # fail.
         for c in outboard_corruptions:
             corrupted = bytearray(outboard)
             corrupted[c] ^= 1
-            assert_decode_failure(bao_decode_outboard, hash_, input_bytes,
-                                  corrupted)
+            assert_decode_failure(bao_decode_outboard, hash_, input_bytes, corrupted)
 
         # Make sure each of the input corruption points causes decoding to
         # fail.
         for c in input_corruptions:
             corrupted = bytearray(input_bytes)
             corrupted[c] ^= 1
-            assert_decode_failure(bao_decode_outboard, hash_, corrupted,
-                                  outboard)
+            assert_decode_failure(bao_decode_outboard, hash_, corrupted, outboard)
 
 
 def test_outboard_cli():
@@ -266,18 +265,21 @@ def test_outboard_cli():
     assert encoded_blake3 == blake3(outboard)
 
     # Now test decoding.
-    output = bao_cli("decode", expected_bao_hash, input_file.name,
-                     "--outboard", outboard_file.name)
+    output = bao_cli(
+        "decode", expected_bao_hash, input_file.name, "--outboard", outboard_file.name
+    )
     assert input_bytes == output
 
     # Make sure decoding with the wrong hash fails.
     wrong_hash = "0" * len(expected_bao_hash)
-    output = bao_cli("decode",
-                     wrong_hash,
-                     input_file.name,
-                     "--outboard",
-                     outboard_file.name,
-                     should_fail=True)
+    output = bao_cli(
+        "decode",
+        wrong_hash,
+        input_file.name,
+        "--outboard",
+        outboard_file.name,
+        should_fail=True,
+    )
 
 
 def test_slices():
@@ -305,30 +307,32 @@ def test_slices():
             assert output_blake3 == blake3(slice_bytes)
 
             # Make sure slicing an outboard tree is the same.
-            outboard_slice_bytes = bao_slice_outboard(input_bytes, outboard,
-                                                      slice_start, slice_len)
+            outboard_slice_bytes = bao_slice_outboard(
+                input_bytes, outboard, slice_start, slice_len
+            )
             assert slice_bytes == outboard_slice_bytes
 
             # Test decoding the slice, and compare it to the input. Note that
             # slicing a byte array in Python allows indices past the end of the
             # array, and sort of silently caps them.
             input_slice = input_bytes[slice_start:][:slice_len]
-            output = bao_decode_slice(slice_bytes, hash_, slice_start,
-                                      slice_len)
+            output = bao_decode_slice(slice_bytes, hash_, slice_start, slice_len)
             assert input_slice == output
 
             # Make sure decoding with the wrong hash fails.
             wrong_hash = "0" * len(hash_)
-            assert_decode_failure(bao_decode_slice, slice_bytes, wrong_hash,
-                                  slice_start, slice_len)
+            assert_decode_failure(
+                bao_decode_slice, slice_bytes, wrong_hash, slice_start, slice_len
+            )
 
             # Make sure each of the slice corruption points causes decoding to
             # fail.
             for c in corruptions:
                 corrupted = bytearray(slice_bytes)
                 corrupted[c] ^= 1
-                assert_decode_failure(bao_decode_slice, corrupted, hash_,
-                                      slice_start, slice_len)
+                assert_decode_failure(
+                    bao_decode_slice, corrupted, hash_, slice_start, slice_len
+                )
 
 
 def test_slices_cli():
@@ -352,33 +356,41 @@ def test_slices_cli():
     output_blake3 = slice_case["output_blake3"]
 
     # Make sure the slice output is what it should be.
-    slice_bytes = bao_cli("slice", str(slice_start), str(slice_len),
-                          encoded_file.name)
+    slice_bytes = bao_cli("slice", str(slice_start), str(slice_len), encoded_file.name)
     assert output_len == len(slice_bytes)
     assert output_blake3 == blake3(slice_bytes)
 
     # Make sure slicing an outboard tree is the same.
-    outboard_slice_bytes = bao_cli("slice", str(slice_start), str(slice_len),
-                                   input_file.name, "--outboard",
-                                   outboard_file.name)
+    outboard_slice_bytes = bao_cli(
+        "slice",
+        str(slice_start),
+        str(slice_len),
+        input_file.name,
+        "--outboard",
+        outboard_file.name,
+    )
     assert slice_bytes == outboard_slice_bytes
 
     # Test decoding the slice, and compare it to the input. Note that
     # slicing a byte array in Python allows indices past the end of the
     # array, and sort of silently caps them.
     input_slice = input_bytes[slice_start:][:slice_len]
-    output = bao_cli("decode-slice",
-                     expected_bao_hash,
-                     str(slice_start),
-                     str(slice_len),
-                     input=slice_bytes)
+    output = bao_cli(
+        "decode-slice",
+        expected_bao_hash,
+        str(slice_start),
+        str(slice_len),
+        input=slice_bytes,
+    )
     assert input_slice == output
 
     # Make sure decoding with the wrong hash fails.
     wrong_hash = "0" * len(expected_bao_hash)
-    bao_cli("decode-slice",
-            wrong_hash,
-            str(slice_start),
-            str(slice_len),
-            input=slice_bytes,
-            should_fail=True)
+    bao_cli(
+        "decode-slice",
+        wrong_hash,
+        str(slice_start),
+        str(slice_len),
+        input=slice_bytes,
+        should_fail=True,
+    )
