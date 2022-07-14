@@ -1,6 +1,6 @@
 [package]
 name = "bao"
-version = "0.12.0"
+version = "0.12.1"
 authors = ["Jack O'Connor"]
 description = "an implementation of BLAKE3 verified streaming"
 license = "CC0-1.0 OR Apache-2.0"
