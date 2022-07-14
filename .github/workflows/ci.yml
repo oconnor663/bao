@@ -34,3 +34,18 @@ jobs:
     - name: test bin --no-default-features
       run: cargo test --no-default-features
       working-directory: ./bao_bin
+
+  cargo_test_benches:
+    name: test benches
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        profile: minimal
+        override: true
+    - name: test benches
+      run: cargo test --benches

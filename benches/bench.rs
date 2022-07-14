@@ -2,20 +2,22 @@
 
 extern crate test;
 
-#[cfg(feature = "std")]
 use bao::{decode, encode};
 use rand::prelude::*;
 use std::io::prelude::*;
 use std::io::{Cursor, SeekFrom::Start};
 use test::Bencher;
 
-// 64 bytes, just enough input to fill a single BLAKE2s block.
-const SHORT: usize = blake2s_simd::BLOCKBYTES;
+// one block
+const SHORT: usize = 64;
 
-// Just enough input to occupy SIMD on a single thread. Currently 32 KiB on x86.
-const MEDIUM: usize = bao::benchmarks::CHUNK_SIZE * blake2s_simd::many::MAX_DEGREE;
+// enough to use AVX-512
+const MEDIUM: usize = 16384;
 
-const LONG: usize = 1 << 24; // about 17 MB
+// about 17 MB
+const LONG: usize = 1 << 24;
+
+const BUF_SIZE: usize = 16384;
 
 // This struct randomizes two things:
 // 1. The actual bytes of input.
@@ -55,57 +57,8 @@ impl RandomInput {
 }
 
 #[bench]
-fn bench_bao_hash_slice_short(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, SHORT);
-    b.iter(|| bao::hash(input.get()));
-}
-
-#[bench]
-fn bench_bao_hash_slice_medium(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, MEDIUM);
-    b.iter(|| bao::hash(input.get()));
-}
-
-#[bench]
-fn bench_bao_hash_slice_long(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, LONG);
-    b.iter(|| bao::hash(input.get()));
-}
-
-#[bench]
-fn bench_bao_hasher_short(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, SHORT);
-    b.iter(|| {
-        let mut hasher = bao::Hasher::new();
-        hasher.update(input.get());
-        hasher.finalize()
-    });
-}
-
-#[bench]
-fn bench_bao_hasher_medium(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, MEDIUM);
-    b.iter(|| {
-        let mut hasher = bao::Hasher::new();
-        hasher.update(input.get());
-        hasher.finalize()
-    });
-}
-
-#[bench]
-fn bench_bao_hasher_long(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, LONG);
-    b.iter(|| {
-        let mut hasher = bao::Hasher::new();
-        hasher.update(input.get());
-        hasher.finalize()
-    });
-}
-
-#[cfg(feature = "std")]
-#[bench]
 fn bench_bao_encoder_combined_short(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, SHORT);
+    let mut input = RandomInput::new(b, BUF_SIZE);
     let mut output = Vec::with_capacity(encode::encoded_size(SHORT as u64) as usize);
     b.iter(|| {
         output.clear();
@@ -115,10 +68,9 @@ fn bench_bao_encoder_combined_short(b: &mut Bencher) {
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_encoder_combined_medium(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, MEDIUM);
+    let mut input = RandomInput::new(b, BUF_SIZE);
     let mut output = Vec::with_capacity(encode::encoded_size(MEDIUM as u64) as usize);
     b.iter(|| {
         output.clear();
@@ -128,10 +80,9 @@ fn bench_bao_encoder_combined_medium(b: &mut Bencher) {
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_encoder_combined_long(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, LONG);
+    let mut input = RandomInput::new(b, BUF_SIZE);
     let mut output = Vec::with_capacity(encode::encoded_size(LONG as u64) as usize);
     b.iter(|| {
         output.clear();
@@ -141,10 +92,9 @@ fn bench_bao_encoder_combined_long(b: &mut Bencher) {
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_encoder_outboard_short(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, SHORT);
+    let mut input = RandomInput::new(b, BUF_SIZE);
     let mut output = Vec::with_capacity(encode::outboard_size(SHORT as u64) as usize);
     b.iter(|| {
         output.clear();
@@ -154,10 +104,9 @@ fn bench_bao_encoder_outboard_short(b: &mut Bencher) {
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_encoder_outboard_medium(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, MEDIUM);
+    let mut input = RandomInput::new(b, BUF_SIZE);
     let mut output = Vec::with_capacity(encode::outboard_size(MEDIUM as u64) as usize);
     b.iter(|| {
         output.clear();
@@ -167,10 +116,9 @@ fn bench_bao_encoder_outboard_medium(b: &mut Bencher) {
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_encoder_outboard_long(b: &mut Bencher) {
-    let mut input = RandomInput::new(b, LONG);
+    let mut input = RandomInput::new(b, BUF_SIZE);
     let mut output = Vec::with_capacity(encode::outboard_size(LONG as u64) as usize);
     b.iter(|| {
         output.clear();
@@ -180,79 +128,72 @@ fn bench_bao_encoder_outboard_long(b: &mut Bencher) {
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_combined_short(b: &mut Bencher) {
     let input = RandomInput::new(b, SHORT).get().to_vec();
     let (encoded, hash) = encode::encode(&input);
-    let mut output = [1; bao::BUF_SIZE];
+    let mut output = [1; BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new(&*encoded, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_combined_medium(b: &mut Bencher) {
     let input = RandomInput::new(b, MEDIUM).get().to_vec();
     let (encoded, hash) = encode::encode(&input);
-    let mut output = [1; bao::BUF_SIZE];
+    let mut output = [1; BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new(&*encoded, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_combined_long(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();
     let (encoded, hash) = encode::encode(&input);
-    let mut output = [1; bao::BUF_SIZE];
+    let mut output = [1; BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new(&*encoded, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_outboard_short(b: &mut Bencher) {
     let input = RandomInput::new(b, SHORT).get().to_vec();
     let (outboard, hash) = encode::outboard(&input);
-    let mut output = [1; bao::BUF_SIZE];
+    let mut output = [1; BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new_outboard(&*input, &*outboard, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_outboard_medium(b: &mut Bencher) {
     let input = RandomInput::new(b, MEDIUM).get().to_vec();
     let (outboard, hash) = encode::outboard(&input);
-    let mut output = [1; bao::BUF_SIZE];
+    let mut output = [1; BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new_outboard(&*input, &*outboard, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_decoder_outboard_long(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();
     let (outboard, hash) = encode::outboard(&input);
-    let mut output = [1; bao::BUF_SIZE];
+    let mut output = [1; BUF_SIZE];
     b.iter(|| {
         let mut decoder = decode::Decoder::new_outboard(&*input, &*outboard, &hash);
         while decoder.read(&mut output).unwrap() > 0 {}
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_seek_memory(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();
@@ -261,12 +202,11 @@ fn bench_bao_seek_memory(b: &mut Bencher) {
     let mut rng = rand_xorshift::XorShiftRng::from_seed(Default::default());
     let mut decoder = decode::Decoder::new(Cursor::new(&encoded), &hash);
     b.iter(|| {
-        let seek_offset = rng.gen_range(0, input.len() as u64);
+        let seek_offset = rng.gen_range(0..input.len() as u64);
         decoder.seek(Start(seek_offset)).unwrap();
     });
 }
 
-#[cfg(feature = "std")]
 #[bench]
 fn bench_bao_seek_file(b: &mut Bencher) {
     let input = RandomInput::new(b, LONG).get().to_vec();
@@ -281,7 +221,7 @@ fn bench_bao_seek_file(b: &mut Bencher) {
     let mut rng = rand_xorshift::XorShiftRng::from_seed(Default::default());
     let mut decoder = decode::Decoder::new(file, &hash);
     b.iter(|| {
-        let seek_offset = rng.gen_range(0, input.len() as u64);
+        let seek_offset = rng.gen_range(0..input.len() as u64);
         decoder.seek(Start(seek_offset)).expect("seek error");
     });
 }
