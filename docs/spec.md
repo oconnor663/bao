@@ -162,6 +162,11 @@ leads to chunk CVs being reinterpreted as parent CVs, and shrinking the tree
 leads to parent CVs being reinterpreted as chunk CVs. Since chunks and parents
 are domain separated from each other, this also leads to hash mismatch errors
 in the tree, in particular always including some node along the right edge.
+(EDIT: This argument is incomplete and needs to be expanded. There are cases
+where growing or shrinking the tree does _not_ change the number of parent
+nodes along the right face, and in these cases we rely on the BLAKE3 chunk
+counter to help us avoid ambiguity. See [issue
+#41](https://github.com/oconnor663/bao/issues/41)).
 
 Those observations are the reason behind the "final chunk requirement" for
 decoders. That is, a decoder must always validate the final chunk before
