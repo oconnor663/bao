@@ -501,11 +501,6 @@ impl<T: Read> Decoder<T, T> {
             shared: DecoderShared::new(inner, None, hash),
         }
     }
-
-    /// Return the underlying reader.
-    pub fn into_inner(self) -> T {
-        self.shared.input
-    }
 }
 
 impl<T: Read, O: Read> Decoder<T, O> {
@@ -513,6 +508,12 @@ impl<T: Read, O: Read> Decoder<T, O> {
         Self {
             shared: DecoderShared::new(inner, Some(outboard), hash),
         }
+    }
+
+    /// Return the underlying reader and the outboard reader, if any. If the `Decoder` was created
+    /// with `Decoder::new`, the outboard reader will be `None`.
+    pub fn into_inner(self) -> (T, Option<O>) {
+        (self.shared.input, self.shared.outboard)
     }
 }
 
@@ -1084,7 +1085,13 @@ mod test {
         let hash = [0; 32].into();
 
         let decoder = Decoder::new(io::Cursor::new(v.clone()), &hash);
-        let slice_decoder = SliceDecoder::new(decoder.into_inner(), &hash, 0, 0);
+        let (inner_reader, outboard_reader) = decoder.into_inner();
+        assert!(outboard_reader.is_none());
+        let slice_decoder = SliceDecoder::new(inner_reader, &hash, 0, 0);
         assert_eq!(slice_decoder.into_inner().into_inner(), v);
+
+        let outboard_decoder = Decoder::new_outboard(&b""[..], &b""[..], &hash);
+        let (_, outboard_reader) = outboard_decoder.into_inner();
+        assert!(outboard_reader.is_some());
     }
 }
