@@ -193,7 +193,7 @@ pub(crate) fn pre_order_parent_nodes(chunk_index: u64, content_len: u64) -> u8 {
 // makes it possible encode without knowing the input length in advance, and without requiring
 // buffer space for the entire input.
 #[derive(Clone)]
-struct FlipperState {
+pub(crate) struct FlipperState {
     parents: ArrayVec<crate::ParentNode, MAX_DEPTH>,
     content_len: u64,
     last_chunk_moved: u64,
@@ -263,7 +263,7 @@ impl fmt::Debug for FlipperState {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum FlipperNext {
+pub(crate) enum FlipperNext {
     FeedParent,
     TakeParent,
     Chunk(usize),

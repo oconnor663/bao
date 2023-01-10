@@ -42,6 +42,8 @@
 
 pub mod decode;
 pub mod encode;
+#[cfg(feature = "async")]
+pub mod encode_fut;
 
 pub use blake3::Hash;
 
