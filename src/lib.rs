@@ -41,7 +41,11 @@
 #![forbid(unsafe_code)]
 
 pub mod decode;
+#[cfg(feature = "async")]
+pub mod decode_fut;
 pub mod encode;
+#[cfg(feature = "async")]
+pub mod encode_fut;
 
 pub use blake3::Hash;
 
