@@ -861,7 +861,7 @@ mod test {
         let mut output = Vec::new();
         let mut decoder = Decoder::new(&*zero_encoded, &zero_hash);
         decoder.read_to_end(&mut output).unwrap();
-        assert_eq!(&output, &[]);
+        assert_eq!(output.len(), 0);
 
         // Decoding the empty tree with any other hash should fail.
         let mut output = Vec::new();
@@ -936,7 +936,7 @@ mod test {
             let mut decoder = Decoder::new(Cursor::new(&encoded), &hash);
             decoder.seek(SeekFrom::Start(case as u64)).unwrap();
             decoder.read_to_end(&mut output).unwrap();
-            assert_eq!(&output, &[]);
+            assert_eq!(output.len(), 0);
 
             // Seeking to EOF should fail if the root hash is wrong.
             let mut bad_hash_bytes = *hash.as_bytes();
