@@ -458,6 +458,7 @@ impl<T, O> fmt::Debug for DecoderShared<T, O> {
 
 #[cfg(feature = "tokio_io")]
 mod tokio_io {
+
     use super::{DecoderShared, Hash, NextRead};
     use std::{
         cmp,
@@ -561,6 +562,74 @@ mod tokio_io {
             }
         }
 
+        // Returns Ok(true) to indicate the seek is finished. Note that both the
+        // Decoder and the SliceDecoder will use this method (which doesn't depend on
+        // io::Seek), but only the Decoder will call handle_seek_bookkeeping first.
+        // This may read a chunk, but it never leaves output bytes in the buffer,
+        // because the only time seeking reads a chunk it also skips the entire
+        // thing.
+        fn poll_handle_seek_read(
+            &mut self,
+            next: NextRead,
+            cx: &mut task::Context,
+        ) -> task::Poll<io::Result<bool>> {
+            task::Poll::Ready(Ok(match next {
+                NextRead::Header => {
+                    // ensure reading state, reading 8 bytes
+                    // we might already be in the reading state,
+                    // so we must not set buf_start to 0
+                    self.buf_end = 8;
+                    // header comes from outboard if we have one, otherwise from input
+                    ready!(self.poll_fill_buffer_from_input_or_outboard(cx))?;
+                    self.state.feed_header(self.buf[0..8].try_into().unwrap());
+                    // we don't want to write the header, so we are done with the buffer contents
+                    self.clear_buf();
+                    // not done yet
+                    false
+                }
+                NextRead::Parent => {
+                    // ensure reading state, reading 64 bytes
+                    // we might already be in the reading state,
+                    // so we must not set buf_start to 0
+                    self.buf_end = 64;
+                    // parent comes from outboard if we have one, otherwise from input
+                    ready!(self.poll_fill_buffer_from_input_or_outboard(cx))?;
+                    self.state
+                        .feed_parent(&self.buf[0..64].try_into().unwrap())?;
+                    // we don't want to write the parent, so we are done with the buffer contents
+                    self.clear_buf();
+                    // not done yet
+                    false
+                }
+                NextRead::Chunk {
+                    size,
+                    finalization,
+                    skip: _,
+                    index,
+                } => {
+                    // ensure reading state, reading size bytes
+                    // we might already be in the reading state,
+                    // so we must not set buf_start to 0
+                    self.buf_end = size;
+                    // chunk never comes from outboard
+                    ready!(self.poll_fill_buffer_from_input(cx))?;
+
+                    // Hash it and push its hash into the VerifyState. This
+                    // returns an error if the hash is bad. Otherwise, the
+                    // chunk is verified.
+                    let read_buf = &self.buf[0..size];
+                    let chunk_hash = blake3::guts::ChunkState::new(index)
+                        .update(read_buf)
+                        .finalize(finalization.is_root());
+                    self.state.feed_chunk(&chunk_hash)?;
+                    // we don't want to write the chunk, so we are done with the buffer contents
+                    self.clear_buf();
+                    false
+                }
+                NextRead::Done => true, // The seek is done.
+            }))
+        }
+
         fn poll_fill_buffer_from_input(
             &mut self,
             cx: &mut task::Context<'_>,
@@ -638,16 +707,108 @@ mod tokio_io {
         }
     }
 
+    pub struct AsyncSliceDecoder<T: AsyncRead + Unpin> {
+        shared: DecoderShared<T, T>,
+        slice_start: u64,
+        slice_remaining: u64,
+        // If the caller requested no bytes, the extractor is still required to
+        // include a chunk. We're not required to verify it, but we want to
+        // aggressively check for extractor bugs.
+        need_fake_read: bool,
+    }
+
+    impl<T: AsyncRead + Unpin> AsyncSliceDecoder<T> {
+        pub fn new(inner: T, hash: &Hash, slice_start: u64, slice_len: u64) -> Self {
+            Self {
+                shared: DecoderShared::new(inner, None, hash),
+                slice_start,
+                slice_remaining: slice_len,
+                need_fake_read: slice_len == 0,
+            }
+        }
+
+        /// Return the underlying reader.
+        pub fn into_inner(self) -> T {
+            self.shared.input
+        }
+    }
+
+    impl<T: AsyncRead + Unpin> AsyncRead for AsyncSliceDecoder<T> {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut task::Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> task::Poll<io::Result<()>> {
+            // If we haven't done the initial seek yet, do the full seek loop
+            // first. Note that this will never leave any buffered output. The only
+            // scenario where handle_seek_read reads a chunk is if it needs to
+            // validate the final chunk, and then it skips the whole thing.
+            if self.shared.state.content_position() < self.slice_start {
+                loop {
+                    // we don't keep internal state but just call seek_next again if the
+                    // call to poll_handle_seek_read below returns pending.
+                    let bookkeeping = self.shared.state.seek_next(self.slice_start);
+                    // Note here, we skip to seek_bookkeeping_done without
+                    // calling handle_seek_bookkeeping. That is, we never
+                    // perform any underlying seeks. The slice extractor
+                    // already took care of lining everything up for us.
+                    let next = self.shared.state.seek_bookkeeping_done(bookkeeping);
+                    let done = ready!(self.shared.poll_handle_seek_read(next, cx))?;
+                    if done {
+                        break;
+                    }
+                }
+                debug_assert_eq!(0, self.shared.buf_len());
+            }
+
+            // We either just finished the seek (if any), or already did it during
+            // a previous call. Continue the read. Cap the output buffer to be at
+            // most the slice bytes remaining.
+            if self.need_fake_read {
+                // Read one byte and throw it away, just to verify a chunk.
+                let mut tmp = [0];
+                let mut buf = ReadBuf::new(tmp.as_mut_slice());
+                ready!(self.shared.poll_read(cx, &mut buf))?;
+                self.need_fake_read = false;
+            } else if self.slice_remaining > 0 {
+                // We still got bytes to read.
+                let filled0 = buf.filled().len();
+                // This can read more than we need. But that is ok.
+                // Reading might need the buffer to read an entire chunk
+                ready!(self.shared.poll_read(cx, buf))?;
+                let read = (buf.filled().len() - filled0) as u64;
+                if read <= self.slice_remaining {
+                    // just decrease the remaining bytes
+                    self.slice_remaining -= read;
+                } else {
+                    // We read more than we needed.
+                    // Truncate the buffer and set remaining to 0.
+                    let overread = (read - self.slice_remaining) as usize;
+                    buf.set_filled(buf.filled().len() - overread);
+                    self.slice_remaining = 0;
+                }
+            };
+            task::Poll::Ready(Ok(()))
+        }
+    }
+
     #[cfg(test)]
     mod tests {
+        use std::io::{Cursor, Read};
+
+        use tokio::io::AsyncReadExt;
+
         use super::*;
-        use crate::{decode::make_test_input, encode};
+        use crate::{
+            decode::{make_test_input, SliceDecoder},
+            encode, CHUNK_SIZE, HEADER_SIZE,
+        };
 
         #[tokio::test]
         async fn test_async_decode() {
             for &case in crate::test::TEST_CASES {
                 use tokio::io::AsyncReadExt;
-                println!("case {}", case);
+                println!("case {case}");
                 let input = make_test_input(case);
                 let (encoded, hash) = { encode::encode(&input) };
                 let mut output = Vec::new();
@@ -661,13 +822,121 @@ mod tokio_io {
         async fn test_async_decode_outboard() {
             for &case in crate::test::TEST_CASES {
                 use tokio::io::AsyncReadExt;
-                println!("case {}", case);
+                println!("case {case}");
                 let input = make_test_input(case);
                 let (outboard, hash) = { encode::outboard(&input) };
                 let mut output = Vec::new();
                 let mut reader = AsyncDecoder::new_outboard(&input[..], &outboard[..], &hash);
                 reader.read_to_end(&mut output).await.unwrap();
                 assert_eq!(input, output);
+            }
+        }
+
+        #[tokio::test]
+        async fn test_async_slices() {
+            for &case in crate::test::TEST_CASES {
+                // for case in [1025] {
+                let input = make_test_input(case);
+                let (encoded, hash) = encode::encode(&input);
+                // Also make an outboard encoding, to test that case.
+                let (outboard, outboard_hash) = encode::outboard(&input);
+                assert_eq!(hash, outboard_hash);
+                for &slice_start in crate::test::TEST_CASES {
+                    let expected_start = cmp::min(input.len(), slice_start);
+                    let slice_lens = [0, 1, 2, CHUNK_SIZE - 1, CHUNK_SIZE, CHUNK_SIZE + 1];
+                    // let slice_lens = [CHUNK_SIZE - 1, CHUNK_SIZE, CHUNK_SIZE + 1];
+                    for &slice_len in slice_lens.iter() {
+                        println!("\ncase {case} start {slice_start} len {slice_len}");
+                        let expected_end = cmp::min(input.len(), slice_start + slice_len);
+                        let expected_output = &input[expected_start..expected_end];
+                        let mut slice = Vec::new();
+                        let mut extractor = encode::SliceExtractor::new(
+                            Cursor::new(&encoded),
+                            slice_start as u64,
+                            slice_len as u64,
+                        );
+                        extractor.read_to_end(&mut slice).unwrap();
+
+                        // Make sure the outboard extractor produces the same output.
+                        let mut slice_from_outboard = Vec::new();
+                        let mut extractor = encode::SliceExtractor::new_outboard(
+                            Cursor::new(&input),
+                            Cursor::new(&outboard),
+                            slice_start as u64,
+                            slice_len as u64,
+                        );
+                        extractor.read_to_end(&mut slice_from_outboard).unwrap();
+                        assert_eq!(slice, slice_from_outboard);
+
+                        let mut output = Vec::new();
+                        let mut reader = AsyncSliceDecoder::new(
+                            &*slice,
+                            &hash,
+                            slice_start as u64,
+                            slice_len as u64,
+                        );
+                        reader.read_to_end(&mut output).await.unwrap();
+                        assert_eq!(expected_output, &*output);
+                    }
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_async_corrupted_slice() {
+            let input = make_test_input(20_000);
+            let slice_start = 5_000;
+            let slice_len = 10_000;
+            let (encoded, hash) = encode::encode(&input);
+
+            // Slice out the middle 10_000 bytes;
+            let mut slice = Vec::new();
+            let mut extractor = encode::SliceExtractor::new(
+                Cursor::new(&encoded),
+                slice_start as u64,
+                slice_len as u64,
+            );
+            extractor.read_to_end(&mut slice).unwrap();
+
+            // First confirm that the regular decode works.
+            let mut output = Vec::new();
+            let mut reader =
+                SliceDecoder::new(&*slice, &hash, slice_start as u64, slice_len as u64);
+            reader.read_to_end(&mut output).unwrap();
+            assert_eq!(&input[slice_start..][..slice_len], &*output);
+
+            // Also confirm that the outboard slice extractor gives the same slice.
+            let (outboard, outboard_hash) = encode::outboard(&input);
+            assert_eq!(hash, outboard_hash);
+            let mut slice_from_outboard = Vec::new();
+            let mut extractor = encode::SliceExtractor::new_outboard(
+                Cursor::new(&input),
+                Cursor::new(&outboard),
+                slice_start as u64,
+                slice_len as u64,
+            );
+            extractor.read_to_end(&mut slice_from_outboard).unwrap();
+            assert_eq!(slice, slice_from_outboard);
+
+            // Now confirm that flipping bits anywhere in the slice other than the
+            // length header will corrupt it. Tweaking the length header doesn't
+            // always break slice decoding, because the only thing its guaranteed
+            // to break is the final chunk, and this slice doesn't include the
+            // final chunk.
+            let mut i = HEADER_SIZE;
+            while i < slice.len() {
+                let mut slice_clone = slice.clone();
+                slice_clone[i] ^= 1;
+                let mut reader = AsyncSliceDecoder::new(
+                    &*slice_clone,
+                    &hash,
+                    slice_start as u64,
+                    slice_len as u64,
+                );
+                output.clear();
+                let err = reader.read_to_end(&mut output).await.unwrap_err();
+                assert_eq!(io::ErrorKind::InvalidData, err.kind());
+                i += 32;
             }
         }
     }
