@@ -205,7 +205,7 @@ impl From<Error> for io::Error {
 
 // Shared between Decoder and SliceDecoder.
 #[derive(Clone)]
-struct DecoderShared<T: Read, O: Read> {
+struct DecoderShared<T, O> {
     input: T,
     outboard: Option<O>,
     state: VerifyState,
@@ -214,8 +214,8 @@ struct DecoderShared<T: Read, O: Read> {
     buf_end: usize,
 }
 
-impl<T: Read, O: Read> DecoderShared<T, O> {
-    fn new(input: T, outboard: Option<O>, hash: &Hash) -> Self {
+impl<T, O> DecoderShared<T, O> {
+    pub fn new(input: T, outboard: Option<O>, hash: &Hash) -> Self {
         Self {
             input,
             outboard,
@@ -240,7 +240,9 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         self.buf_start = 0;
         self.buf_end = 0;
     }
+}
 
+impl<T: Read, O: Read> DecoderShared<T, O> {
     // These bytes are always verified before going in the buffer.
     fn take_buffered_bytes(&mut self, output: &mut [u8]) -> usize {
         let take = cmp::min(self.buf_len(), output.len());
@@ -441,7 +443,7 @@ impl<T: Read + Seek, O: Read + Seek> DecoderShared<T, O> {
     }
 }
 
-impl<T: Read, O: Read> fmt::Debug for DecoderShared<T, O> {
+impl<T, O> fmt::Debug for DecoderShared<T, O> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
