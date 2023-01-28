@@ -465,7 +465,7 @@ mod tokio_io {
         convert::TryInto,
         io,
         pin::Pin,
-        task::{self, ready, Context, Poll},
+        task::{ready, Context, Poll},
     };
     use tokio::io::{AsyncRead, ReadBuf};
 
@@ -663,22 +663,30 @@ mod tokio_io {
         Reading(Box<DecoderShared<T, O>>),
         /// we are being polled for output
         Output(Box<DecoderShared<T, O>>),
+        /// we are done
+        Done,
+    }
+
+    impl<T: AsyncRead + Unpin, O: AsyncRead + Unpin> DecoderState<T, O> {
+        fn take(&mut self) -> Self {
+            std::mem::replace(self, DecoderState::Done)
+        }
     }
 
     #[derive(Debug)]
-    pub struct AsyncDecoder<T: AsyncRead + Unpin, O: AsyncRead + Unpin>(Option<DecoderState<T, O>>);
+    pub struct AsyncDecoder<T: AsyncRead + Unpin, O: AsyncRead + Unpin>(DecoderState<T, O>);
 
     impl<T: AsyncRead + Unpin> AsyncDecoder<T, T> {
         pub fn new(inner: T, hash: &Hash) -> Self {
             let state = DecoderShared::new(inner, None, hash);
-            Self(Some(DecoderState::Reading(Box::new(state))))
+            Self(DecoderState::Reading(Box::new(state)))
         }
     }
 
     impl<T: AsyncRead + Unpin, O: AsyncRead + Unpin> AsyncDecoder<T, O> {
         pub fn new_outboard(inner: T, outboard: O, hash: &Hash) -> Self {
             let state = DecoderShared::new(inner, Some(outboard), hash);
-            Self(Some(DecoderState::Reading(Box::new(state))))
+            Self(DecoderState::Reading(Box::new(state)))
         }
     }
 
@@ -694,25 +702,25 @@ mod tokio_io {
             }
 
             loop {
-                match self.0.take().unwrap() {
+                match self.0.take() {
                     DecoderState::Reading(mut shared) => {
                         match shared.poll_input(cx) {
                             Poll::Ready(Ok(())) => {
                                 // we have read a chunk from the underlying reader
                                 // go to output state
-                                self.0 = Some(DecoderState::Output(shared));
+                                self.0 = DecoderState::Output(shared);
                                 continue;
                             }
                             Poll::Ready(Err(e)) => {
                                 // we got an error from the underlying io
                                 // stay in reading state
-                                self.0 = Some(DecoderState::Reading(shared));
+                                self.0 = DecoderState::Reading(shared);
                                 break Poll::Ready(Err(e));
                             }
                             Poll::Pending => {
                                 // we don't have a complete chunk yet
                                 // stay in reading state
-                                self.0 = Some(DecoderState::Output(shared));
+                                self.0 = DecoderState::Output(shared);
                                 break Poll::Pending;
                             }
                         }
@@ -723,12 +731,15 @@ mod tokio_io {
                             // the caller has consumed all the data in the buffer
                             // go to reading state
                             shared.clear_buf();
-                            self.0 = Some(DecoderState::Reading(shared))
+                            self.0 = DecoderState::Reading(shared);
                         } else {
                             // we still have data in the buffer
                             // stay in output state
-                            self.0 = Some(DecoderState::Output(shared))
+                            self.0 = DecoderState::Output(shared);
                         };
+                        break Poll::Ready(Ok(()));
+                    }
+                    DecoderState::Done => {
                         break Poll::Ready(Ok(()));
                     }
                 }
@@ -798,9 +809,17 @@ mod tokio_io {
         Reading(Box<SliceDecoderInner<T>>),
         /// we are being polled for output
         Output(Box<SliceDecoderInner<T>>),
+        /// we are done
+        Done,
     }
 
-    pub struct AsyncSliceDecoder<T: AsyncRead + Unpin>(Option<SliceDecoderState<T>>);
+    impl<T: AsyncRead + Unpin> SliceDecoderState<T> {
+        fn take(&mut self) -> Self {
+            std::mem::replace(self, SliceDecoderState::Done)
+        }
+    }
+
+    pub struct AsyncSliceDecoder<T: AsyncRead + Unpin>(SliceDecoderState<T>);
 
     impl<T: AsyncRead + Unpin> AsyncSliceDecoder<T> {
         pub fn new(inner: T, hash: &Hash, slice_start: u64, slice_len: u64) -> Self {
@@ -810,7 +829,7 @@ mod tokio_io {
                 slice_remaining: slice_len,
                 need_fake_read: slice_len == 0,
             };
-            Self(Some(SliceDecoderState::Reading(Box::new(state))))
+            Self(SliceDecoderState::Reading(Box::new(state)))
         }
     }
 
@@ -826,18 +845,18 @@ mod tokio_io {
             }
 
             loop {
-                match self.0.take().unwrap() {
+                match self.0.take() {
                     SliceDecoderState::Reading(mut state) => match state.poll_input(cx) {
                         Poll::Ready(Ok(())) => {
-                            self.0 = Some(SliceDecoderState::Output(state));
+                            self.0 = SliceDecoderState::Output(state);
                             continue;
                         }
                         Poll::Ready(Err(e)) => {
-                            self.0 = Some(SliceDecoderState::Reading(state));
+                            self.0 = SliceDecoderState::Reading(state);
                             break Poll::Ready(Err(e));
                         }
                         Poll::Pending => {
-                            self.0 = Some(SliceDecoderState::Reading(state));
+                            self.0 = SliceDecoderState::Reading(state);
                             break Poll::Pending;
                         }
                     },
@@ -847,12 +866,15 @@ mod tokio_io {
                             // the caller has consumed all the data in the buffer
                             // go to reading state
                             state.shared.clear_buf();
-                            self.0 = Some(SliceDecoderState::Reading(state))
+                            self.0 = SliceDecoderState::Reading(state)
                         } else {
                             // we still have data in the buffer
                             // stay in output state
-                            self.0 = Some(SliceDecoderState::Output(state))
+                            self.0 = SliceDecoderState::Output(state)
                         };
+                        break Poll::Ready(Ok(()));
+                    }
+                    SliceDecoderState::Done => {
                         break Poll::Ready(Ok(()));
                     }
                 }
