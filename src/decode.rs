@@ -731,7 +731,8 @@ mod tokio_io {
         }
     }
 
-    pub struct SliceDecoderInner<T: AsyncRead + Unpin> {
+    #[derive(Clone, Debug)]
+    struct SliceDecoderInner<T: AsyncRead + Unpin> {
         shared: DecoderShared<T, T>,
         slice_start: u64,
         slice_remaining: u64,
@@ -788,6 +789,7 @@ mod tokio_io {
         }
     }
 
+    #[derive(Clone, Debug)]
     enum SliceDecoderState<T: AsyncRead + Unpin> {
         /// we are reading from the underlying reader
         Reading(Box<SliceDecoderInner<T>>),
@@ -803,6 +805,7 @@ mod tokio_io {
         }
     }
 
+    #[derive(Clone, Debug)]
     pub struct AsyncSliceDecoder<T: AsyncRead + Unpin>(SliceDecoderState<T>);
 
     impl<T: AsyncRead + Unpin> AsyncSliceDecoder<T> {
