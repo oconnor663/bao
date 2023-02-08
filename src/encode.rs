@@ -614,6 +614,10 @@ impl ParseState {
         self.content_position
     }
 
+    pub fn content_len(&self) -> Option<u64> {
+        self.content_len
+    }
+
     fn at_root(&self) -> bool {
         self.content_position < CHUNK_SIZE as u64 && self.stack_depth == 1
     }

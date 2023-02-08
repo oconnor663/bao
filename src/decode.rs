@@ -467,7 +467,7 @@ mod tokio_io {
         pin::Pin,
         task::{ready, Context, Poll},
     };
-    use tokio::io::{AsyncRead, ReadBuf};
+    use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
     // tokio flavour async io utilities, requiing AsyncRead
     impl<T: AsyncRead + Unpin, O: AsyncRead + Unpin> DecoderShared<T, O> {
@@ -476,6 +476,19 @@ mod tokio_io {
             let n = cmp::min(buf.remaining(), self.buf_len());
             buf.put_slice(&self.buf[self.buf_start..self.buf_start + n]);
             self.buf_start += n;
+        }
+
+        /// read just the header from the input or outboard, if needed
+        fn poll_read_header(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+            if let NextRead::Header = self.state.read_next() {
+                // read 8 bytes
+                // header comes from outboard if we have one, otherwise from input
+                ready!(self.poll_fill_buffer_from_input_or_outboard(8, cx))?;
+                self.state.feed_header(self.buf[0..8].try_into().unwrap());
+                // we don't want to write the header, so we are done with the buffer contents
+                self.clear_buf();
+            }
+            Poll::Ready(Ok(()))
         }
 
         /// fills the internal buffer from the input or outboard
@@ -743,6 +756,10 @@ mod tokio_io {
     }
 
     impl<T: AsyncRead + Unpin> SliceDecoderInner<T> {
+        fn content_len(&self) -> Option<u64> {
+            self.shared.state.parser.content_len()
+        }
+
         fn poll_input(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
             // If we haven't done the initial seek yet, do the full seek loop
             // first. Note that this will never leave any buffered output. The only
@@ -819,6 +836,17 @@ mod tokio_io {
             Self(SliceDecoderState::Reading(Box::new(state)))
         }
 
+        pub async fn read_size(&mut self) -> io::Result<u64> {
+            if let SliceDecoderState::Reading(state) = &mut self.0 {
+                std::future::poll_fn(|cx| state.shared.poll_read_header(cx)).await?;
+            }
+            Ok(match &self.0 {
+                SliceDecoderState::Reading(state) => state.content_len().unwrap(),
+                SliceDecoderState::Output(state) => state.content_len().unwrap(),
+                SliceDecoderState::Taken => unreachable!(),
+            })
+        }
+
         pub fn into_inner(self) -> T {
             match self.0 {
                 SliceDecoderState::Reading(state) => state.shared.input,
@@ -834,11 +862,6 @@ mod tokio_io {
             cx: &mut Context<'_>,
             buf: &mut ReadBuf<'_>,
         ) -> Poll<io::Result<()>> {
-            // on a zero length read, we do nothing whatsoever
-            if buf.remaining() == 0 {
-                return Poll::Ready(Ok(()));
-            }
-
             loop {
                 match self.0.take() {
                     SliceDecoderState::Reading(mut state) => match state.poll_input(cx) {
