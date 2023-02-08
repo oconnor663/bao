@@ -795,13 +795,13 @@ mod tokio_io {
         Reading(Box<SliceDecoderInner<T>>),
         /// we are being polled for output
         Output(Box<SliceDecoderInner<T>>),
-        /// we are done
-        Done,
+        /// value so we can implement take. If you see this, you've found a bug.
+        Taken,
     }
 
     impl<T: AsyncRead + Unpin> SliceDecoderState<T> {
         fn take(&mut self) -> Self {
-            std::mem::replace(self, SliceDecoderState::Done)
+            std::mem::replace(self, SliceDecoderState::Taken)
         }
     }
 
@@ -817,6 +817,14 @@ mod tokio_io {
                 need_fake_read: slice_len == 0,
             };
             Self(SliceDecoderState::Reading(Box::new(state)))
+        }
+
+        pub fn into_inner(self) -> T {
+            match self.0 {
+                SliceDecoderState::Reading(state) => state.shared.input,
+                SliceDecoderState::Output(state) => state.shared.input,
+                SliceDecoderState::Taken => unreachable!(),
+            }
         }
     }
 
@@ -861,8 +869,8 @@ mod tokio_io {
                         };
                         break Poll::Ready(Ok(()));
                     }
-                    SliceDecoderState::Done => {
-                        break Poll::Ready(Ok(()));
+                    SliceDecoderState::Taken => {
+                        unreachable!();
                     }
                 }
             }
