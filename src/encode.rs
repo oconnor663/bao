@@ -1377,7 +1377,7 @@ mod test {
         let mut output = Vec::new();
         let mut encoder = Encoder::new(io::Cursor::new(&mut output));
         encoder.write_all(input).unwrap();
-        encoder.write(&[]).unwrap();
+        encoder.write_all(&[]).unwrap();
         let hash = encoder.finalize().unwrap();
         assert_eq!((output, hash), encode(input));
         assert_eq!(hash, blake3::hash(input));
