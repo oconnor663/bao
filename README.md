@@ -1,8 +1,8 @@
 This is a fork of [https://github.com/oconnor663/bao] that adds async support and chunk groups.
 
-# <a href="#"><img src="docs/bao.svg" alt="Bao" height=100></a> &nbsp; [![Actions Status](https://github.com/n0-computer/abao/workflows/tests/badge.svg)](https://github.com/n0-computer/abao/actions) [![docs.rs](https://docs.rs/baoa/badge.svg)](https://docs.rs/baoa) [![crates.io](https://img.shields.io/crates/v/baoa.svg)](https://crates.io/crates/baoa)
+# <a href="#"><img src="docs/bao.svg" alt="Bao" height=100></a> &nbsp; [![Actions Status](https://github.com/n0-computer/abao/workflows/tests/badge.svg)](https://github.com/n0-computer/abao/actions) [![docs.rs](https://docs.rs/abao/badge.svg)](https://docs.rs/abao) [![crates.io](https://img.shields.io/crates/v/abao.svg)](https://crates.io/crates/abao)
 
-[Bao Spec](docs/spec.md) — [Rust Crate](https://crates.io/crates/baoa) — [Rust Docs](https://docs.rs/baoa)
+[Bao Spec](docs/spec.md) — [Rust Crate](https://crates.io/crates/abao) — [Rust Docs](https://docs.rs/abao)
 
 Bao is an implementation of
 [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) verified streaming, as
