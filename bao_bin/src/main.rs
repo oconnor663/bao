@@ -205,7 +205,7 @@ fn slice(args: &Args) -> Result<(), Error> {
     let mut extractor;
     if args.flag_outboard.is_some() {
         outboard = open_input(&args.flag_outboard)?;
-        extractor = bao::encode::SliceExtractor::new_outboard(
+        extractor = abao::encode::SliceExtractor::new_outboard(
             input.require_file()?,
             outboard.require_file()?,
             args.arg_start,
@@ -213,7 +213,7 @@ fn slice(args: &Args) -> Result<(), Error> {
         );
     } else {
         extractor =
-            bao::encode::SliceExtractor::new(input.require_file()?, args.arg_start, args.arg_count);
+            abao::encode::SliceExtractor::new(input.require_file()?, args.arg_start, args.arg_count);
     }
     copy_reader_to_writer(&mut extractor, &mut output)?;
     Ok(())

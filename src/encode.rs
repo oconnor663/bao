@@ -22,11 +22,11 @@
 //! let input = b"some input";
 //! let expected_hash = blake3::hash(input);
 //!
-//! let (encoded_at_once, hash) = bao::encode::encode(b"some input");
+//! let (encoded_at_once, hash) = abao::encode::encode(b"some input");
 //! assert_eq!(expected_hash, hash);
 //!
 //! let mut encoded_incrementally = Vec::new();
-//! let mut encoder = bao::encode::Encoder::new(Cursor::new(&mut encoded_incrementally));
+//! let mut encoder = abao::encode::Encoder::new(Cursor::new(&mut encoded_incrementally));
 //! encoder.write_all(b"some input")?;
 //! let hash = encoder.finalize()?;
 //! assert_eq!(expected_hash, hash);
@@ -400,7 +400,7 @@ impl fmt::Debug for State {
 ///
 /// let mut encoded_incrementally = Vec::new();
 /// let encoded_cursor = std::io::Cursor::new(&mut encoded_incrementally);
-/// let mut encoder = bao::encode::Encoder::new(encoded_cursor);
+/// let mut encoder = abao::encode::Encoder::new(encoded_cursor);
 /// encoder.write_all(b"some input")?;
 /// encoder.finalize()?;
 /// # Ok(())
@@ -1000,12 +1000,12 @@ pub(crate) enum LenNext {
 /// use std::io::prelude::*;
 ///
 /// let input = vec![0; 1_000_000];
-/// let (encoded, hash) = bao::encode::encode(&input);
+/// let (encoded, hash) = abao::encode::encode(&input);
 /// // These parameters are multiples of the chunk size, which avoids unnecessary overhead.
 /// let slice_start = 65536;
 /// let slice_len = 8192;
 /// let encoded_cursor = std::io::Cursor::new(&encoded);
-/// let mut extractor = bao::encode::SliceExtractor::new(encoded_cursor, slice_start, slice_len);
+/// let mut extractor = abao::encode::SliceExtractor::new(encoded_cursor, slice_start, slice_len);
 /// let mut slice = Vec::new();
 /// extractor.read_to_end(&mut slice)?;
 ///
@@ -1131,11 +1131,9 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
                     self.input.seek(SeekFrom::Start(content_pos))?;
                     outboard.seek(SeekFrom::Start(outboard_pos))?;
                 }
-            } else {
-                if let Some(encoding_position) = bookkeeping.underlying_seek() {
-                    self.input
-                        .seek(SeekFrom::Start(cast_offset(encoding_position)?))?;
-                }
+            } else if let Some(encoding_position) = bookkeeping.underlying_seek() {
+                self.input
+                    .seek(SeekFrom::Start(cast_offset(encoding_position)?))?;
             }
             let next_read = self.parser.seek_bookkeeping_done(bookkeeping);
             match next_read {

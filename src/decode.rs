@@ -12,14 +12,14 @@
 //!
 //! // Encode some example bytes.
 //! let input = b"some input";
-//! let (encoded, hash) = bao::encode::encode(input);
+//! let (encoded, hash) = abao::encode::encode(input);
 //!
 //! // Decode them with one of the all-at-once functions.
-//! let decoded_at_once = bao::decode::decode(&encoded, &hash)?;
+//! let decoded_at_once = abao::decode::decode(&encoded, &hash)?;
 //!
 //! // Also decode them incrementally.
 //! let mut decoded_incrementally = Vec::new();
-//! let mut decoder = bao::decode::Decoder::new(&*encoded, &hash);
+//! let mut decoder = abao::decode::Decoder::new(&*encoded, &hash);
 //! decoder.read_to_end(&mut decoded_incrementally)?;
 //!
 //! // Assert that we got the same results both times.
@@ -29,7 +29,7 @@
 //! let mut bad_encoded = encoded.clone();
 //! let last_index = bad_encoded.len() - 1;
 //! bad_encoded[last_index] ^= 1;
-//! let err = bao::decode::decode(&bad_encoded, &hash).unwrap_err();
+//! let err = abao::decode::decode(&bad_encoded, &hash).unwrap_err();
 //! assert_eq!(std::io::ErrorKind::InvalidData, err.kind());
 //! # Ok(())
 //! # }
@@ -1067,17 +1067,17 @@ pub use tokio_io::{AsyncDecoder, AsyncSliceDecoder};
 ///
 /// // Create both combined and outboard encodings.
 /// let input = b"some input";
-/// let (encoded, hash) = bao::encode::encode(input);
-/// let (outboard, _) = bao::encode::outboard(input);
+/// let (encoded, hash) = abao::encode::encode(input);
+/// let (outboard, _) = abao::encode::outboard(input);
 ///
 /// // Decode the combined mode.
 /// let mut combined_output = Vec::new();
-/// let mut decoder = bao::decode::Decoder::new(&*encoded, &hash);
+/// let mut decoder = abao::decode::Decoder::new(&*encoded, &hash);
 /// decoder.read_to_end(&mut combined_output)?;
 ///
 /// // Decode the outboard mode.
 /// let mut outboard_output = Vec::new();
-/// let mut decoder = bao::decode::Decoder::new_outboard(&input[..], &*outboard, &hash);
+/// let mut decoder = abao::decode::Decoder::new_outboard(&input[..], &*outboard, &hash);
 /// decoder.read_to_end(&mut outboard_output)?;
 ///
 /// assert_eq!(input, &*combined_output);
@@ -1194,14 +1194,14 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 ///
 /// // Start by encoding some input.
 /// let input = vec![0; 1_000_000];
-/// let (encoded, hash) = bao::encode::encode(&input);
+/// let (encoded, hash) = abao::encode::encode(&input);
 ///
 /// // Slice the encoding. These parameters are multiples of the chunk size, which avoids
 /// // unnecessary overhead.
 /// let slice_start = 65536;
 /// let slice_len = 8192;
 /// let encoded_cursor = std::io::Cursor::new(&encoded);
-/// let mut extractor = bao::encode::SliceExtractor::new(encoded_cursor, slice_start, slice_len);
+/// let mut extractor = abao::encode::SliceExtractor::new(encoded_cursor, slice_start, slice_len);
 /// let mut slice = Vec::new();
 /// extractor.read_to_end(&mut slice)?;
 ///
@@ -1210,7 +1210,7 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 /// // independent of the slice parameters. That's the whole point; if we just wanted to re-encode
 /// // a portion of the input and wind up with a different hash, we wouldn't need slicing.
 /// let mut decoded = Vec::new();
-/// let mut decoder = bao::decode::SliceDecoder::new(&*slice, &hash, slice_start, slice_len);
+/// let mut decoder = abao::decode::SliceDecoder::new(&*slice, &hash, slice_start, slice_len);
 /// decoder.read_to_end(&mut decoded)?;
 /// assert_eq!(&input[slice_start as usize..][..slice_len as usize], &*decoded);
 ///
@@ -1218,7 +1218,7 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 /// let mut bad_slice = slice.clone();
 /// let last_index = bad_slice.len() - 1;
 /// bad_slice[last_index] ^= 1;
-/// let mut decoder = bao::decode::SliceDecoder::new(&*bad_slice, &hash, slice_start, slice_len);
+/// let mut decoder = abao::decode::SliceDecoder::new(&*bad_slice, &hash, slice_start, slice_len);
 /// let err = decoder.read_to_end(&mut Vec::new()).unwrap_err();
 /// assert_eq!(std::io::ErrorKind::InvalidData, err.kind());
 /// # Ok(())
