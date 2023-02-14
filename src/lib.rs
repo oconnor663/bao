@@ -15,14 +15,14 @@
 //!
 //! // Encode some example bytes.
 //! let input = b"some input";
-//! let (encoded, hash) = bao::encode::encode(input);
+//! let (encoded, hash) = abao::encode::encode(input);
 //!
 //! // Decode them with one of the all-at-once functions.
-//! let decoded_at_once = bao::decode::decode(&encoded, &hash)?;
+//! let decoded_at_once = abao::decode::decode(&encoded, &hash)?;
 //!
 //! // Also decode them incrementally.
 //! let mut decoded_incrementally = Vec::new();
-//! let mut decoder = bao::decode::Decoder::new(&*encoded, &hash);
+//! let mut decoder = abao::decode::Decoder::new(&*encoded, &hash);
 //! decoder.read_to_end(&mut decoded_incrementally)?;
 //!
 //! // Assert that we got the same results both times.
@@ -32,7 +32,7 @@
 //! let mut bad_encoded = encoded.clone();
 //! let last_index = bad_encoded.len() - 1;
 //! bad_encoded[last_index] ^= 1;
-//! let err = bao::decode::decode(&bad_encoded, &hash).unwrap_err();
+//! let err = abao::decode::decode(&bad_encoded, &hash).unwrap_err();
 //! assert_eq!(std::io::ErrorKind::InvalidData, err.kind());
 //! # Ok(())
 //! # }

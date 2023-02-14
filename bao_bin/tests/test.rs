@@ -56,7 +56,7 @@ fn test_hash_many() {
 fn assert_hash_mismatch(output: &std::process::Output) {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains(bao::decode::Error::HashMismatch.to_string().as_str()));
+    assert!(stderr.contains(abao::decode::Error::HashMismatch.to_string().as_str()));
 }
 
 #[test]

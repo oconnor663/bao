@@ -2,7 +2,7 @@
 
 extern crate test;
 
-use bao::{decode, encode};
+use abao::{decode, encode};
 use rand::prelude::*;
 use std::io::prelude::*;
 use std::io::{Cursor, SeekFrom::Start};

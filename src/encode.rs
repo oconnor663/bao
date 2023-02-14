@@ -22,11 +22,11 @@
 //! let input = b"some input";
 //! let expected_hash = blake3::hash(input);
 //!
-//! let (encoded_at_once, hash) = bao::encode::encode(b"some input");
+//! let (encoded_at_once, hash) = abao::encode::encode(b"some input");
 //! assert_eq!(expected_hash, hash);
 //!
 //! let mut encoded_incrementally = Vec::new();
-//! let mut encoder = bao::encode::Encoder::new(Cursor::new(&mut encoded_incrementally));
+//! let mut encoder = abao::encode::Encoder::new(Cursor::new(&mut encoded_incrementally));
 //! encoder.write_all(b"some input")?;
 //! let hash = encoder.finalize()?;
 //! assert_eq!(expected_hash, hash);
@@ -368,6 +368,7 @@ impl State {
     /// subtree, until the second return value is `Some`. Callers who don't need parent nodes
     /// should use the simpler `finalize` interface instead.
     pub fn merge_finalize(&mut self) -> StateFinish {
+        #[allow(clippy::comparison_chain)]
         if self.subtrees.len() > 2 {
             StateFinish::Parent(self.merge_inner(NotRoot))
         } else if self.subtrees.len() == 2 {
@@ -399,7 +400,7 @@ impl fmt::Debug for State {
 ///
 /// let mut encoded_incrementally = Vec::new();
 /// let encoded_cursor = std::io::Cursor::new(&mut encoded_incrementally);
-/// let mut encoder = bao::encode::Encoder::new(encoded_cursor);
+/// let mut encoder = abao::encode::Encoder::new(encoded_cursor);
 /// encoder.write_all(b"some input")?;
 /// encoder.finalize()?;
 /// # Ok(())
@@ -534,7 +535,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
                 }
                 FlipperNext::Done => {
                     debug_assert_eq!(HEADER_SIZE as u64, write_cursor);
-                    self.inner.seek(SeekFrom::Start(0))?;
+                    self.inner.rewind()?;
                     self.inner.write_all(&header)?;
                     return Ok(());
                 }
@@ -612,6 +613,10 @@ impl ParseState {
 
     pub fn content_position(&self) -> u64 {
         self.content_position
+    }
+
+    pub fn content_len(&self) -> Option<u64> {
+        self.content_len
     }
 
     fn at_root(&self) -> bool {
@@ -995,12 +1000,12 @@ pub(crate) enum LenNext {
 /// use std::io::prelude::*;
 ///
 /// let input = vec![0; 1_000_000];
-/// let (encoded, hash) = bao::encode::encode(&input);
+/// let (encoded, hash) = abao::encode::encode(&input);
 /// // These parameters are multiples of the chunk size, which avoids unnecessary overhead.
 /// let slice_start = 65536;
 /// let slice_len = 8192;
 /// let encoded_cursor = std::io::Cursor::new(&encoded);
-/// let mut extractor = bao::encode::SliceExtractor::new(encoded_cursor, slice_start, slice_len);
+/// let mut extractor = abao::encode::SliceExtractor::new(encoded_cursor, slice_start, slice_len);
 /// let mut slice = Vec::new();
 /// extractor.read_to_end(&mut slice)?;
 ///
@@ -1126,11 +1131,9 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
                     self.input.seek(SeekFrom::Start(content_pos))?;
                     outboard.seek(SeekFrom::Start(outboard_pos))?;
                 }
-            } else {
-                if let Some(encoding_position) = bookkeeping.underlying_seek() {
-                    self.input
-                        .seek(SeekFrom::Start(cast_offset(encoding_position)?))?;
-                }
+            } else if let Some(encoding_position) = bookkeeping.underlying_seek() {
+                self.input
+                    .seek(SeekFrom::Start(cast_offset(encoding_position)?))?;
             }
             let next_read = self.parser.seek_bookkeeping_done(bookkeeping);
             match next_read {
@@ -1201,7 +1204,7 @@ mod test {
     #[test]
     fn test_encode() {
         for &case in crate::test::TEST_CASES {
-            println!("case {}", case);
+            println!("case {case}");
             let input = make_test_input(case);
             let expected_hash = blake3::hash(&input);
             let (encoded, hash) = encode(&input);
@@ -1218,7 +1221,7 @@ mod test {
     #[test]
     fn test_outboard_encode() {
         for &case in crate::test::TEST_CASES {
-            println!("case {}", case);
+            println!("case {case}");
             let input = make_test_input(case);
             let expected_hash = blake3::hash(&input);
             let (outboard, hash) = outboard(&input);
@@ -1279,13 +1282,11 @@ mod test {
                 };
                 assert_eq!(
                     expected_pre, pre,
-                    "incorrect pre-order parent nodes for chunk {} of total {}",
-                    chunk, total_chunks
+                    "incorrect pre-order parent nodes for chunk {chunk} of total {total_chunks}",
                 );
                 assert_eq!(
                     expected_post, post,
-                    "incorrect post-order parent nodes for chunk {} of total {}",
-                    chunk, total_chunks
+                    "incorrect post-order parent nodes for chunk {chunk} of total {total_chunks}",
                 );
             }
         }
@@ -1328,8 +1329,8 @@ mod test {
         for &case in crate::test::TEST_CASES {
             dbg!(case);
             let input = &buf[..case];
-            let expected = blake3::hash(&input);
-            let found = drive_state(&input);
+            let expected = blake3::hash(input);
+            let found = drive_state(input);
             assert_eq!(expected, found, "hashes don't match");
         }
     }
@@ -1377,7 +1378,7 @@ mod test {
         let mut output = Vec::new();
         let mut encoder = Encoder::new(io::Cursor::new(&mut output));
         encoder.write_all(input).unwrap();
-        encoder.write(&[]).unwrap();
+        encoder.write_all(&[]).unwrap();
         let hash = encoder.finalize().unwrap();
         assert_eq!((output, hash), encode(input));
         assert_eq!(hash, blake3::hash(input));
