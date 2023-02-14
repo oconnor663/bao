@@ -1,6 +1,8 @@
-# <a href="#"><img src="docs/bao.svg" alt="Bao" height=100></a> &nbsp; [![Actions Status](https://github.com/oconnor663/bao/workflows/tests/badge.svg)](https://github.com/oconnor663/bao/actions) [![docs.rs](https://docs.rs/bao/badge.svg)](https://docs.rs/bao) [![crates.io](https://img.shields.io/crates/v/bao.svg)](https://crates.io/crates/bao)
+This is a fork of [https://github.com/oconnor663/bao] that adds async support and chunk groups.
 
-[Bao Spec](docs/spec.md) — [Rust Crate](https://crates.io/crates/bao) — [Rust Docs](https://docs.rs/bao)
+# <a href="#"><img src="docs/bao.svg" alt="Bao" height=100></a> &nbsp; [![Actions Status](https://github.com/n0-computer/abao/workflows/tests/badge.svg)](https://github.com/n0-computer/abao/actions) [![docs.rs](https://docs.rs/baoa/badge.svg)](https://docs.rs/baoa) [![crates.io](https://img.shields.io/crates/v/baoa.svg)](https://crates.io/crates/baoa)
+
+[Bao Spec](docs/spec.md) — [Rust Crate](https://crates.io/crates/baoa) — [Rust Docs](https://docs.rs/baoa)
 
 Bao is an implementation of
 [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) verified streaming, as
@@ -14,8 +16,8 @@ while verifying that every byte they read matches the root hash. For the
 details of how this works, see the [Bao spec](docs/spec.md).
 
 This project includes two Rust crates, the
-[`bao`](https://crates.io/crates/bao) library crate and the
-[`bao_bin`](https://crates.io/crates/bao_bin) binary crate. The latter
+[`bao`](https://crates.io/crates/abao) library crate and the
+[`bao_bin`](https://crates.io/crates/abao_bin) binary crate. The latter
 provides the `bao` command line utility.
 
 > **Caution!** Bao is beta cryptography software. It has not been
