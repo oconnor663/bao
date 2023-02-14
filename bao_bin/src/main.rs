@@ -5,6 +5,7 @@ use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
+use abao as bao;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
