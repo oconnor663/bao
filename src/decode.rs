@@ -140,8 +140,8 @@ impl VerifyState {
             return Err(Error::HashMismatch);
         }
         self.stack.pop();
-        self.stack.push(right_child.into());
-        self.stack.push(left_child.into());
+        self.stack.push(right_child);
+        self.stack.push(left_child);
         self.parser.advance_parent();
         Ok(())
     }
@@ -432,11 +432,9 @@ impl<T: Read + Seek, O: Read + Seek> DecoderShared<T, O> {
                 self.input.seek(SeekFrom::Start(content_pos))?;
                 outboard.seek(SeekFrom::Start(outboard_pos))?;
             }
-        } else {
-            if let Some(encoding_position) = bookkeeping.underlying_seek() {
-                let position_u64: u64 = encode::cast_offset(encoding_position)?;
-                self.input.seek(SeekFrom::Start(position_u64))?;
-            }
+        } else if let Some(encoding_position) = bookkeeping.underlying_seek() {
+            let position_u64: u64 = encode::cast_offset(encoding_position)?;
+            self.input.seek(SeekFrom::Start(position_u64))?;
         }
         let next = self.state.seek_bookkeeping_done(bookkeeping);
         Ok(next)
@@ -467,7 +465,7 @@ mod tokio_io {
         pin::Pin,
         task::{ready, Context, Poll},
     };
-    use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+    use tokio::io::{AsyncRead, ReadBuf};
 
     // tokio flavour async io utilities, requiing AsyncRead
     impl<T: AsyncRead + Unpin, O: AsyncRead + Unpin> DecoderShared<T, O> {
@@ -1306,7 +1304,7 @@ pub(crate) fn make_test_input(len: usize) -> Vec<u8> {
         } else if counter < u32::max_value() as u64 {
             ret.extend_from_slice(&(counter as u32).to_be_bytes());
         } else {
-            ret.extend_from_slice(&(counter as u64).to_be_bytes());
+            ret.extend_from_slice(&counter.to_be_bytes());
         }
         counter += 1;
     }
@@ -1328,7 +1326,7 @@ mod test {
     #[test]
     fn test_decode() {
         for &case in crate::test::TEST_CASES {
-            println!("case {}", case);
+            println!("case {case}");
             let input = make_test_input(case);
             let (encoded, hash) = { encode::encode(&input) };
             let output = decode(&encoded, &hash).unwrap();
@@ -1340,7 +1338,7 @@ mod test {
     #[test]
     fn test_decode_outboard() {
         for &case in crate::test::TEST_CASES {
-            println!("case {}", case);
+            println!("case {case}");
             let input = make_test_input(case);
             let (outboard, hash) = { encode::outboard(&input) };
             let mut output = Vec::new();
@@ -1353,7 +1351,7 @@ mod test {
     #[test]
     fn test_decoders_corrupted() {
         for &case in crate::test::TEST_CASES {
-            println!("case {}", case);
+            println!("case {case}");
             let input = make_test_input(case);
             let (encoded, hash) = encode::encode(&input);
             // Don't tweak the header in this test, because that usually causes a panic.
@@ -1368,7 +1366,7 @@ mod test {
                 tweaks.push(CHUNK_SIZE);
             }
             for tweak in tweaks {
-                println!("tweak {}", tweak);
+                println!("tweak {tweak}");
                 let mut bad_encoded = encoded.clone();
                 bad_encoded[tweak] ^= 1;
 
@@ -1382,18 +1380,18 @@ mod test {
     fn test_seek() {
         for &input_len in crate::test::TEST_CASES {
             println!();
-            println!("input_len {}", input_len);
+            println!("input_len {input_len}");
             let input = make_test_input(input_len);
             let (encoded, hash) = encode::encode(&input);
             for &seek in crate::test::TEST_CASES {
-                println!("seek {}", seek);
+                println!("seek {seek}");
                 // Test all three types of seeking.
                 let mut seek_froms = Vec::new();
                 seek_froms.push(SeekFrom::Start(seek as u64));
                 seek_froms.push(SeekFrom::End(seek as i64 - input_len as i64));
                 seek_froms.push(SeekFrom::Current(seek as i64));
                 for seek_from in seek_froms {
-                    println!("seek_from {:?}", seek_from);
+                    println!("seek_from {seek_from:?}");
                     let mut decoder = Decoder::new(Cursor::new(&encoded), &hash);
                     let mut output = Vec::new();
                     decoder.seek(seek_from).expect("seek error");
@@ -1414,7 +1412,7 @@ mod test {
         // A chunk number like this (37) with consecutive zeroes should exercise some of the more
         // interesting geometry cases.
         let input_len = 0b100101 * CHUNK_SIZE;
-        println!("\n\ninput_len {}", input_len);
+        println!("\n\ninput_len {input_len}");
         let mut prng = ChaChaRng::from_seed([0; 32]);
         let input = make_test_input(input_len);
         let (encoded, hash) = encode::encode(&input);
@@ -1422,7 +1420,7 @@ mod test {
         // Do a thousand random seeks and chunk-sized reads.
         for _ in 0..1000 {
             let seek = prng.gen_range(0..input_len + 1);
-            println!("\nseek {}", seek);
+            println!("\nseek {seek}");
             decoder
                 .seek(SeekFrom::Start(seek as u64))
                 .expect("seek error");
@@ -1477,7 +1475,7 @@ mod test {
                 continue;
             }
 
-            println!("\ncase {}", case);
+            println!("\ncase {case}");
             let input = make_test_input(case);
             let (mut encoded, hash) = encode::encode(&input);
             println!("encoded len {}", encoded.len());
@@ -1487,7 +1485,7 @@ mod test {
             // target chunk actually starts.
             let tweak_chunk = encode::count_chunks(case as u64) / 2;
             let tweak_position = tweak_chunk as usize * CHUNK_SIZE;
-            println!("tweak position {}", tweak_position);
+            println!("tweak position {tweak_position}");
             let mut tweak_encoded_offset = HEADER_SIZE;
             for chunk in 0..tweak_chunk {
                 tweak_encoded_offset +=
@@ -1496,13 +1494,13 @@ mod test {
             }
             tweak_encoded_offset +=
                 encode::pre_order_parent_nodes(tweak_chunk, case as u64) as usize * PARENT_SIZE;
-            println!("tweak encoded offset {}", tweak_encoded_offset);
+            println!("tweak encoded offset {tweak_encoded_offset}");
             encoded[tweak_encoded_offset] ^= 1;
 
             // Read all the bits up to that tweak. Because it's right after a chunk boundary, the
             // read should succeed.
             let mut decoder = Decoder::new(Cursor::new(&encoded), &hash);
-            let mut output = vec![0; tweak_position as usize];
+            let mut output = vec![0; tweak_position];
             decoder.read_exact(&mut output).unwrap();
             assert_eq!(&input[..tweak_position], &*output);
 
@@ -1568,7 +1566,7 @@ mod test {
                 let expected_start = cmp::min(input.len(), slice_start);
                 let slice_lens = [0, 1, 2, CHUNK_SIZE - 1, CHUNK_SIZE, CHUNK_SIZE + 1];
                 for &slice_len in slice_lens.iter() {
-                    println!("\ncase {} start {} len {}", case, slice_start, slice_len);
+                    println!("\ncase {case} start {slice_start} len {slice_len}");
                     let expected_end = cmp::min(input.len(), slice_start + slice_len);
                     let expected_output = &input[expected_start..expected_end];
                     let mut slice = Vec::new();

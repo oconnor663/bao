@@ -368,6 +368,7 @@ impl State {
     /// subtree, until the second return value is `Some`. Callers who don't need parent nodes
     /// should use the simpler `finalize` interface instead.
     pub fn merge_finalize(&mut self) -> StateFinish {
+        #[allow(clippy::comparison_chain)]
         if self.subtrees.len() > 2 {
             StateFinish::Parent(self.merge_inner(NotRoot))
         } else if self.subtrees.len() == 2 {
@@ -534,7 +535,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
                 }
                 FlipperNext::Done => {
                     debug_assert_eq!(HEADER_SIZE as u64, write_cursor);
-                    self.inner.seek(SeekFrom::Start(0))?;
+                    self.inner.rewind()?;
                     self.inner.write_all(&header)?;
                     return Ok(());
                 }
@@ -1205,7 +1206,7 @@ mod test {
     #[test]
     fn test_encode() {
         for &case in crate::test::TEST_CASES {
-            println!("case {}", case);
+            println!("case {case}");
             let input = make_test_input(case);
             let expected_hash = blake3::hash(&input);
             let (encoded, hash) = encode(&input);
@@ -1222,7 +1223,7 @@ mod test {
     #[test]
     fn test_outboard_encode() {
         for &case in crate::test::TEST_CASES {
-            println!("case {}", case);
+            println!("case {case}");
             let input = make_test_input(case);
             let expected_hash = blake3::hash(&input);
             let (outboard, hash) = outboard(&input);
@@ -1283,13 +1284,11 @@ mod test {
                 };
                 assert_eq!(
                     expected_pre, pre,
-                    "incorrect pre-order parent nodes for chunk {} of total {}",
-                    chunk, total_chunks
+                    "incorrect pre-order parent nodes for chunk {chunk} of total {total_chunks}",
                 );
                 assert_eq!(
                     expected_post, post,
-                    "incorrect post-order parent nodes for chunk {} of total {}",
-                    chunk, total_chunks
+                    "incorrect post-order parent nodes for chunk {chunk} of total {total_chunks}",
                 );
             }
         }
@@ -1332,8 +1331,8 @@ mod test {
         for &case in crate::test::TEST_CASES {
             dbg!(case);
             let input = &buf[..case];
-            let expected = blake3::hash(&input);
-            let found = drive_state(&input);
+            let expected = blake3::hash(input);
+            let found = drive_state(input);
             assert_eq!(expected, found, "hashes don't match");
         }
     }

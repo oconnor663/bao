@@ -84,7 +84,7 @@ fn make_input(len: usize) -> Vec<u8> {
 #[test]
 fn test_hash_vectors() {
     for case in &TEST_VECTORS.hash {
-        println!("case {:?}", case);
+        println!("case {case:?}");
         let input = make_input(case.input_len);
         let hash = blake3::hash(&input);
         assert_eq!(case.bao_hash, hash.to_hex().to_string());
@@ -128,7 +128,7 @@ fn test_encode_vectors() {
 
         // Make sure each corruption point fails the decode.
         for &point in &case.corruptions {
-            println!("corruption {}", point);
+            println!("corruption {point}");
             let mut corrupt = encoded.clone();
             corrupt[point] ^= 1;
             // The error can be either HashMismatch or Truncated, depending on whether the header
@@ -170,7 +170,7 @@ fn test_outboard_vectors() {
 
         // Make sure each tree corruption point fails the decode.
         for &point in &case.outboard_corruptions {
-            println!("corruption {}", point);
+            println!("corruption {point}");
             let mut corrupt = outboard.clone();
             corrupt[point] ^= 1;
             // The error can be either InvalidData or UnexpectedEof, depending on whether the
@@ -180,7 +180,7 @@ fn test_outboard_vectors() {
 
         // Make sure each input corruption point fails the decode.
         for &point in &case.input_corruptions {
-            println!("corruption {}", point);
+            println!("corruption {point}");
             let mut corrupt = input.clone();
             corrupt[point] ^= 1;
             let err = decode_outboard(&corrupt, &outboard, &hash).unwrap_err();
@@ -201,7 +201,7 @@ fn test_seek_vectors() {
         // First, test all the different seek points using fresh readers.
         println!();
         for &seek in &case.seek_offsets {
-            println!("seek {}", seek);
+            println!("seek {seek}");
             let capped_seek = cmp::min(seek, input.len());
             let expected_input = &input[capped_seek..];
 
@@ -243,7 +243,7 @@ fn test_seek_vectors() {
             bao::decode::Decoder::new_outboard(Cursor::new(&input), Cursor::new(&outboard), &hash);
         println!();
         for &seek in &repeated_seeks {
-            println!("repeated seek {}", seek);
+            println!("repeated seek {seek}");
             let capped_seek = cmp::min(seek, input.len());
             let capped_len = cmp::min(100, input.len() - capped_seek);
             let mut read_buf = [0; 100];
@@ -324,7 +324,7 @@ fn test_slice_vectors() {
 
             // Test that each of the corruption points breaks decoding the slice.
             for &point in &slice.corruptions {
-                println!("corruption {}", point);
+                println!("corruption {point}");
                 let mut corrupted = combined_slice.clone();
                 corrupted[point] ^= 1;
                 // The error can be either HashMismatch or Truncated, depending on whether the header
