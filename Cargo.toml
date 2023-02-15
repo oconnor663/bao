@@ -10,10 +10,10 @@ readme = "README.md"
 edition = "2021"
 
 [dependencies]
-arrayref = "0.3.5"
-arrayvec = "0.7.1"
-blake3 = "1.0.0"
-tokio = { version = "1.24.2", features = [], default-features=false, optional = true }
+arrayref = "0.3"
+arrayvec = "0.7"
+blake3 = "1"
+tokio = { version = "1", features = [], default-features=false, optional = true }
 
 [features]
 # todo: remove before merge
@@ -21,12 +21,12 @@ default = ["tokio_io"]
 tokio_io = ["tokio"]
 
 [dev-dependencies]
-lazy_static = "1.3.0"
-rand = "0.8.4"
-serde = { version = "1.0.97", features = ["derive"] }
-serde_json = "1.0.40"
-tempfile = "3.1.0"
+lazy_static = "1.3"
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
 rand_chacha = "0.3.1"
 rand_xorshift = "0.3.0"
 page_size = "0.4.1"
-tokio = { version = "1.24.2", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
