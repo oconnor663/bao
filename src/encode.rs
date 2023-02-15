@@ -1014,6 +1014,7 @@ pub(crate) enum LenNext {
 /// # Ok(())
 /// # }
 /// ```
+#[derive(Debug)]
 pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
     input: T,
     outboard: Option<O>,

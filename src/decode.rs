@@ -657,6 +657,7 @@ mod tokio_io {
     ///
     /// This is the decoder, but it is a separate type so it can be private.
     /// The public AsyncDecoder just wraps this.
+    #[derive(Debug)]
     enum DecoderState<T: AsyncRead + Unpin, O: AsyncRead + Unpin> {
         /// we are reading from the underlying reader
         Reading(BoxedDecoderShared<T, O>),
@@ -716,6 +717,7 @@ mod tokio_io {
         }
     }
 
+    #[derive(Debug)]
     pub struct AsyncDecoder<T: AsyncRead + Unpin, O: AsyncRead + Unpin>(DecoderState<T, O>);
 
     impl<T: AsyncRead + Unpin> AsyncDecoder<T, T> {
@@ -1224,6 +1226,7 @@ fn add_offset(position: u64, offset: i64) -> io::Result<u64> {
 /// # Ok(())
 /// # }
 /// ```
+#[derive(Debug)]
 pub struct SliceDecoder<T: Read> {
     shared: DecoderShared<T, T>,
     slice_start: u64,
