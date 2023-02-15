@@ -179,7 +179,9 @@ impl fmt::Debug for VerifyState {
 /// converted to `ErrorKind::InvalidData` and `ErrorKind::UnexpectedEof` respectively.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
+    /// Hash does not match the expected hash.
     HashMismatch,
+    /// Data was shorter than expected.
     Truncated,
 }
 
@@ -717,10 +719,12 @@ mod tokio_io {
         }
     }
 
+    /// Async compatible version of [Decoder](super::Decoder).
     #[derive(Debug)]
     pub struct AsyncDecoder<T: AsyncRead + Unpin, O: AsyncRead + Unpin>(DecoderState<T, O>);
 
     impl<T: AsyncRead + Unpin> AsyncDecoder<T, T> {
+        /// Create a new async decoder from an underlying async reader.
         pub fn new(inner: T, hash: &Hash) -> Self {
             let state = DecoderShared::new(inner, None, hash);
             Self(DecoderState::Reading(Box::pin(state)))
@@ -728,6 +732,7 @@ mod tokio_io {
     }
 
     impl<T: AsyncRead + Unpin, O: AsyncRead + Unpin> AsyncDecoder<T, O> {
+        /// Create a new async decoder from an underlying async reader and an async outboard reader.
         pub fn new_outboard(inner: T, outboard: O, hash: &Hash) -> Self {
             let state = DecoderShared::new(inner, Some(outboard), hash);
             Self(DecoderState::Reading(Box::pin(state)))
@@ -822,10 +827,13 @@ mod tokio_io {
         }
     }
 
+    /// Async compatible version of [SliceDecoder](super::SliceDecoder).
     #[derive(Clone, Debug)]
     pub struct AsyncSliceDecoder<T: AsyncRead + Unpin>(SliceDecoderState<T>);
 
     impl<T: AsyncRead + Unpin> AsyncSliceDecoder<T> {
+        /// Create a new async slice decoder from an underlying async reader, hash,
+        /// and slice start and length.
         pub fn new(inner: T, hash: &Hash, slice_start: u64, slice_len: u64) -> Self {
             let state = SliceDecoderInner {
                 shared: DecoderShared::new(inner, None, hash),
@@ -836,6 +844,13 @@ mod tokio_io {
             Self(SliceDecoderState::Reading(Box::new(state)))
         }
 
+        /// Read the size of the content from the underlying reader.
+        ///
+        /// This is the total size of the content from which the slice was extracted,
+        /// not the size of the slice.
+        ///
+        /// This will advance the inner reader or outboard reader by 8 bytes if
+        /// we are at the start.
         pub async fn read_size(&mut self) -> io::Result<u64> {
             if let SliceDecoderState::Reading(state) = &mut self.0 {
                 std::future::poll_fn(|cx| state.shared.poll_read_header(cx)).await?;
@@ -847,6 +862,14 @@ mod tokio_io {
             })
         }
 
+        /// Get back the inner reader.
+        ///
+        /// When calling this after decoding is finished, the inner reader will
+        /// be at the end of the encoded data.
+        ///
+        /// When calling this before decoding is finished, there are no guarantees
+        /// about the exact position of the inner reader, so use seek to restore
+        /// the position if needed.
         pub fn into_inner(self) -> T {
             match self.0 {
                 SliceDecoderState::Reading(state) => state.shared.input,
@@ -1093,6 +1116,8 @@ pub struct Decoder<T: Read, O: Read> {
 }
 
 impl<T: Read> Decoder<T, T> {
+    /// Create a new `Decoder` that reads encoded data from `inner` and verifies
+    /// the hash incrementally while reading.
     pub fn new(inner: T, hash: &Hash) -> Self {
         Self {
             shared: DecoderShared::new(inner, None, hash),
@@ -1101,6 +1126,8 @@ impl<T: Read> Decoder<T, T> {
 }
 
 impl<T: Read, O: Read> Decoder<T, O> {
+    /// Create a new `Decoder` that reads data form `inner` and outboard data
+    /// from `outboard` and verifies the hash incrementally while reading.
     pub fn new_outboard(inner: T, outboard: O, hash: &Hash) -> Self {
         Self {
             shared: DecoderShared::new(inner, Some(outboard), hash),
@@ -1238,6 +1265,15 @@ pub struct SliceDecoder<T: Read> {
 }
 
 impl<T: Read> SliceDecoder<T> {
+    /// Create a new slice decoder that reads an encoded slice from `inner`.
+    ///
+    /// The `hash` parameter is the hash of the entire input, not just the slice.
+    /// The `slice_start` and `slice_len` parameters are range of the slice within
+    /// the input.
+    ///
+    /// If the range is larger than the available input, it will be truncated.
+    /// So to read an entire encoded stream you can just set `slice_start` to 0
+    /// and `slice_len` to `u64::max_value()`.
     pub fn new(inner: T, hash: &Hash, slice_start: u64, slice_len: u64) -> Self {
         Self {
             shared: DecoderShared::new(inner, None, hash),
