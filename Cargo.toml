@@ -13,12 +13,13 @@ edition = "2021"
 arrayref = "0.3"
 arrayvec = "0.7"
 blake3 = "1"
+futures = { version = "0.3", features = [], default-features = false, optional = true }
 tokio = { version = "1", features = [], default-features=false, optional = true }
 
 [features]
 # todo: remove before merge
 default = ["tokio_io"]
-tokio_io = ["tokio"]
+tokio_io = ["tokio", "futures"]
 
 [dev-dependencies]
 lazy_static = "1.3"

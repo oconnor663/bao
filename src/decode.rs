@@ -460,12 +460,13 @@ impl<T, O> fmt::Debug for DecoderShared<T, O> {
 mod tokio_io {
 
     use super::{DecoderShared, Hash, NextRead};
+    use futures::{future, ready};
     use std::{
         cmp,
         convert::TryInto,
         io,
         pin::Pin,
-        task::{ready, Context, Poll},
+        task::{Context, Poll},
     };
     use tokio::io::{AsyncRead, ReadBuf};
 
@@ -853,7 +854,7 @@ mod tokio_io {
         /// we are at the start.
         pub async fn read_size(&mut self) -> io::Result<u64> {
             if let SliceDecoderState::Reading(state) = &mut self.0 {
-                std::future::poll_fn(|cx| state.shared.poll_read_header(cx)).await?;
+                future::poll_fn(|cx| state.shared.poll_read_header(cx)).await?;
             }
             Ok(match &self.0 {
                 SliceDecoderState::Reading(state) => state.content_len().unwrap(),
