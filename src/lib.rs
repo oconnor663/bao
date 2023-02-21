@@ -50,10 +50,16 @@ use std::mem;
 
 /// The size of a `Hash`, 32 bytes.
 pub const HASH_SIZE: usize = 32;
+/// log2(GROUP_CHUNKS)
+pub(crate) const GROUP_LOG: usize = 6;
+/// The number of chunks in a chunk groups. Must be a power of 2.
+pub(crate) const GROUP_CHUNKS: usize = 1 << GROUP_LOG;
+/// The size of a chunk group in bytes.
+pub(crate) const GROUP_SIZE: usize = GROUP_CHUNKS * CHUNK_SIZE;
 pub(crate) const PARENT_SIZE: usize = 2 * HASH_SIZE;
 pub(crate) const HEADER_SIZE: usize = 8;
-pub(crate) const CHUNK_SIZE: usize = 1024;
-pub(crate) const MAX_DEPTH: usize = 54; // 2^54 * CHUNK_SIZE = 2^64
+const CHUNK_SIZE: usize = 1024;
+pub(crate) const MAX_DEPTH: usize = 54 - GROUP_LOG; // 2^54 * CHUNK_SIZE = 2^64
 
 /// An array of `HASH_SIZE` bytes. This will be a wrapper type in a future version.
 pub(crate) type ParentNode = [u8; 2 * HASH_SIZE];
@@ -100,23 +106,96 @@ pub(crate) mod test {
         0,
         1,
         10,
-        CHUNK_SIZE - 1,
-        CHUNK_SIZE,
-        CHUNK_SIZE + 1,
-        2 * CHUNK_SIZE - 1,
-        2 * CHUNK_SIZE,
-        2 * CHUNK_SIZE + 1,
-        3 * CHUNK_SIZE - 1,
-        3 * CHUNK_SIZE,
-        3 * CHUNK_SIZE + 1,
-        4 * CHUNK_SIZE - 1,
-        4 * CHUNK_SIZE,
-        4 * CHUNK_SIZE + 1,
-        8 * CHUNK_SIZE - 1,
-        8 * CHUNK_SIZE,
-        8 * CHUNK_SIZE + 1,
-        16 * CHUNK_SIZE - 1,
-        16 * CHUNK_SIZE,
-        16 * CHUNK_SIZE + 1,
+        GROUP_SIZE - 1,
+        GROUP_SIZE,
+        GROUP_SIZE + 1,
+        2 * GROUP_SIZE - 1,
+        2 * GROUP_SIZE,
+        2 * GROUP_SIZE + 1,
+        3 * GROUP_SIZE - 1,
+        3 * GROUP_SIZE,
+        3 * GROUP_SIZE + 1,
+        4 * GROUP_SIZE - 1,
+        4 * GROUP_SIZE,
+        4 * GROUP_SIZE + 1,
+        8 * GROUP_SIZE - 1,
+        8 * GROUP_SIZE,
+        8 * GROUP_SIZE + 1,
+        16 * GROUP_SIZE - 1,
+        16 * GROUP_SIZE,
+        16 * GROUP_SIZE + 1,
     ];
+}
+
+/// A state machine for hashing a chunk group, with the same API as
+/// `blake3::guts::ChunkState`. This really should not exist but instead
+/// call into blake3, but the required methods are not public.
+///
+/// See https://github.com/BLAKE3-team/BLAKE3/tree/more_guts
+#[derive(Clone, Debug)]
+pub(crate) struct ChunkGroupState {
+    current_chunk: u64,
+    leaf_hashes: [Hash; GROUP_CHUNKS - 1],
+    current: blake3::guts::ChunkState,
+}
+
+impl ChunkGroupState {
+    pub fn new(group_counter: u64) -> Self {
+        let chunk_counter = group_counter << GROUP_LOG;
+        Self {
+            current_chunk: chunk_counter,
+            current: blake3::guts::ChunkState::new(chunk_counter),
+            leaf_hashes: [Hash::from([0; HASH_SIZE]); GROUP_CHUNKS - 1],
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.hashes() * CHUNK_SIZE + self.current.len()
+    }
+
+    pub fn update(&mut self, input: &[u8]) -> &mut Self {
+        let mut input = input;
+        debug_assert!(self.len() + input.len() <= GROUP_SIZE);
+        while self.current.len() + input.len() > CHUNK_SIZE {
+            let remaining = CHUNK_SIZE - self.current.len();
+            self.current.update(&input[..remaining]);
+            // we know this is not the root because there is more coming
+            self.leaf_hashes[self.hashes()] = self.current.finalize(false);
+            self.current_chunk += 1;
+            self.current = blake3::guts::ChunkState::new(self.current_chunk);
+            input = &input[remaining..];
+        }
+        self.current.update(input);
+        self
+    }
+
+    pub fn finalize(&self, is_root: bool) -> Hash {
+        if self.hashes() == 0 {
+            // we have just current, so pass through is_root
+            self.current.finalize(is_root)
+        } else {
+            // todo: this works only for GROUP_CHUNKS == 2
+            let mut leaf_hashes = [Hash::from([0; HASH_SIZE]); GROUP_CHUNKS];
+            let n = self.hashes();
+            leaf_hashes[..n].copy_from_slice(&self.leaf_hashes[..self.hashes()]);
+            leaf_hashes[n] = self.current.finalize(false);
+            combine_chunk_hashes(&leaf_hashes[..n + 1], is_root)
+        }
+    }
+
+    /// number of leaf hashes we have already computed
+    fn hashes(&self) -> usize {
+        (self.current_chunk & ((GROUP_CHUNKS as u64) - 1)) as usize
+    }
+}
+
+fn combine_chunk_hashes(chunks: &[Hash], is_root: bool) -> Hash {
+    if chunks.len() == 1 {
+        chunks[0]
+    } else {
+        let mid = chunks.len().next_power_of_two() / 2;
+        let left = combine_chunk_hashes(&chunks[..mid], false);
+        let right = combine_chunk_hashes(&chunks[mid..], false);
+        blake3::guts::parent_cv(&left, &right, is_root)
+    }
 }

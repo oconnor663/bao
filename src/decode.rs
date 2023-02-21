@@ -35,9 +35,9 @@
 //! # }
 //! ```
 
-use crate::encode;
 use crate::encode::NextRead;
-use crate::{Finalization, Hash, CHUNK_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
+use crate::{encode, ChunkGroupState};
+use crate::{Finalization, Hash, GROUP_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use std::cmp;
@@ -211,7 +211,7 @@ struct DecoderShared<T, O> {
     input: T,
     outboard: Option<O>,
     state: VerifyState,
-    buf: [u8; CHUNK_SIZE],
+    buf: [u8; GROUP_SIZE],
     buf_start: usize,
     buf_end: usize,
 }
@@ -222,7 +222,7 @@ impl<T, O> DecoderShared<T, O> {
             input,
             outboard,
             state: VerifyState::new(hash),
-            buf: [0; CHUNK_SIZE],
+            buf: [0; GROUP_SIZE],
             buf_start: 0,
             buf_end: 0,
         }
@@ -301,7 +301,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         }
         let buf_slice = &mut self.buf[..size];
         self.input.read_exact(buf_slice)?;
-        let hash = blake3::guts::ChunkState::new(index)
+        let hash = ChunkGroupState::new(index)
             .update(buf_slice)
             .finalize(finalization.is_root());
         self.state.feed_chunk(&hash)?;
@@ -363,7 +363,7 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                     // Hash it and push its hash into the VerifyState. This
                     // returns an error if the hash is bad. Otherwise, the
                     // chunk is verifiied.
-                    let chunk_hash = blake3::guts::ChunkState::new(index)
+                    let chunk_hash = ChunkGroupState::new(index)
                         .update(read_buf)
                         .finalize(finalization.is_root());
                     self.state.feed_chunk(&chunk_hash)?;
@@ -459,6 +459,8 @@ impl<T, O> fmt::Debug for DecoderShared<T, O> {
 #[cfg(feature = "tokio_io")]
 mod tokio_io {
 
+    use crate::ChunkGroupState;
+
     use super::{DecoderShared, Hash, NextRead};
     use futures::{future, ready};
     use std::{
@@ -534,7 +536,7 @@ mod tokio_io {
                         // returns an error if the hash is bad. Otherwise, the
                         // chunk is verified.
                         let read_buf = &self.buf[0..size];
-                        let chunk_hash = blake3::guts::ChunkState::new(index)
+                        let chunk_hash = ChunkGroupState::new(index)
                             .update(read_buf)
                             .finalize(finalization.is_root());
                         self.state.feed_chunk(&chunk_hash)?;
@@ -598,7 +600,7 @@ mod tokio_io {
                     // returns an error if the hash is bad. Otherwise, the
                     // chunk is verified.
                     let read_buf = &self.buf[0..size];
-                    let chunk_hash = blake3::guts::ChunkState::new(index)
+                    let chunk_hash = ChunkGroupState::new(index)
                         .update(read_buf)
                         .finalize(finalization.is_root());
                     self.state.feed_chunk(&chunk_hash)?;
@@ -932,7 +934,7 @@ mod tokio_io {
         use super::*;
         use crate::{
             decode::{make_test_input, SliceDecoder},
-            encode, CHUNK_SIZE, HEADER_SIZE,
+            encode, GROUP_SIZE, HEADER_SIZE,
         };
 
         #[tokio::test]
@@ -973,8 +975,8 @@ mod tokio_io {
                 assert_eq!(hash, outboard_hash);
                 for &slice_start in crate::test::TEST_CASES {
                     let expected_start = cmp::min(input.len(), slice_start);
-                    let slice_lens = [0, 1, 2, CHUNK_SIZE - 1, CHUNK_SIZE, CHUNK_SIZE + 1];
-                    // let slice_lens = [CHUNK_SIZE - 1, CHUNK_SIZE, CHUNK_SIZE + 1];
+                    let slice_lens = [0, 1, 2, GROUP_SIZE - 1, GROUP_SIZE, GROUP_SIZE + 1];
+                    // let slice_lens = [GROUP_SIZE - 1, GROUP_SIZE, GROUP_SIZE + 1];
                     for &slice_len in slice_lens.iter() {
                         println!("\ncase {case} start {slice_start} len {slice_len}");
                         let expected_end = cmp::min(input.len(), slice_start + slice_len);
@@ -1402,8 +1404,8 @@ mod test {
             if encoded.len() > HEADER_SIZE + PARENT_SIZE {
                 tweaks.push(HEADER_SIZE + PARENT_SIZE);
             }
-            if encoded.len() > CHUNK_SIZE {
-                tweaks.push(CHUNK_SIZE);
+            if encoded.len() > GROUP_SIZE {
+                tweaks.push(GROUP_SIZE);
             }
             for tweak in tweaks {
                 println!("tweak {tweak}");
@@ -1451,7 +1453,7 @@ mod test {
     fn test_repeated_random_seeks() {
         // A chunk number like this (37) with consecutive zeroes should exercise some of the more
         // interesting geometry cases.
-        let input_len = 0b100101 * CHUNK_SIZE;
+        let input_len = 0b100101 * GROUP_SIZE;
         println!("\n\ninput_len {input_len}");
         let mut prng = ChaChaRng::from_seed([0; 32]);
         let input = make_test_input(input_len);
@@ -1468,11 +1470,11 @@ mod test {
             let mut output = Vec::new();
             decoder
                 .clone()
-                .take(CHUNK_SIZE as u64)
+                .take(GROUP_SIZE as u64)
                 .read_to_end(&mut output)
                 .expect("decoder error");
             let input_start = cmp::min(seek, input_len);
-            let input_end = cmp::min(input_start + CHUNK_SIZE, input_len);
+            let input_end = cmp::min(input_start + GROUP_SIZE, input_len);
             assert_eq!(
                 &input[input_start..input_end],
                 &output[..],
@@ -1511,7 +1513,7 @@ mod test {
         for &case in crate::test::TEST_CASES {
             // Skip the cases with only one or two chunks, so we have valid
             // reads before and after the tweak.
-            if case <= 2 * CHUNK_SIZE {
+            if case <= 2 * GROUP_SIZE {
                 continue;
             }
 
@@ -1524,13 +1526,13 @@ mod test {
             // over prior parent nodes and chunks to figure out where the
             // target chunk actually starts.
             let tweak_chunk = encode::count_chunks(case as u64) / 2;
-            let tweak_position = tweak_chunk as usize * CHUNK_SIZE;
+            let tweak_position = tweak_chunk as usize * GROUP_SIZE;
             println!("tweak position {tweak_position}");
             let mut tweak_encoded_offset = HEADER_SIZE;
             for chunk in 0..tweak_chunk {
                 tweak_encoded_offset +=
                     encode::pre_order_parent_nodes(chunk, case as u64) as usize * PARENT_SIZE;
-                tweak_encoded_offset += CHUNK_SIZE;
+                tweak_encoded_offset += GROUP_SIZE;
             }
             tweak_encoded_offset +=
                 encode::pre_order_parent_nodes(tweak_chunk, case as u64) as usize * PARENT_SIZE;
@@ -1545,12 +1547,12 @@ mod test {
             assert_eq!(&input[..tweak_position], &*output);
 
             // Further reads at this point should fail.
-            let mut buf = [0; CHUNK_SIZE];
+            let mut buf = [0; GROUP_SIZE];
             let res = decoder.read(&mut buf);
             assert_eq!(res.unwrap_err().kind(), io::ErrorKind::InvalidData);
 
             // But now if we seek past the bad chunk, things should succeed again.
-            let new_start = tweak_position + CHUNK_SIZE;
+            let new_start = tweak_position + GROUP_SIZE;
             decoder.seek(SeekFrom::Start(new_start as u64)).unwrap();
             let mut output = Vec::new();
             decoder.read_to_end(&mut output).unwrap();
@@ -1604,7 +1606,7 @@ mod test {
             assert_eq!(hash, outboard_hash);
             for &slice_start in crate::test::TEST_CASES {
                 let expected_start = cmp::min(input.len(), slice_start);
-                let slice_lens = [0, 1, 2, CHUNK_SIZE - 1, CHUNK_SIZE, CHUNK_SIZE + 1];
+                let slice_lens = [0, 1, 2, GROUP_SIZE - 1, GROUP_SIZE, GROUP_SIZE + 1];
                 for &slice_len in slice_lens.iter() {
                     println!("\ncase {case} start {slice_start} len {slice_len}");
                     let expected_end = cmp::min(input.len(), slice_start + slice_len);

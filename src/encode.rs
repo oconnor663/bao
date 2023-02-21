@@ -37,7 +37,9 @@
 //! ```
 
 use crate::Finalization::{self, NotRoot, Root};
-use crate::{Hash, ParentNode, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
+use crate::{
+    ChunkGroupState, Hash, ParentNode, GROUP_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE,
+};
 use arrayref::array_mut_ref;
 use arrayvec::ArrayVec;
 use std::cmp;
@@ -97,14 +99,14 @@ pub(crate) fn outboard_subtree_size(content_len: u64) -> u128 {
 pub(crate) fn count_chunks(content_len: u64) -> u64 {
     // Two things to watch out for here: the 0-length input still counts as 1 chunk, and we don't
     // want to overflow when content_len is u64::MAX_VALUE.
-    let full_chunks: u64 = content_len / CHUNK_SIZE as u64;
-    let has_partial_chunk: bool = (content_len % CHUNK_SIZE as u64) != 0;
+    let full_chunks: u64 = content_len / GROUP_SIZE as u64;
+    let has_partial_chunk: bool = (content_len % GROUP_SIZE as u64) != 0;
     cmp::max(1, full_chunks + has_partial_chunk as u64)
 }
 
 pub(crate) fn chunk_size(chunk_index: u64, content_len: u64) -> usize {
-    let chunk_start = chunk_index * CHUNK_SIZE as u64;
-    cmp::min(CHUNK_SIZE, (content_len - chunk_start) as usize)
+    let chunk_start = chunk_index * GROUP_SIZE as u64;
+    cmp::min(GROUP_SIZE, (content_len - chunk_start) as usize)
 }
 
 // ----------------------------------------------------------------------------
@@ -311,7 +313,7 @@ impl State {
     // propagating the carry bit. Each carry represents a place where two subtrees need to be
     // merged, and the final number of 1 bits is the same as the final number of subtrees.
     fn needs_merge(&self) -> bool {
-        let chunks = self.total_len / CHUNK_SIZE as u64;
+        let chunks = self.total_len / GROUP_SIZE as u64;
         self.subtrees.len() > chunks.count_ones() as usize
     }
 
@@ -409,7 +411,7 @@ impl fmt::Debug for State {
 #[derive(Clone, Debug)]
 pub struct Encoder<T: Read + Write + Seek> {
     inner: T,
-    chunk_state: blake3::guts::ChunkState,
+    chunk_state: ChunkGroupState,
     tree_state: State,
     outboard: bool,
     finalized: bool,
@@ -422,7 +424,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
     pub fn new(inner: T) -> Self {
         Self {
             inner,
-            chunk_state: blake3::guts::ChunkState::new(0),
+            chunk_state: ChunkGroupState::new(0),
             tree_state: State::new(),
             outboard: false,
             finalized: false,
@@ -521,7 +523,7 @@ impl<T: Read + Write + Seek> Encoder<T> {
                 FlipperNext::Chunk(size) => {
                     // In outboard moded, we skip over chunks.
                     if !self.outboard {
-                        let mut chunk = [0; CHUNK_SIZE];
+                        let mut chunk = [0; GROUP_SIZE];
                         self.inner
                             .seek(SeekFrom::Start(read_cursor - size as u64))?;
                         self.inner.read_exact(&mut chunk[..size])?;
@@ -555,19 +557,19 @@ impl<T: Read + Write + Seek> Write for Encoder<T> {
 
         // If the current chunk is full, we need to finalize it, add it to
         // the tree state, and write out any completed parent nodes.
-        if self.chunk_state.len() == CHUNK_SIZE {
+        if self.chunk_state.len() == GROUP_SIZE {
             // This can't be the root, because we know more input is coming.
             let chunk_hash = self.chunk_state.finalize(false);
-            self.tree_state.push_subtree(&chunk_hash, CHUNK_SIZE);
-            let chunk_counter = self.tree_state.count() / CHUNK_SIZE as u64;
-            self.chunk_state = blake3::guts::ChunkState::new(chunk_counter);
+            self.tree_state.push_subtree(&chunk_hash, GROUP_SIZE);
+            let chunk_counter = self.tree_state.count() / GROUP_SIZE as u64;
+            self.chunk_state = ChunkGroupState::new(chunk_counter);
             while let Some(parent) = self.tree_state.merge_parent() {
                 self.inner.write_all(&parent)?;
             }
         }
 
         // Add as many bytes as possible to the current chunk.
-        let want = CHUNK_SIZE - self.chunk_state.len();
+        let want = GROUP_SIZE - self.chunk_state.len();
         let take = cmp::min(want, input.len());
         if !self.outboard {
             self.inner.write_all(&input[..take])?;
@@ -620,7 +622,7 @@ impl ParseState {
     }
 
     fn at_root(&self) -> bool {
-        self.content_position < CHUNK_SIZE as u64 && self.stack_depth == 1
+        self.content_position < GROUP_SIZE as u64 && self.stack_depth == 1
     }
 
     fn at_eof(&self) -> bool {
@@ -647,12 +649,12 @@ impl ParseState {
 
     fn next_chunk_start(&self) -> u64 {
         debug_assert!(!self.at_eof(), "not valid at EOF");
-        self.content_position - (self.content_position % CHUNK_SIZE as u64)
+        self.content_position - (self.content_position % GROUP_SIZE as u64)
     }
 
     fn next_chunk_index(&self) -> u64 {
         debug_assert!(!self.at_eof(), "not valid at EOF");
-        self.content_position / CHUNK_SIZE as u64
+        self.content_position / GROUP_SIZE as u64
     }
 
     pub fn finalization(&self) -> Finalization {
@@ -698,8 +700,8 @@ impl ParseState {
             NextRead::Chunk {
                 size: chunk_size(self.next_chunk_index(), content_len),
                 finalization: self.finalization(),
-                skip: (self.content_position % CHUNK_SIZE as u64) as usize,
-                index: self.content_position / CHUNK_SIZE as u64,
+                skip: (self.content_position % GROUP_SIZE as u64) as usize,
+                index: self.content_position / GROUP_SIZE as u64,
             }
         }
     }
@@ -787,14 +789,14 @@ impl ParseState {
             // repointed EOF seek, where we instruct the caller to read the
             // final chunk and call seek_next again.
             let distance = seek_to - self.next_chunk_start();
-            if distance < CHUNK_SIZE as u64 {
+            if distance < GROUP_SIZE as u64 {
                 if verifying_final_chunk {
                     let size = (content_len - self.next_chunk_start()) as usize;
                     return NextRead::Chunk {
                         size,
                         finalization: self.finalization(),
                         skip: size, // Skip the whole thing.
-                        index: self.content_position / CHUNK_SIZE as u64,
+                        index: self.content_position / GROUP_SIZE as u64,
                     };
                 } else {
                     self.content_position = seek_to;
@@ -808,7 +810,7 @@ impl ParseState {
             let downshifted_distance = distance
                 .checked_shr(self.upcoming_parents as u32)
                 .unwrap_or(0);
-            if downshifted_distance < CHUNK_SIZE as u64 {
+            if downshifted_distance < GROUP_SIZE as u64 {
                 debug_assert!(self.upcoming_parents > 0);
                 return NextRead::Parent;
             }
@@ -817,7 +819,7 @@ impl ParseState {
             // we know the subtree size is maximal, and computing it won't
             // overflow. The caller will have to execute an underlying seek in
             // this case.
-            let subtree_size = (CHUNK_SIZE as u64) << self.upcoming_parents;
+            let subtree_size = (GROUP_SIZE as u64) << self.upcoming_parents;
             self.content_position = self.next_chunk_start() + subtree_size;
             self.encoding_position += encoded_subtree_size(subtree_size);
             self.stack_depth -= 1;
@@ -875,7 +877,7 @@ impl ParseState {
         );
         let content_len = self.content_len.expect("advance_chunk before header");
         let size = chunk_size(self.next_chunk_index(), content_len);
-        let skip = self.content_position % CHUNK_SIZE as u64;
+        let skip = self.content_position % GROUP_SIZE as u64;
         self.content_position += size as u64 - skip;
         self.encoding_position += size as u128;
         self.stack_depth -= 1;
@@ -1022,7 +1024,7 @@ pub struct SliceExtractor<T: Read + Seek, O: Read + Seek> {
     slice_len: u64,
     slice_bytes_read: u64,
     parser: ParseState,
-    buf: [u8; CHUNK_SIZE],
+    buf: [u8; GROUP_SIZE],
     buf_start: usize,
     buf_end: usize,
     seek_done: bool,
@@ -1062,7 +1064,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
             slice_len: cmp::max(slice_len, 1),
             slice_bytes_read: 0,
             parser: ParseState::new(),
-            buf: [0; CHUNK_SIZE],
+            buf: [0; GROUP_SIZE],
             buf_start: 0,
             buf_end: 0,
             seek_done: false,
@@ -1200,7 +1202,7 @@ pub(crate) fn cast_offset(offset: u128) -> io::Result<u64> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::decode::make_test_input;
+    use crate::{decode::make_test_input, GROUP_LOG};
 
     #[test]
     fn test_encode() {
@@ -1271,7 +1273,7 @@ mod test {
     #[test]
     fn test_parent_nodes() {
         for total_chunks in 1..100 {
-            let content_len = total_chunks * CHUNK_SIZE as u64;
+            let content_len = total_chunks * GROUP_SIZE as u64;
             let pre_post_list = make_pre_post_list(total_chunks);
             for chunk in 0..total_chunks {
                 let (expected_pre, expected_post) = pre_post_list[chunk as usize];
@@ -1294,21 +1296,21 @@ mod test {
     }
 
     fn drive_state(mut input: &[u8]) -> Hash {
-        let last_chunk_is_root = input.len() <= CHUNK_SIZE;
+        let last_chunk_is_root = input.len() <= GROUP_SIZE;
         let mut state = State::new();
         let mut chunk_index = 0;
-        while input.len() > CHUNK_SIZE {
-            let hash = blake3::guts::ChunkState::new(chunk_index)
-                .update(&input[..CHUNK_SIZE])
+        while input.len() > GROUP_SIZE {
+            let hash = ChunkGroupState::new(chunk_index)
+                .update(&input[..GROUP_SIZE])
                 .finalize(false);
             chunk_index += 1;
-            state.push_subtree(&hash, CHUNK_SIZE);
-            input = &input[CHUNK_SIZE..];
+            state.push_subtree(&hash, GROUP_SIZE);
+            input = &input[GROUP_SIZE..];
             // Merge any parents, but throw away the result. We don't need
             // them, but we need to avoid tripping an assert.
             while state.merge_parent().is_some() {}
         }
-        let hash = blake3::guts::ChunkState::new(chunk_index)
+        let hash = ChunkGroupState::new(chunk_index)
             .update(input)
             .finalize(last_chunk_is_root);
         state.push_subtree(&hash, input.len());
@@ -1326,7 +1328,7 @@ mod test {
 
     #[test]
     fn test_state() {
-        let buf = [0x42; 65537];
+        let buf = vec![0x42; 65537 << GROUP_LOG];
         for &case in crate::test::TEST_CASES {
             dbg!(case);
             let input = &buf[..case];
@@ -1375,7 +1377,7 @@ mod test {
 
     #[test]
     fn test_empty_write_after_one_chunk() {
-        let input = &[0; CHUNK_SIZE];
+        let input = &[0; GROUP_SIZE];
         let mut output = Vec::new();
         let mut encoder = Encoder::new(io::Cursor::new(&mut output));
         encoder.write_all(input).unwrap();
