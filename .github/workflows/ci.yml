@@ -18,7 +18,7 @@ jobs:
         channel: [stable, beta, nightly]
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - uses: actions-rs/toolchain@v1
       with:
         toolchain: ${{ format('{0}-{1}', matrix.channel, matrix.target.toolchain) }}
@@ -41,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly
