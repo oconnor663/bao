@@ -721,12 +721,10 @@ pub(crate) fn make_test_input(len: usize) -> Vec<u8> {
 mod test {
     use rand::prelude::*;
     use rand_chacha::ChaChaRng;
-    use std::io;
     use std::io::prelude::*;
     use std::io::Cursor;
 
     use super::*;
-    use crate::encode;
 
     #[test]
     fn test_decode() {
