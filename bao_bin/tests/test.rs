@@ -1,8 +1,7 @@
 use duct::cmd;
 use rand::prelude::*;
-use std::env::consts::EXE_EXTENSION;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Once;
 use tempfile::tempdir;
 
@@ -15,10 +14,7 @@ pub fn bao_exe() -> PathBuf {
             .expect("build failed");
     });
 
-    Path::new("target")
-        .join("debug")
-        .join("bao")
-        .with_extension(EXE_EXTENSION)
+    assert_cmd::cargo::cargo_bin("bao")
 }
 
 #[test]
