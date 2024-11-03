@@ -2,18 +2,9 @@ use duct::cmd;
 use rand::prelude::*;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Once;
 use tempfile::tempdir;
 
 pub fn bao_exe() -> PathBuf {
-    // `cargo test` doesn't automatically run `cargo build`, so we do that ourselves.
-    static CARGO_BUILD_ONCE: Once = Once::new();
-    CARGO_BUILD_ONCE.call_once(|| {
-        cmd!("cargo", "build", "--quiet")
-            .run()
-            .expect("build failed");
-    });
-
     assert_cmd::cargo::cargo_bin("bao")
 }
 
