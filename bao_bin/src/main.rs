@@ -1,5 +1,5 @@
+use anyhow::bail;
 use arrayref::array_ref;
-use failure::{err_msg, Error};
 use serde::Deserialize;
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -39,7 +39,7 @@ struct Args {
     flag_version: bool,
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> anyhow::Result<()> {
     let args: Args = docopt::Docopt::new(USAGE)
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
@@ -84,7 +84,7 @@ fn copy_reader_to_writer(
     }
 }
 
-fn hash_one(maybe_path: &Option<PathBuf>) -> Result<bao::Hash, Error> {
+fn hash_one(maybe_path: &Option<PathBuf>) -> anyhow::Result<bao::Hash> {
     let mut input = open_input(maybe_path)?;
     if let Some(map) = maybe_memmap_input(&input)? {
         let hash;
@@ -106,7 +106,7 @@ fn hash_one(maybe_path: &Option<PathBuf>) -> Result<bao::Hash, Error> {
     }
 }
 
-fn hash(args: &Args) -> Result<(), Error> {
+fn hash(args: &Args) -> anyhow::Result<()> {
     if !args.arg_inputs.is_empty() {
         let mut did_error = false;
         for input in args.arg_inputs.iter() {
@@ -138,7 +138,7 @@ fn hash(args: &Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn encode(args: &Args) -> Result<(), Error> {
+fn encode(args: &Args) -> anyhow::Result<()> {
     let mut input = open_input(&args.arg_input)?;
     let out_maybe_path = if args.flag_outboard.is_some() {
         &args.flag_outboard
@@ -156,7 +156,7 @@ fn encode(args: &Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn decode(args: &Args) -> Result<(), Error> {
+fn decode(args: &Args) -> anyhow::Result<()> {
     let input = open_input(&args.arg_input)?;
     let mut output = open_output(&args.arg_output)?;
     let hash = parse_hash(args)?;
@@ -197,7 +197,7 @@ fn decode(args: &Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn slice(args: &Args) -> Result<(), Error> {
+fn slice(args: &Args) -> anyhow::Result<()> {
     let input = open_input(&args.arg_input)?;
     let mut output = open_output(&args.arg_output)?;
     // Slice extraction requires seek.
@@ -219,7 +219,7 @@ fn slice(args: &Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn decode_slice(args: &Args) -> Result<(), Error> {
+fn decode_slice(args: &Args) -> anyhow::Result<()> {
     let input = open_input(&args.arg_input)?;
     let mut output = open_output(&args.arg_output)?;
     let hash = parse_hash(&args)?;
@@ -228,7 +228,7 @@ fn decode_slice(args: &Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn open_input(maybe_path: &Option<PathBuf>) -> Result<Input, Error> {
+fn open_input(maybe_path: &Option<PathBuf>) -> anyhow::Result<Input> {
     Ok(
         if let Some(ref path) = path_if_some_and_not_dash(maybe_path) {
             Input::File(File::open(path)?)
@@ -244,9 +244,9 @@ enum Input {
 }
 
 impl Input {
-    fn require_file(self) -> Result<File, Error> {
+    fn require_file(self) -> anyhow::Result<File> {
         match self {
-            Input::Stdin => Err(err_msg(format!("input must be a real file"))),
+            Input::Stdin => bail!("input must be a real file"),
             Input::File(file) => Ok(file),
         }
     }
@@ -261,7 +261,7 @@ impl Read for Input {
     }
 }
 
-fn open_output(maybe_path: &Option<PathBuf>) -> Result<Output, Error> {
+fn open_output(maybe_path: &Option<PathBuf>) -> anyhow::Result<Output> {
     if let Some(ref path) = path_if_some_and_not_dash(maybe_path) {
         // Both reading and writing permissions are required for MmapMut.
         let file = OpenOptions::new()
@@ -281,9 +281,9 @@ enum Output {
 }
 
 impl Output {
-    fn require_file(self) -> Result<File, Error> {
+    fn require_file(self) -> anyhow::Result<File> {
         match self {
-            Output::Stdout => Err(err_msg(format!("output must be a real file"))),
+            Output::Stdout => bail!("output must be a real file"),
             Output::File(file) => Ok(file),
         }
     }
@@ -317,7 +317,7 @@ fn path_if_some_and_not_dash(maybe_path: &Option<PathBuf>) -> Option<&Path> {
     }
 }
 
-fn maybe_memmap_input(input: &Input) -> Result<Option<memmap::Mmap>, Error> {
+fn maybe_memmap_input(input: &Input) -> anyhow::Result<Option<memmap::Mmap>> {
     let in_file = match *input {
         Input::Stdin => return Ok(None),
         Input::File(ref file) => file,
@@ -348,10 +348,10 @@ fn maybe_memmap_input(input: &Input) -> Result<Option<memmap::Mmap>, Error> {
     })
 }
 
-fn parse_hash(args: &Args) -> Result<bao::Hash, Error> {
-    let hash_vec = hex::decode(&args.arg_hash).map_err(|_| err_msg("invalid hex"))?;
+fn parse_hash(args: &Args) -> anyhow::Result<bao::Hash> {
+    let hash_vec = hex::decode(&args.arg_hash)?;
     if hash_vec.len() != bao::HASH_SIZE {
-        return Err(err_msg("wrong length hash"));
+        bail!("wrong length hash");
     };
     Ok((*array_ref!(hash_vec, 0, bao::HASH_SIZE)).into())
 }
