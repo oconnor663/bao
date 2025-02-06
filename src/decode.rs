@@ -38,7 +38,6 @@
 use crate::encode;
 use crate::encode::NextRead;
 use crate::{Finalization, Hash, CHUNK_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
-use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use std::cmp;
 use std::error;
@@ -51,10 +50,10 @@ use std::io::SeekFrom;
 /// This is a convenience wrapper around `Decoder`.
 pub fn decode(encoded: impl AsRef<[u8]>, hash: &Hash) -> io::Result<Vec<u8>> {
     let bytes = encoded.as_ref();
-    if bytes.len() < HEADER_SIZE {
+    let Some(header) = bytes.first_chunk::<HEADER_SIZE>() else {
         return Err(Error::Truncated.into());
-    }
-    let content_len = crate::decode_len(array_ref!(bytes, 0, HEADER_SIZE));
+    };
+    let content_len = crate::decode_len(header);
     // Sanity check the length before making a potentially large allocation.
     if (bytes.len() as u128) < encode::encoded_size(content_len) {
         return Err(Error::Truncated.into());
@@ -131,8 +130,8 @@ impl VerifyState {
     fn feed_parent(&mut self, parent: &crate::ParentNode) -> Result<(), Error> {
         let finalization = self.parser.finalization();
         let expected_hash: &Hash = self.stack.last().expect("unexpectedly empty stack");
-        let left_child: Hash = (*array_ref!(parent, 0, 32)).into();
-        let right_child: Hash = (*array_ref!(parent, 32, 32)).into();
+        let left_child: Hash = (*parent.first_chunk::<32>().unwrap()).into();
+        let right_child: Hash = (*parent.last_chunk::<32>().unwrap()).into();
         let computed_hash: Hash =
             blake3::guts::parent_cv(&left_child, &right_child, finalization.is_root());
         // Hash implements constant time equality.

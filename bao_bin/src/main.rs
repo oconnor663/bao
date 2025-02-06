@@ -1,5 +1,4 @@
 use anyhow::bail;
-use arrayref::array_ref;
 use serde::Deserialize;
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -339,10 +338,10 @@ fn maybe_memmap_input(input: &Input) -> anyhow::Result<Option<memmap2::Mmap>> {
 
 fn parse_hash(args: &Args) -> anyhow::Result<bao::Hash> {
     let hash_vec = hex::decode(&args.arg_hash)?;
-    if hash_vec.len() != bao::HASH_SIZE {
+    let Ok(array) = <[u8; bao::HASH_SIZE]>::try_from(&*hash_vec) else {
         bail!("wrong length hash");
     };
-    Ok((*array_ref!(hash_vec, 0, bao::HASH_SIZE)).into())
+    Ok(array.into())
 }
 
 // When streaming out decoded content, it's acceptable for the caller to pipe us

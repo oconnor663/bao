@@ -38,7 +38,6 @@
 
 use crate::Finalization::{self, NotRoot, Root};
 use crate::{Hash, ParentNode, CHUNK_SIZE, HASH_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
-use arrayref::array_mut_ref;
 use arrayvec::ArrayVec;
 use std::cmp;
 use std::fmt;
@@ -1069,7 +1068,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
 
     // Note that unlike the regular Reader, the header bytes go into the output buffer.
     fn read_header(&mut self) -> io::Result<()> {
-        let header = array_mut_ref!(self.buf, 0, HEADER_SIZE);
+        let header = self.buf.first_chunk_mut::<HEADER_SIZE>().unwrap();
         if let Some(outboard) = &mut self.outboard {
             outboard.read_exact(header)?;
         } else {
@@ -1083,7 +1082,7 @@ impl<T: Read + Seek, O: Read + Seek> SliceExtractor<T, O> {
 
     // Note that unlike the regular Reader, the parent bytes go into the output buffer.
     fn read_parent(&mut self) -> io::Result<()> {
-        let parent = array_mut_ref!(self.buf, 0, PARENT_SIZE);
+        let parent = self.buf.first_chunk_mut::<PARENT_SIZE>().unwrap();
         if let Some(outboard) = &mut self.outboard {
             outboard.read_exact(parent)?;
         } else {

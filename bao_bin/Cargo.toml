@@ -19,7 +19,6 @@ rayon = ["blake3/rayon"]
 
 [dependencies]
 anyhow = "1.0.95"
-arrayref = "0.3.5"
 assert_cmd = "2.0.16"
 bao = { path = "..", version = "0.12" }
 blake3 = "1.0.0"

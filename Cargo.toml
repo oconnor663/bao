@@ -10,7 +10,6 @@ readme = "README.md"
 edition = "2021"
 
 [dependencies]
-arrayref = "0.3.5"
 arrayvec = "0.7.1"
 blake3 = "1.0.0"
 
