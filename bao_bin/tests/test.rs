@@ -190,7 +190,7 @@ fn test_slice() {
     let slice_len = input_len / 2;
 
     let mut input = vec![0; input_len];
-    rand::thread_rng().fill_bytes(&mut input);
+    rand::rng().fill_bytes(&mut input);
     let hash = cmd!(bao_exe(), "hash").stdin_bytes(&*input).read().unwrap();
     let dir = tempdir().unwrap();
     let encoded_path = dir.path().join("encoded");

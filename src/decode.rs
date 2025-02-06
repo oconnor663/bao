@@ -822,7 +822,7 @@ mod test {
         let mut decoder = Decoder::new(Cursor::new(&encoded), &hash);
         // Do a thousand random seeks and chunk-sized reads.
         for _ in 0..1000 {
-            let seek = prng.gen_range(0..input_len + 1);
+            let seek = prng.random_range(0..input_len + 1);
             println!("\nseek {}", seek);
             decoder
                 .seek(SeekFrom::Start(seek as u64))

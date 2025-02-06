@@ -30,5 +30,5 @@ serde = { version = "1.0.97", features = ["derive"] }
 
 [dev-dependencies]
 duct = "0.13.0"
-rand = "0.8"
+rand = "0.9"
 tempfile = "3.1.0"

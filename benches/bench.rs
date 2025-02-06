@@ -34,7 +34,7 @@ impl RandomInput {
         b.bytes += len as u64;
         let page_size: usize = page_size::get();
         let mut buf = vec![0u8; len + page_size];
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         rng.fill_bytes(&mut buf);
         let mut offsets: Vec<usize> = (0..page_size).collect();
         offsets.shuffle(&mut rng);
@@ -202,7 +202,7 @@ fn bench_bao_seek_memory(b: &mut Bencher) {
     let mut rng = rand_xorshift::XorShiftRng::from_seed(Default::default());
     let mut decoder = decode::Decoder::new(Cursor::new(&encoded), &hash);
     b.iter(|| {
-        let seek_offset = rng.gen_range(0..input.len() as u64);
+        let seek_offset = rng.random_range(0..input.len() as u64);
         decoder.seek(Start(seek_offset)).unwrap();
     });
 }
@@ -221,7 +221,7 @@ fn bench_bao_seek_file(b: &mut Bencher) {
     let mut rng = rand_xorshift::XorShiftRng::from_seed(Default::default());
     let mut decoder = decode::Decoder::new(file, &hash);
     b.iter(|| {
-        let seek_offset = rng.gen_range(0..input.len() as u64);
+        let seek_offset = rng.random_range(0..input.len() as u64);
         decoder.seek(Start(seek_offset)).expect("seek error");
     });
 }
