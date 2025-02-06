@@ -490,7 +490,7 @@ impl<T: Read, O: Read> fmt::Debug for DecoderShared<T, O> {
 /// # }
 /// ```
 #[derive(Clone, Debug)]
-pub struct Decoder<T: Read, O: Read> {
+pub struct Decoder<T: Read, O: Read = T> {
     shared: DecoderShared<T, O>,
 }
 
