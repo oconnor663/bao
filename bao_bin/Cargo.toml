@@ -6,7 +6,7 @@ description = "the command line utility that's part of the bao crate"
 license = "CC0-1.0 OR Apache-2.0"
 repository = "https://github.com/oconnor663/bao"
 readme = "../README.md"
-edition = "2018"
+edition = "2021"
 
 [[bin]]
 name = "bao"

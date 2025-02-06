@@ -7,7 +7,7 @@ license = "CC0-1.0 OR Apache-2.0"
 repository = "https://github.com/oconnor663/bao"
 documentation = "https://docs.rs/bao"
 readme = "README.md"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 arrayref = "0.3.5"
