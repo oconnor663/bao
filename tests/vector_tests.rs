@@ -1,17 +1,15 @@
 //! The tests in this file run bao against the standard set of test vectors.
 
 use bao::Hash;
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::cmp;
 use std::io;
 use std::io::prelude::*;
 use std::io::Cursor;
+use std::sync::LazyLock;
 
-lazy_static! {
-    static ref TEST_VECTORS: TestVectors =
-        serde_json::from_str(include_str!("test_vectors.json")).unwrap();
-}
+static TEST_VECTORS: LazyLock<TestVectors> =
+    LazyLock::new(|| serde_json::from_str(include_str!("test_vectors.json")).unwrap());
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TestVectors {
