@@ -317,7 +317,7 @@ fn path_if_some_and_not_dash(maybe_path: &Option<PathBuf>) -> Option<&Path> {
     }
 }
 
-fn maybe_memmap_input(input: &Input) -> anyhow::Result<Option<memmap::Mmap>> {
+fn maybe_memmap_input(input: &Input) -> anyhow::Result<Option<memmap2::Mmap>> {
     let in_file = match *input {
         Input::Stdin => return Ok(None),
         Input::File(ref file) => file,
@@ -327,23 +327,12 @@ fn maybe_memmap_input(input: &Input) -> anyhow::Result<Option<memmap::Mmap>> {
     Ok(if !metadata.is_file() {
         // Not a real file.
         None
-    } else if file_size > isize::max_value() as u64 {
-        // Too long to safely map. https://github.com/danburkert/memmap-rs/issues/69
-        None
-    } else if file_size == 0 {
-        // Mapping an empty file currently fails. https://github.com/danburkert/memmap-rs/issues/72
-        None
     } else if file_size < 16 * 1024 {
-        // Mapping small files is not worth it.
+        // Mapping small files is not worth it, and some special files that can't be mapped report
+        // a size of zero.
         None
     } else {
-        // Explicitly set the length of the memory map, so that filesystem changes can't race to
-        // violate the invariants we just checked.
-        let map = unsafe {
-            memmap::MmapOptions::new()
-                .len(metadata.len() as usize)
-                .map(&in_file)?
-        };
+        let map = unsafe { memmap2::Mmap::map(in_file)? };
         Some(map)
     })
 }
