@@ -11,7 +11,7 @@ edition = "2021"
 
 [dependencies]
 arrayvec = "0.7.1"
-blake3 = "1.0.0"
+blake3 = { path = "../BLAKE3" }
 
 [dev-dependencies]
 rand = "0.9.0"

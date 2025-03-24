@@ -21,7 +21,7 @@ rayon = ["blake3/rayon"]
 anyhow = "1.0.95"
 assert_cmd = "2.0.16"
 bao = { path = "..", version = "0.13" }
-blake3 = "1.0.0"
+blake3 = { path = "../../BLAKE3" }
 docopt = "1.1.0"
 hex = "0.4.0"
 memmap2 = "0.9.5"
