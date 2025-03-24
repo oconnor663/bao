@@ -39,6 +39,8 @@ use crate::encode;
 use crate::encode::NextRead;
 use crate::{Finalization, Hash, CHUNK_SIZE, HEADER_SIZE, MAX_DEPTH, PARENT_SIZE};
 use arrayvec::ArrayVec;
+use blake3::hazmat::HasherExt;
+use blake3::Hasher;
 use std::cmp;
 use std::error;
 use std::fmt;
@@ -132,8 +134,20 @@ impl VerifyState {
         let expected_hash: &Hash = self.stack.last().expect("unexpectedly empty stack");
         let left_child: Hash = (*parent.first_chunk::<32>().unwrap()).into();
         let right_child: Hash = (*parent.last_chunk::<32>().unwrap()).into();
-        let computed_hash: Hash =
-            blake3::guts::parent_cv(&left_child, &right_child, finalization.is_root());
+        let computed_hash: Hash = if finalization.is_root() {
+            blake3::hazmat::merge_subtrees_root(
+                left_child.as_bytes(),
+                right_child.as_bytes(),
+                blake3::hazmat::Mode::Hash,
+            )
+        } else {
+            blake3::hazmat::merge_subtrees_non_root(
+                left_child.as_bytes(),
+                right_child.as_bytes(),
+                blake3::hazmat::Mode::Hash,
+            )
+            .into()
+        };
         // Hash implements constant time equality.
         if expected_hash != &computed_hash {
             return Err(Error::HashMismatch);
@@ -296,9 +310,14 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
         }
         let buf_slice = &mut self.buf[..size];
         self.input.read_exact(buf_slice)?;
-        let hash = blake3::guts::ChunkState::new(index)
-            .update(buf_slice)
-            .finalize(finalization.is_root());
+        let mut hasher = Hasher::new();
+        hasher.set_input_offset(index * CHUNK_SIZE as u64);
+        hasher.update(buf_slice);
+        let hash = if finalization.is_root() {
+            hasher.finalize()
+        } else {
+            hasher.finalize_non_root().into()
+        };
         self.state.feed_chunk(&hash)?;
         self.buf_start = skip;
         self.buf_end = size;
@@ -358,9 +377,14 @@ impl<T: Read, O: Read> DecoderShared<T, O> {
                     // Hash it and push its hash into the VerifyState. This
                     // returns an error if the hash is bad. Otherwise, the
                     // chunk is verifiied.
-                    let chunk_hash = blake3::guts::ChunkState::new(index)
-                        .update(read_buf)
-                        .finalize(finalization.is_root());
+                    let mut chunk_hasher = Hasher::new();
+                    chunk_hasher.set_input_offset(index * CHUNK_SIZE as u64);
+                    chunk_hasher.update(read_buf);
+                    let chunk_hash = if finalization.is_root() {
+                        chunk_hasher.finalize()
+                    } else {
+                        chunk_hasher.finalize_non_root().into()
+                    };
                     self.state.feed_chunk(&chunk_hash)?;
 
                     // If the output buffer was large enough for direct output,
