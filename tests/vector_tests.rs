@@ -1,6 +1,6 @@
 //! The tests in this file run bao against the standard set of test vectors.
 
-use bao::Hash;
+use bao::{Config, Hash};
 use serde::{Deserialize, Serialize};
 use std::cmp;
 use std::io;
@@ -103,25 +103,26 @@ fn corrupt_hash(hash: &Hash) -> Hash {
 
 #[test]
 fn test_encode_vectors() {
+    let config = Config::new(1024);
     for case in &TEST_VECTORS.encode {
         println!("input_len {}", case.input_len);
         let input = make_input(case.input_len);
-        let (encoded, hash) = bao::encode::encode(&input);
+        let (encoded, hash) = config.encode(&input);
         assert_eq!(&*case.bao_hash, &*hash.to_hex());
         assert_eq!(
             case.encoded_blake3,
             blake3::hash(&encoded).to_hex().as_str()
         );
-        let encoded_size = bao::encode::encoded_size(case.input_len as u64) as usize;
+        let encoded_size = config.encoded_size(case.input_len as u64) as usize;
         assert_eq!(encoded_size, encoded.len());
 
         // Test decoding.
-        let output = bao::decode::decode(&encoded, &hash).unwrap();
+        let output = config.decode(&encoded, &hash).unwrap();
         assert_eq!(input, output);
 
         // Make sure decoding with a bad hash fails.
         let bad_hash = corrupt_hash(&hash);
-        let err = bao::decode::decode(&encoded, &bad_hash).unwrap_err();
+        let err = config.decode(&encoded, &bad_hash).unwrap_err();
         assert_eq!(std::io::ErrorKind::InvalidData, err.kind());
 
         // Make sure each corruption point fails the decode.
@@ -131,13 +132,18 @@ fn test_encode_vectors() {
             corrupt[point] ^= 1;
             // The error can be either HashMismatch or Truncated, depending on whether the header
             // was corrupted.
-            bao::decode::decode(&corrupt, &hash).unwrap_err();
+            config.decode(&corrupt, &hash).unwrap_err();
         }
     }
 }
 
-fn decode_outboard(input: &[u8], outboard: &[u8], hash: &Hash) -> io::Result<Vec<u8>> {
-    let mut reader = bao::decode::Decoder::new_outboard(input, outboard, hash);
+fn decode_outboard(
+    config: Config,
+    input: &[u8],
+    outboard: &[u8],
+    hash: &Hash,
+) -> io::Result<Vec<u8>> {
+    let mut reader = config.new_outboard_decoder(input, outboard, hash);
     let mut output = Vec::with_capacity(input.len());
     reader.read_to_end(&mut output)?;
     Ok(output)
@@ -145,25 +151,26 @@ fn decode_outboard(input: &[u8], outboard: &[u8], hash: &Hash) -> io::Result<Vec
 
 #[test]
 fn test_outboard_vectors() {
+    let config = Config::new(1024);
     for case in &TEST_VECTORS.outboard {
         println!("input_len {}", case.input_len);
         let input = make_input(case.input_len);
-        let (outboard, hash) = bao::encode::outboard(&input);
+        let (outboard, hash) = config.encode_outboard(&input);
         assert_eq!(&*case.bao_hash, &*hash.to_hex());
         assert_eq!(
             case.encoded_blake3,
             blake3::hash(&outboard).to_hex().as_str()
         );
-        let outboard_size = bao::encode::outboard_size(case.input_len as u64) as usize;
+        let outboard_size = config.outboard_size(case.input_len as u64) as usize;
         assert_eq!(outboard_size, outboard.len());
 
         // Test decoding. Currently only the Decoder implements it.
-        let output = decode_outboard(&input, &outboard, &hash).unwrap();
+        let output = decode_outboard(config, &input, &outboard, &hash).unwrap();
         assert_eq!(input, output);
 
         // Make sure decoding with a bad hash fails.
         let bad_hash = corrupt_hash(&hash);
-        let err = decode_outboard(&input, &outboard, &bad_hash).unwrap_err();
+        let err = decode_outboard(config, &input, &outboard, &bad_hash).unwrap_err();
         assert_eq!(io::ErrorKind::InvalidData, err.kind());
 
         // Make sure each tree corruption point fails the decode.
@@ -173,7 +180,7 @@ fn test_outboard_vectors() {
             corrupt[point] ^= 1;
             // The error can be either InvalidData or UnexpectedEof, depending on whether the
             // header was corrupted.
-            decode_outboard(&input, &corrupt, &hash).unwrap_err();
+            decode_outboard(config, &input, &corrupt, &hash).unwrap_err();
         }
 
         // Make sure each input corruption point fails the decode.
@@ -181,7 +188,7 @@ fn test_outboard_vectors() {
             println!("corruption {}", point);
             let mut corrupt = input.clone();
             corrupt[point] ^= 1;
-            let err = decode_outboard(&corrupt, &outboard, &hash).unwrap_err();
+            let err = decode_outboard(config, &corrupt, &outboard, &hash).unwrap_err();
             assert_eq!(io::ErrorKind::InvalidData, err.kind());
         }
     }
@@ -189,11 +196,12 @@ fn test_outboard_vectors() {
 
 #[test]
 fn test_seek_vectors() {
+    let config = Config::new(1024);
     for case in &TEST_VECTORS.seek {
         println!("\n\ninput_len {}", case.input_len);
         let input = make_input(case.input_len);
-        let (encoded, hash) = bao::encode::encode(&input);
-        let (outboard, outboard_hash) = bao::encode::outboard(&input);
+        let (encoded, hash) = config.encode(&input);
+        let (outboard, outboard_hash) = config.encode_outboard(&input);
         assert_eq!(hash, outboard_hash);
 
         // First, test all the different seek points using fresh readers.
@@ -204,7 +212,7 @@ fn test_seek_vectors() {
             let expected_input = &input[capped_seek..];
 
             // Test seeking in the combined mode.
-            let mut combined_reader = bao::decode::Decoder::new(Cursor::new(&encoded), &hash);
+            let mut combined_reader = config.new_decoder(Cursor::new(&encoded), &hash);
             combined_reader
                 .seek(io::SeekFrom::Start(seek as u64))
                 .unwrap();
@@ -213,11 +221,8 @@ fn test_seek_vectors() {
             assert_eq!(expected_input, &*combined_output);
 
             // Test seeking in the outboard mode.
-            let mut outboard_reader = bao::decode::Decoder::new_outboard(
-                Cursor::new(&input),
-                Cursor::new(&outboard),
-                &hash,
-            );
+            let mut outboard_reader =
+                config.new_outboard_decoder(Cursor::new(&input), Cursor::new(&outboard), &hash);
             outboard_reader
                 .seek(io::SeekFrom::Start(seek as u64))
                 .unwrap();
@@ -236,9 +241,9 @@ fn test_seek_vectors() {
             repeated_seeks.push(x);
             repeated_seeks.push(y);
         }
-        let mut combined_reader = bao::decode::Decoder::new(Cursor::new(&encoded), &hash);
+        let mut combined_reader = config.new_decoder(Cursor::new(&encoded), &hash);
         let mut outboard_reader =
-            bao::decode::Decoder::new_outboard(Cursor::new(&input), Cursor::new(&outboard), &hash);
+            config.new_outboard_decoder(Cursor::new(&input), Cursor::new(&outboard), &hash);
         println!();
         for &seek in &repeated_seeks {
             println!("repeated seek {}", seek);
@@ -268,7 +273,8 @@ fn test_seek_vectors() {
 }
 
 fn decode_slice(slice: &[u8], hash: &Hash, start: u64, len: u64) -> io::Result<Vec<u8>> {
-    let mut reader = bao::decode::SliceDecoder::new(slice, hash, start, len);
+    let config = Config::new(1024);
+    let mut reader = config.new_slice_decoder(slice, hash, start, len);
     let mut output = Vec::new();
     reader.read_to_end(&mut output)?;
     Ok(output)
@@ -276,11 +282,12 @@ fn decode_slice(slice: &[u8], hash: &Hash, start: u64, len: u64) -> io::Result<V
 
 #[test]
 fn test_slice_vectors() {
+    let config = Config::new(1024);
     for case in &TEST_VECTORS.slice {
         println!("\n\ninput_len {}", case.input_len);
         let input = make_input(case.input_len);
-        let (encoded, hash) = bao::encode::encode(&input);
-        let (outboard, outboard_hash) = bao::encode::outboard(&input);
+        let (encoded, hash) = config.encode(&input);
+        let (outboard, outboard_hash) = config.encode_outboard(&input);
         assert_eq!(hash, outboard_hash);
 
         for slice in &case.slices {
@@ -291,7 +298,7 @@ fn test_slice_vectors() {
 
             // Make sure slicing the combined encoding has the output that it should.
             let mut combined_extractor =
-                bao::encode::SliceExtractor::new(Cursor::new(&encoded), slice.start, slice.len);
+                config.new_slice_extractor(Cursor::new(&encoded), slice.start, slice.len);
             let mut combined_slice = Vec::new();
             combined_extractor.read_to_end(&mut combined_slice).unwrap();
             assert_eq!(slice.output_len, combined_slice.len());
@@ -301,7 +308,7 @@ fn test_slice_vectors() {
             );
 
             // Make sure slicing the outboard encoding also gives the right output.
-            let mut outboard_extractor = bao::encode::SliceExtractor::new_outboard(
+            let mut outboard_extractor = config.new_outboard_slice_extractor(
                 Cursor::new(&input),
                 Cursor::new(&outboard),
                 slice.start,

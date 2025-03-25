@@ -10,7 +10,6 @@ readme = "README.md"
 edition = "2021"
 
 [dependencies]
-arrayvec = "0.7.1"
 blake3 = { path = "../BLAKE3" }
 
 [dev-dependencies]
